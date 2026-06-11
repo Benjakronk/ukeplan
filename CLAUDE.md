@@ -162,8 +162,13 @@ The vurderingskalender URL is `VURD_URL` in both (for the assessment merge).
 ## Class & subject lists
 
 `CLASSES` (8A–10F) and `SUBJECTS` are hardcoded in `script.js` and `teacher.js`.
-Update each school year. Not all parallels exist everywhere — unused ones are
-simply never selected.
+`SUBJECTS = [...CORE_SUBJECTS, ...ELECTIVE_SUBJECTS]`. Update each school year.
+
+Students pick which electives (valgfag/tilvalgsfag) they have in the class modal
+(stored in `localStorage: up_electives`; `null` = not chosen yet → show all).
+`subjectVisible(subject)` filters the student's views so elective subjects they
+did not choose are hidden everywhere (board, day view, calendar, Fag tab). The
+teacher always sees all subjects.
 
 ## Notes
 

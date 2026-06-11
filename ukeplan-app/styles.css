@@ -278,6 +278,8 @@ body.scroll-locked { overflow: hidden; }
 .class-modal-title { font-size: 19px; font-weight: 700; }
 .class-modal-hint { font-size: 13px; color: var(--text-muted); margin: 4px 0 16px; }
 .class-modal-grid { display: flex; flex-direction: column; gap: 14px; }
+.elective-grid { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+.class-modal-actions { display: flex; justify-content: flex-end; margin-top: 18px; }
 .class-modal-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .class-grade-label { width: 28px; flex-shrink: 0; font-weight: 700; color: var(--text-muted); }
 .class-modal-btn {

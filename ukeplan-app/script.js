@@ -10,6 +10,7 @@ const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxP4BS2wc1RWcjjqEtrS
 const VURD_URL = 'https://script.google.com/macros/s/AKfycbwsXqoLZW8RlIAwvGN1yQXgpLnB3aCbVtjrmt4X5v302Fpbd9XFsSiobBOOTC4z1q5n/exec';
 
 const CLASS_KEY      = 'up_class';          // chosen class (single)
+const ELECTIVE_KEY   = 'up_electives';      // chosen elective subjects (array; null = not chosen yet)
 const WEEK_CACHE_KEY = 'up_weeks';          // { "8A|2026-W24": { ts, data } }
 const VURD_CACHE_KEY = 'up_vurd';
 const VURD_TS_KEY    = 'up_vurd_ts';
@@ -30,12 +31,17 @@ const CLASS_GRADES = [
 ];
 const CLASSES = CLASS_GRADES.flatMap(g => g.classes);
 
-// Canonical subject order. Subjects not listed are appended alphabetically.
-const SUBJECTS = [
+// Core subjects (everyone has these) + electives/tilvalgsfag (chosen per student).
+const CORE_SUBJECTS = [
   'Norsk','Matematikk','Engelsk','Naturfag','Samfunnsfag','KRLE',
-  'Kroppsøving','Musikk','Kunst og håndverk','Mat og helse',
-  'Fremmedspråk','Utdanningsvalg',
+  'Kroppsøving','Musikk','Kunst og håndverk','Mat og helse','Utdanningsvalg',
 ];
+const ELECTIVE_SUBJECTS = [
+  'Spansk','Fransk','Tysk','Engelsk fordypning',
+  'Arbeidslivsfag (ALF)','Fysisk aktivitet og helse (Fysak)','Friluftsliv',
+  'Innsats for andre','Programmering','Teknologi og design','Design og redesign',
+];
+const SUBJECTS = [...CORE_SUBJECTS, ...ELECTIVE_SUBJECTS];
 
 const DAYS = ['man','tir','ons','tor','fre'];
 const DAY_LABEL = { man: 'Man', tir: 'Tir', ons: 'Ons', tor: 'Tor', fre: 'Fre' };
@@ -55,6 +61,9 @@ let currentTab       = 'ukeplan';  // 'ukeplan' | 'fag' | 'vurd'
 let ukeplanView      = 'uke';      // 'uke' | 'dag'
 let selectedDayIndex = 0;          // 0..4 (Mon..Fri), for the day view
 let allPlanData      = [];         // all plan elements (fag-progresjon)
+let electives        = null;       // chosen elective subjects (null = not chosen yet → show all)
+let modalClass       = null;       // class tentatively picked in the class modal
+let modalElectives   = [];         // electives tentatively picked in the class modal
 let fagFrom          = null;       // week range filter for the Fag tab
 let fagTo            = null;
 let calStart         = null;       // date range for the Vurderingskalender tab
@@ -74,6 +83,8 @@ async function init() {
 
   selectedClass = localStorage.getItem(CLASS_KEY);
   if (selectedClass && !CLASSES.includes(selectedClass)) selectedClass = null;
+  electives = loadElectives();
+  populateFagSubjects();
 
   updateClassLabel();
   updateWeekLabel();
@@ -97,6 +108,7 @@ function setupListeners() {
   document.getElementById('classBtn').addEventListener('click', showClassModal);
   document.getElementById('classModalClose').addEventListener('click', () => closeClassModal());
   document.getElementById('classModalOverlay').addEventListener('click', () => closeClassModal());
+  document.getElementById('classConfirm').addEventListener('click', confirmClassModal);
 
   document.getElementById('tabUkeplan').addEventListener('click', () => setTab('ukeplan'));
   document.getElementById('tabFag').addEventListener('click', () => setTab('fag'));
@@ -107,7 +119,7 @@ function setupListeners() {
   document.getElementById('calEnd').addEventListener('change', onCalDateChange);
 
   const fagSel = document.getElementById('fagSubject');
-  SUBJECTS.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; fagSel.appendChild(o); });
+  populateFagSubjects();
   fagSel.addEventListener('change', () => { fagFrom = null; fagTo = null; renderFag(); });
   document.getElementById('fagFrom').addEventListener('change', e => { fagFrom = e.target.value; renderFag(); });
   document.getElementById('fagTo').addEventListener('change', e => { fagTo = e.target.value; renderFag(); });
@@ -258,7 +270,34 @@ function updateClassLabel() {
   document.getElementById('classBtnLabel').textContent = selectedClass || 'Velg klasse';
 }
 
+function loadElectives() {
+  const raw = localStorage.getItem(ELECTIVE_KEY);
+  if (raw === null) return null;
+  try { const a = JSON.parse(raw); return Array.isArray(a) ? a : []; } catch { return []; }
+}
+
+// Whether a subject should be shown for this student. Core subjects always;
+// electives only if chosen. Before any choice is made (null), show everything.
+function subjectVisible(subject) {
+  if (!subject || !ELECTIVE_SUBJECTS.includes(subject)) return true;
+  if (electives === null) return true;
+  return electives.includes(subject);
+}
+
+function populateFagSubjects() {
+  const sel = document.getElementById('fagSubject');
+  const current = sel.value;
+  sel.innerHTML = '';
+  SUBJECTS.filter(subjectVisible).forEach(s => {
+    const o = document.createElement('option'); o.value = s; o.textContent = s; sel.appendChild(o);
+  });
+  if ([...sel.options].some(o => o.value === current)) sel.value = current;
+}
+
 function showClassModal() {
+  modalClass = selectedClass;
+  modalElectives = electives ? electives.slice() : [];
+
   const grid = document.getElementById('classModalGrid');
   grid.innerHTML = '';
   CLASS_GRADES.forEach(group => {
@@ -273,13 +312,34 @@ function showClassModal() {
       btn.type        = 'button';
       btn.className   = 'class-modal-btn';
       btn.textContent = cls;
-      if (cls === selectedClass) btn.classList.add('active');
-      btn.addEventListener('click', () => pickClass(cls));
+      if (cls === modalClass) btn.classList.add('active');
+      btn.addEventListener('click', () => {
+        modalClass = cls;
+        grid.querySelectorAll('.class-modal-btn').forEach(b => b.classList.toggle('active', b === btn));
+        updateClassConfirm();
+      });
       wrap.appendChild(btn);
     });
     grid.appendChild(wrap);
   });
 
+  const eg = document.getElementById('electiveGrid');
+  eg.innerHTML = '';
+  ELECTIVE_SUBJECTS.forEach(sub => {
+    const btn = document.createElement('button');
+    btn.type        = 'button';
+    btn.className   = 'class-modal-btn';
+    btn.textContent = sub;
+    if (modalElectives.includes(sub)) btn.classList.add('active');
+    btn.addEventListener('click', () => {
+      if (modalElectives.includes(sub)) modalElectives = modalElectives.filter(s => s !== sub);
+      else modalElectives.push(sub);
+      btn.classList.toggle('active');
+    });
+    eg.appendChild(btn);
+  });
+
+  updateClassConfirm();
   rememberFocus();
   document.getElementById('classModalOverlay').classList.add('open');
   document.getElementById('classModal').classList.add('open');
@@ -287,10 +347,18 @@ function showClassModal() {
   setTimeout(() => grid.querySelector('.class-modal-btn.active, .class-modal-btn')?.focus(), 60);
 }
 
-function pickClass(cls) {
-  selectedClass = cls;
-  localStorage.setItem(CLASS_KEY, cls);
+function updateClassConfirm() {
+  document.getElementById('classConfirm').disabled = !modalClass;
+}
+
+function confirmClassModal() {
+  if (!modalClass) return;
+  selectedClass = modalClass;
+  localStorage.setItem(CLASS_KEY, selectedClass);
+  electives = modalElectives.slice();
+  localStorage.setItem(ELECTIVE_KEY, JSON.stringify(electives));
   updateClassLabel();
+  populateFagSubjects();
   closeClassModal();
   loadWeek();
 }
@@ -432,7 +500,7 @@ function renderFag() {
 function currentWeekVurd() {
   const week = dateToWeek(weekMonday);
   return vurdData
-    .filter(v => v.date && dateToWeek(new Date(v.date)) === week && classMatches(v.classes, selectedClass))
+    .filter(v => v.date && dateToWeek(new Date(v.date)) === week && classMatches(v.classes, selectedClass) && subjectVisible(v.subject))
     .map(v => ({ ...v, day: dayOf(new Date(v.date)) }));
 }
 
@@ -479,7 +547,7 @@ function buildDayDetail(i, weekVurd) {
   }
 
   // Lekser that day (with check-off). Multi-day aware.
-  const dayHw = planData.filter(p => p.type === 'lekse' && p.description && parseDays(p.day).includes(dayKey));
+  const dayHw = planData.filter(p => p.type === 'lekse' && p.description && subjectVisible(p.subject) && parseDays(p.day).includes(dayKey));
   if (dayHw.length) {
     const sec = daySection('Lekser');
     sec.appendChild(buildHomeworkList(dayHw, 'subject'));
@@ -488,7 +556,7 @@ function buildDayDetail(i, weekVurd) {
 
   // Beskjeder / praktisk: this day's items + week-general (no day) ones
   const dayGeneral = planData.filter(p =>
-    GENERAL_TYPES.includes(p.type) && p.description &&
+    GENERAL_TYPES.includes(p.type) && p.description && subjectVisible(p.subject) &&
     (parseDays(p.day).includes(dayKey) || parseDays(p.day).length === 0));
   const gs = buildGeneralSection(dayGeneral);
   if (gs) {
@@ -601,7 +669,7 @@ function buildWeekStrip(weekVurd) {
 
 // General (class-wide) elements → banner of chips.
 function buildBanner() {
-  const general = planData.filter(p => GENERAL_TYPES.includes(p.type) && p.description);
+  const general = planData.filter(p => GENERAL_TYPES.includes(p.type) && p.description && subjectVisible(p.subject));
   return buildGeneralSection(general);
 }
 
@@ -654,7 +722,7 @@ function buildSubjectBoard(weekVurd) {
   });
   weekVurd.forEach(v => bucket(v.subject).vurd.push(v));
 
-  const subjects = Object.keys(bySubject).sort(subjectSort);
+  const subjects = Object.keys(bySubject).sort(subjectSort).filter(subjectVisible);
 
   const wrap = document.createElement('div');
   wrap.className = 'board-wrap';
@@ -846,7 +914,7 @@ function renderCalendar() {
   const endDate   = new Date(calEnd); endDate.setHours(23, 59, 59);
 
   const byDate = {};
-  vurdData.filter(v => v.date && classMatches(v.classes, selectedClass)).forEach(v => {
+  vurdData.filter(v => v.date && classMatches(v.classes, selectedClass) && subjectVisible(v.subject)).forEach(v => {
     const d = new Date(v.date);
     if (d < startDate || d > endDate) return;
     (byDate[v.date] = byDate[v.date] || []).push(v);

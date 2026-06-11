@@ -21,11 +21,16 @@ const CLASS_GRADES = [
 ];
 const CLASSES = CLASS_GRADES.flatMap(g => g.classes);
 
-const SUBJECTS = [
+const CORE_SUBJECTS = [
   'Norsk','Matematikk','Engelsk','Naturfag','Samfunnsfag','KRLE',
-  'Kroppsøving','Musikk','Kunst og håndverk','Mat og helse',
-  'Fremmedspråk','Utdanningsvalg',
+  'Kroppsøving','Musikk','Kunst og håndverk','Mat og helse','Utdanningsvalg',
 ];
+const ELECTIVE_SUBJECTS = [
+  'Spansk','Fransk','Tysk','Engelsk fordypning',
+  'Arbeidslivsfag (ALF)','Fysisk aktivitet og helse (Fysak)','Friluftsliv',
+  'Innsats for andre','Programmering','Teknologi og design','Design og redesign',
+];
+const SUBJECTS = [...CORE_SUBJECTS, ...ELECTIVE_SUBJECTS];
 
 const DAYS = ['man','tir','ons','tor','fre'];
 const DAY_LABEL = { man: 'Man', tir: 'Tir', ons: 'Ons', tor: 'Tor', fre: 'Fre' };
