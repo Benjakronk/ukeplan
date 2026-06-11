@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Ukeplan: Runni ungdomsskole</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <meta name="theme-color" content="#2563eb">
+</head>
+<body>
+
+  <!-- Loading overlay -->
+  <div id="overlay" class="overlay" role="status" aria-live="polite">
+    <div class="overlay-inner">
+      <div class="spinner"></div>
+      <p class="overlay-text">Laster...</p>
+    </div>
+  </div>
+
+  <!-- Class selection modal (single choice) -->
+  <div id="classModalOverlay" class="class-modal-overlay"></div>
+  <div id="classModal" class="class-modal" role="dialog" aria-modal="true" aria-labelledby="classModalTitle">
+    <div class="class-modal-header">
+      <h2 id="classModalTitle" class="class-modal-title">Velg klassen din</h2>
+      <button id="classModalClose" class="panel-close" aria-label="Lukk">&times;</button>
+    </div>
+    <p class="class-modal-hint">Velg klassen du går i. Du kan bytte senere.</p>
+    <div id="classModalGrid" class="class-modal-grid"></div>
+  </div>
+
+  <div class="page">
+    <main class="main">
+      <div class="controls">
+        <div class="controls-row">
+          <button id="classBtn" class="class-pill" type="button" title="Bytt klasse">
+            <span id="classBtnLabel" class="class-pill-label">Velg klasse</span>
+            <span class="class-pill-change">bytt</span>
+          </button>
+
+          <div class="week-nav">
+            <button id="prevWeekBtn" class="week-nav-btn" type="button" aria-label="Forrige uke">&lsaquo;</button>
+            <div class="week-nav-center">
+              <span id="weekLabel" class="week-label">Uke –</span>
+              <span id="weekRange" class="week-range"></span>
+            </div>
+            <button id="nextWeekBtn" class="week-nav-btn" type="button" aria-label="Neste uke">&rsaquo;</button>
+          </div>
+
+          <div class="controls-actions">
+            <button id="jumpTodayBtn" class="btn btn-ghost btn-tiny" title="Gå til denne uka">Denne uka</button>
+            <button id="refreshBtn" class="btn btn-ghost btn-tiny" title="Hent ferske data">&#8635;</button>
+            <span id="bgLoading" class="bg-loading" role="status" aria-live="polite">
+              <span class="mini-spinner"></span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <button id="tabUkeplan" class="tab active" type="button">Ukeplan</button>
+        <button id="tabFag" class="tab" type="button">Fag</button>
+        <button id="tabVurd" class="tab" type="button">Vurderingskalender</button>
+      </div>
+
+      <div id="viewToggle" class="view-toggle">
+        <button id="viewUke" class="vt-btn active" type="button">Uke</button>
+        <button id="viewDag" class="vt-btn" type="button">Dag</button>
+      </div>
+
+      <div id="board" class="board"></div>
+
+      <div id="fagView" class="fag-view" hidden>
+        <div class="pane-head">
+          <h2 class="pane-title">Fagprogresjon</h2>
+          <label class="oversikt-field">Fag
+            <select id="fagSubject" class="input"></select>
+          </label>
+          <label class="oversikt-field">Fra uke
+            <select id="fagFrom" class="input"></select>
+          </label>
+          <label class="oversikt-field">Til uke
+            <select id="fagTo" class="input"></select>
+          </label>
+        </div>
+        <div id="fagBoard"></div>
+      </div>
+
+      <div id="calControls" class="cal-controls" hidden>
+        <label class="oversikt-field">Fra <input type="date" id="calStart" class="input"></label>
+        <label class="oversikt-field">Til <input type="date" id="calEnd" class="input"></label>
+      </div>
+      <div id="calendar" class="calendar" hidden></div>
+    </main>
+
+    <footer class="site-footer">
+      <p class="footer-app">Ukeplan · Runni ungdomsskole</p>
+      <p id="lastUpdated" class="last-updated"></p>
+      <p class="copyright">Copyright Benjamin Ensrud 2026</p>
+    </footer>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden>
+    <span class="toast-msg"></span>
+    <button type="button" class="toast-action" hidden></button>
+  </div>
+
+  <script src="rich.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>

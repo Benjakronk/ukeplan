@@ -1,0 +1,216 @@
+/* Teacher-specific styles. Loaded after styles.css (shares tokens). */
+
+/* ── Login screen ──────────────────────────────────────────── */
+.login-screen {
+  position: fixed; inset: 0; z-index: 100;
+  display: none; align-items: center; justify-content: center;
+  background: var(--bg); padding: 20px;
+}
+.login-screen.active { display: flex; }
+.login-card {
+  width: 360px; max-width: 100%;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-card); box-shadow: var(--shadow-card);
+  padding: 32px 28px; display: flex; flex-direction: column;
+}
+.login-title { font-size: 22px; font-weight: 700; text-align: center; }
+.login-sub { font-size: 14px; color: var(--text-muted); text-align: center; margin: 2px 0 22px; }
+.login-label { font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; }
+.login-input { width: 100%; margin-bottom: 12px; }
+.login-btn { margin-top: 16px; justify-content: center; }
+.login-error { margin-top: 12px; color: var(--danger); font-size: 14px; text-align: center; }
+
+/* ── Teacher header ────────────────────────────────────────── */
+.teacher-header { text-align: left; }
+.teacher-header-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.teacher-header-titles .site-title { font-size: 22px; }
+.teacher-header-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.teacher-name-field { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-muted); }
+.teacher-name-field input { width: 150px; }
+
+/* ── Toolbar ───────────────────────────────────────────────── */
+.toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.save-status { font-size: 13px; margin-left: auto; min-height: 18px; }
+.save-status.saving { color: var(--text-muted); }
+.save-status.saved  { color: #16a34a; }
+.save-status.error  { color: var(--danger); }
+
+/* ── General (messages) section ────────────────────────────── */
+.general-section { margin-bottom: 16px; }
+.general-head { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--text-muted); margin-bottom: 8px; }
+.general-empty { font-size: 14px; color: var(--text-muted); }
+.general-card {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 8px 10px 8px 14px; border-radius: var(--radius-btn);
+  background: #fffbeb; border: 1px solid #fde68a; margin-bottom: 8px;
+}
+.general-meta { display: flex; align-items: center; gap: 6px; flex-shrink: 0; padding-top: 4px; }
+.general-badge { font-size: 11px; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
+.general-text {
+  flex: 1; resize: none; border: none; background: transparent;
+  font-family: var(--font); font-size: 14px; color: var(--text); line-height: 1.4;
+  padding: 4px 6px; border-radius: 4px; outline: none; overflow: hidden;
+}
+.general-text:focus { background: rgba(255,255,255,.7); box-shadow: 0 0 0 2px var(--primary-light); }
+.general-del {
+  flex-shrink: 0; width: 26px; height: 26px; font-size: 18px; line-height: 1;
+  background: transparent; border: none; color: var(--text-muted); cursor: pointer; border-radius: 4px;
+}
+.general-del:hover { background: rgba(0,0,0,.06); color: var(--danger); }
+
+/* ── Editable board cells ──────────────────────────────────── */
+.plan-table.editable td { padding: 6px 8px; }
+.cell-edit { padding: 6px 8px; }
+.edit-textarea {
+  width: 100%; resize: none; border: 1px solid transparent; background: transparent;
+  font-family: var(--font); font-size: 14px; color: var(--text); line-height: 1.4;
+  padding: 6px 8px; border-radius: var(--radius-btn); outline: none; overflow: hidden;
+  transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+}
+.edit-textarea::placeholder { color: var(--off-text); }
+.edit-textarea:hover { border-color: var(--border); }
+.edit-textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); background: var(--surface); }
+
+/* contenteditable rich cell (læringsmål, lekser, beskjeder) */
+.edit-rich {
+  min-height: 24px; padding: 6px 8px;
+  border: 1px solid transparent; border-radius: var(--radius-btn);
+  transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+}
+.edit-rich:hover { border-color: var(--border); }
+.edit-rich:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); background: var(--surface); }
+.vurd-hint { font-size: 11px; color: var(--off-text); margin-top: 4px; font-style: italic; }
+
+/* Lekser per-item editor */
+.cell-homework-edit { padding: 6px 8px; }
+.hw-edit-list { display: flex; flex-direction: column; gap: 4px; }
+.hw-edit-row { display: flex; align-items: flex-start; gap: 4px; }
+.hw-day {
+  flex-shrink: 0; width: 52px; padding: 5px 2px; font-family: var(--font); font-size: 12px;
+  border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); cursor: pointer;
+}
+.hw-edit-text { flex: 1; }
+.hw-edit-del {
+  flex-shrink: 0; width: 24px; height: 24px; font-size: 16px; line-height: 1;
+  background: transparent; border: none; color: var(--text-muted); cursor: pointer; border-radius: 4px;
+}
+.hw-edit-del:hover { background: rgba(0,0,0,.06); color: var(--danger); }
+.hw-edit-add {
+  margin-top: 4px; font-family: var(--font); font-size: 12px; font-weight: 600;
+  color: var(--primary); background: transparent; border: none; cursor: pointer; padding: 2px 0;
+}
+.hw-edit-add:hover { text-decoration: underline; }
+
+/* ── Add modal extras ──────────────────────────────────────── */
+.add-modal { width: 520px; }
+.form-row { margin-bottom: 16px; }
+.form-label { display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; }
+.desc-input { width: 100%; min-height: 110px; padding: 10px 12px; resize: vertical; font-family: var(--font); font-size: 14px; line-height: 1.5; }
+
+.type-btns, .day-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.type-btn, .day-btn {
+  padding: 7px 12px; font-family: var(--font); font-size: 13px; font-weight: 600;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border);
+  border-radius: var(--radius-btn); cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+.type-btn:hover, .day-btn:hover { border-color: var(--primary); }
+.type-btn.active, .day-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+#subjectSelect { width: 100%; }
+.week-range-pick { display: flex; align-items: center; gap: 8px; }
+.week-range-pick select { flex: 1; min-width: 0; }
+.week-range-sep { color: var(--text-muted); font-size: 13px; flex-shrink: 0; }
+
+.add-modal-actions { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.add-modal-spacer { flex: 1; }
+.btn-danger { background: var(--danger); color: #fff; border-color: var(--danger); }
+.btn-danger:hover { background: #b91c1c; border-color: #b91c1c; }
+
+/* Editable vurdering cell */
+.cell-vurd .vurd-tag.editable { cursor: pointer; border-radius: 4px; padding: 1px 4px; margin: -1px -4px; transition: background var(--transition); }
+.cell-vurd .vurd-tag.editable:hover { background: #fee2e2; }
+.cell-vurd .vurd-tag.legacy { color: var(--text-muted); }
+.vurd-add {
+  display: inline-flex; align-items: center; gap: 4px; margin-top: 6px;
+  font-family: var(--font); font-size: 12px; font-weight: 600; color: var(--primary);
+  background: transparent; border: none; cursor: pointer; padding: 2px 0;
+}
+.vurd-add:hover { text-decoration: underline; }
+
+/* ── Tab panes ─────────────────────────────────────────────── */
+.pane-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+.pane-title { font-size: 17px; font-weight: 700; }
+.pane-head .btn { margin-left: auto; }
+.oversikt-field { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-muted); }
+
+/* Vurderinger table */
+.vurd-table { width: 100%; border-collapse: collapse; }
+.vurd-table th {
+  text-align: left; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em;
+  color: var(--text-muted); padding: 10px 12px; background: #f8fafc; border-bottom: 1px solid var(--border);
+}
+.vurd-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 14px; vertical-align: top; }
+.vurd-table tr:last-child td { border-bottom: none; }
+.link-btn { background: transparent; border: none; color: var(--primary); font-weight: 600; cursor: pointer; font-family: var(--font); font-size: 13px; }
+.link-btn:hover { text-decoration: underline; }
+.muted { color: var(--text-muted); font-size: 12px; }
+
+/* Clickable chips for multi-week / multi-day elements (edited via modal) */
+.el-chip {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px; margin-top: 6px;
+  padding: 4px 8px; border: 1px dashed var(--border); border-radius: var(--radius-btn);
+  cursor: pointer; font-size: 13px; background: #f8fafc;
+}
+.el-chip:hover { border-color: var(--primary); background: var(--primary-light); }
+.el-chip-tag {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+  color: var(--primary-dark); background: var(--primary-light); padding: 1px 6px; border-radius: 999px; white-space: nowrap;
+}
+
+/* Grouped general (beskjeder) lines */
+.general-list { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.general-line { cursor: pointer; padding: 3px 6px; border-radius: 4px; line-height: 1.4; }
+.general-line:hover { background: rgba(0,0,0,.06); }
+.general-line em { font-style: normal; font-weight: 600; color: var(--text-muted); }
+
+/* Conflict panel in the add/edit modal */
+.conflict-panel {
+  margin-bottom: 16px; border: 1px solid var(--border); border-radius: var(--radius-btn);
+  padding: 10px 12px; background: #f8fafc; max-height: 160px; overflow-y: auto;
+}
+.conflict-panel.has-hits { background: #fffbeb; border-color: #fde68a; }
+.conflict-title { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.conflict-row { font-size: 13px; color: var(--text); padding: 2px 0; }
+
+/* ── Print ─────────────────────────────────────────────────── */
+@media print {
+  .no-print, .controls, .toolbar, .tabs, .pane-head .btn, .teacher-header-actions,
+  .general-del, .vurd-hint, .hw-edit-del, .hw-edit-add, .week-nav-btn, .class-pill-change { display: none !important; }
+  body { background: #fff; }
+  .page { max-width: 100%; padding: 0; }
+  .board-wrap { box-shadow: none; border-color: #000; }
+  .edit-textarea, .general-text { border: none !important; box-shadow: none !important; }
+  .plan-table th { background: #fff; }
+}
+
+/* ── Responsive ────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .teacher-header-row { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .teacher-name-field input { width: 120px; }
+  .add-modal { width: 92vw; }
+
+  /* Editable board → stacked cards (labels via ::before) */
+  .plan-table.editable, .plan-table.editable tbody, .plan-table.editable tr,
+  .plan-table.editable td { display: block; width: 100%; }
+  .plan-table.editable thead { display: none; }
+  .plan-table.editable tr { border-bottom: 2px solid var(--border); padding: 8px 4px; }
+  .plan-table.editable .cell-subject { font-size: 16px; padding: 8px; }
+  .plan-table.editable .cell-edit::before {
+    display: block; font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: .03em; color: var(--text-muted); margin: 4px 0 0 8px;
+  }
+  .plan-table.editable tr .cell-edit:nth-of-type(2)::before { content: 'Tema og læringsmål'; }
+  .plan-table.editable tr .cell-edit:nth-of-type(3)::before { content: 'Ressurser'; }
+  .plan-table.editable tr .cell-edit:nth-of-type(4)::before { content: 'Lekser'; }
+}
