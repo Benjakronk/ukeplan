@@ -11,7 +11,7 @@
 //
 // Sheet column order (row 1 is a header):
 //   A id | B timestamp | C type | D classes | E week
-//   F day | G subject | H description | I teacher
+//   F day | G subject | H description | I teacher | J weekTo
 // =============================================================
 
 var SHEET_NAME = 'Planelementer';
@@ -119,6 +119,10 @@ function getSheet() {
     // works against a blank spreadsheet without manual setup.
     sheet = ss.insertSheet(SHEET_NAME);
     sheet.appendRow(['id', 'timestamp', 'type', 'classes', 'week', 'day', 'subject', 'description', 'teacher', 'weekTo']);
+  } else if (sheet.getRange(1, 10).getValue() !== 'weekTo') {
+    // Backfill the column J header on sheets created before `weekTo` was
+    // added to the schema (data was already being written there headerless).
+    sheet.getRange(1, 10).setValue('weekTo');
   }
   return sheet;
 }

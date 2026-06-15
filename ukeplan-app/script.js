@@ -53,6 +53,8 @@ const GENERAL_ICON  = { beskjed: '📣', timeendring: '🕑', utstyr: '🎒', ak
 let selectedClass = null;
 let weekMonday    = mondayOf(new Date());
 let planData      = [];                 // plan elements for current class+week
+let previewWeekData = [];               // next week's elements (Friday "day before" preview)
+let previewWeekKey  = null;             // "class|week" the preview data is for / in flight
 let vurdData      = [];                 // all assessments (filtered client-side)
 let lastFocusedEl = null;
 let schoolDays    = loadCachedSchoolDays() || {}; // ISO date -> { type, summaries }
@@ -239,6 +241,30 @@ async function fetchWeek(cls, week, opts = {}) {
     if (background) hideBgLoading();
     else showOverlayError('Kunne ikke laste ukeplanen. Sjekk tilkoblingen og prøv igjen.');
   }
+}
+
+// The day view shows beskjeder a day early ("dagen før"). For the Friday view
+// the next school day is the FOLLOWING week's Monday, so make sure that week's
+// data is loaded (reusing the per-week cache) and re-render when it arrives.
+function ensureNextWeekData() {
+  if (!selectedClass) return;
+  const nextWeek = dateToWeek(addDays(weekMonday, 7));
+  const key = selectedClass + '|' + nextWeek;
+  if (previewWeekKey === key) return;          // already loaded or in flight
+  previewWeekKey = key;
+  const cached = getCachedWeek(selectedClass, nextWeek);
+  if (cached) { previewWeekData = cached; return; }
+  const url = `${SCRIPT_URL}?action=week&classes=${encodeURIComponent(selectedClass)}&week=${encodeURIComponent(nextWeek)}`;
+  fetch(url)
+    .then(res => (res.ok ? res.json() : null))
+    .then(data => {
+      if (!Array.isArray(data)) return;
+      setCachedWeek(selectedClass, nextWeek, data);
+      if (previewWeekKey !== key) return;       // user navigated away meanwhile
+      previewWeekData = data;
+      if (currentTab === 'ukeplan' && ukeplanView === 'dag') renderDayView();
+    })
+    .catch(() => {});
 }
 
 async function loadAssessments(opts = {}) {
@@ -515,6 +541,7 @@ function renderWeekView() {
 }
 
 function renderDayView() {
+  if (selectedDayIndex === 4) ensureNextWeekData();   // Friday previews next Monday
   const board = document.getElementById('board');
   board.innerHTML = '';
   const weekVurd = currentWeekVurd();
@@ -546,26 +573,46 @@ function buildDayDetail(i, weekVurd) {
     wrap.appendChild(sec);
   }
 
-  // Lekser that day (with check-off). Multi-day aware.
-  const dayHw = planData.filter(p => p.type === 'lekse' && p.description && subjectVisible(p.subject) && parseDays(p.day).includes(dayKey));
+  // Lekser that day (with check-off). Multi-day aware; whole-week lekser
+  // (no day set) show every day.
+  const dayHw = planData.filter(p => p.type === 'lekse' && p.description && subjectVisible(p.subject) &&
+    (parseDays(p.day).includes(dayKey) || parseDays(p.day).length === 0));
   if (dayHw.length) {
     const sec = daySection('Lekser');
     sec.appendChild(buildHomeworkList(dayHw, 'subject'));
     wrap.appendChild(sec);
   }
 
-  // Beskjeder / praktisk: this day's items + week-general (no day) ones
-  const dayGeneral = planData.filter(p =>
-    GENERAL_TYPES.includes(p.type) && p.description && subjectVisible(p.subject) &&
+  // Beskjeder / praktisk: this day's items + week-general (no day) ones,
+  // PLUS a heads-up for items tied to the next school day ("vis dagen før").
+  // Next school day: Mon–Thu → the next weekday this week; Fri → next Monday
+  // (which lives in the following week, see previewWeekData).
+  const isGeneral = p => GENERAL_TYPES.includes(p.type) && p.description && subjectVisible(p.subject);
+  const dayGeneral = planData.filter(p => isGeneral(p) &&
     (parseDays(p.day).includes(dayKey) || parseDays(p.day).length === 0));
-  const gs = buildGeneralSection(dayGeneral);
+
+  const shownIds = new Set(dayGeneral.map(p => p.id).filter(Boolean));
+  let preview;
+  if (i < 4) {
+    const nextKey = DAYS[i + 1];
+    preview = planData.filter(p => isGeneral(p) && parseDays(p.day).includes(nextKey));
+  } else {
+    const nextWeek = dateToWeek(addDays(weekMonday, 7));
+    preview = previewWeekData.filter(p => isGeneral(p) && classMatches(p.classes, selectedClass) &&
+      parseDays(p.day).includes('man') && weeksBetween(p.week, p.weekTo || p.week).includes(nextWeek));
+  }
+  // Don't repeat an item that's already shown as today's (multi-day elements).
+  preview = preview.filter(p => !p.id || !shownIds.has(p.id));
+
+  const dayGeneralAll = dayGeneral.concat(preview);
+  const gs = buildGeneralSection(dayGeneralAll);
   if (gs) {
     const sec = daySection('Beskjeder og praktisk');
     sec.appendChild(gs);
     wrap.appendChild(sec);
   }
 
-  if (!sch && !dayVurd.length && !dayHw.length && !dayGeneral.length) {
+  if (!sch && !dayVurd.length && !dayHw.length && !dayGeneralAll.length) {
     const empty = document.createElement('p');
     empty.className = 'empty-state';
     empty.textContent = 'Ingenting registrert for denne dagen.';
@@ -673,6 +720,16 @@ function buildBanner() {
   return buildGeneralSection(general);
 }
 
+// Label prefix for a general element. Day is bold; day + fag are combined into
+// one label when both are set (e.g. "Man · Matematikk:").
+function generalPrefix(p) {
+  const dl = daysLabel(p.day);
+  if (dl && p.subject) return '<strong>' + escapeHtml(dl) + ' · ' + escapeHtml(p.subject) + ':</strong> ';
+  if (p.subject)       return '<strong>' + escapeHtml(p.subject) + ':</strong> ';
+  if (dl)              return '<strong>' + escapeHtml(dl) + ':</strong> ';
+  return '';
+}
+
 // One box per type (📣 Beskjeder, 🕑 Timeendringer …), each listing its items.
 // Items show "Fag:" if subject-linked and the day(s) if set.
 function buildGeneralSection(elements) {
@@ -693,11 +750,7 @@ function buildGeneralSection(elements) {
     items.forEach(p => {
       const line = document.createElement('div');
       line.className = 'banner-line rich-content';
-      let prefix = '';
-      if (p.subject) prefix += '<strong>' + escapeHtml(p.subject) + ':</strong> ';
-      const dl = daysLabel(p.day);
-      if (dl) prefix += '<em>' + dl + ':</em> ';
-      line.innerHTML = prefix + sanitizeHtml(p.description);
+      line.innerHTML = generalPrefix(p) + sanitizeHtml(p.description);
       list.appendChild(line);
     });
     box.appendChild(list);
@@ -706,7 +759,8 @@ function buildGeneralSection(elements) {
   return wrap.children.length ? wrap : null;
 }
 
-// Subject rows: Fag | Læringsmål | Lekser | Vurdering.
+// Subject rows: Fag | Tema og læringsmål | Ressurser | Lekser, with a
+// full-width "Vurdering:" strip under any subject that has one this week.
 function buildSubjectBoard(weekVurd) {
   // Collect subjects that have any content this week.
   const bySubject = {};
@@ -735,11 +789,12 @@ function buildSubjectBoard(weekVurd) {
     return wrap;
   }
 
+  const COLS = ['Fag', 'Tema og læringsmål', 'Ressurser', 'Lekser'];
   const table = document.createElement('table');
   table.className = 'plan-table';
   const thead = table.createTHead();
   const hr = thead.insertRow();
-  ['Fag', 'Tema og læringsmål', 'Ressurser', 'Lekser', 'Vurdering'].forEach(h => {
+  COLS.forEach(h => {
     const th = document.createElement('th');
     th.textContent = h;
     hr.appendChild(th);
@@ -757,11 +812,55 @@ function buildSubjectBoard(weekVurd) {
     tr.appendChild(buildListCell(data.goals.map(g => g.description), 'cell-goals'));
     tr.appendChild(buildListCell(data.resources.map(r => r.description), 'cell-resources'));
     tr.appendChild(buildHomeworkCell(data.homework.slice().sort(byDay)));
-    tr.appendChild(buildVurdCell(data.vurd));
+
+    // Vurderinger no longer have a column — they show as a full-width strip
+    // under the subject's row when there's one this week.
+    if (data.vurd.length) {
+      tr.classList.add('has-vurd');
+      tbody.appendChild(buildVurdRow(data.vurd, COLS.length));
+    }
   });
 
   wrap.appendChild(table);
   return wrap;
+}
+
+// Full-width "Vurdering: …" strip placed under a subject row.
+function buildVurdRow(vurd, colspan) {
+  const tr = document.createElement('tr');
+  tr.className = 'vurd-row';
+  const td = document.createElement('td');
+  td.className = 'cell-vurd-row';
+  td.colSpan = colspan;
+  tr.appendChild(td);
+
+  const label = document.createElement('span');
+  label.className = 'vurd-row-label';
+  label.textContent = 'Vurdering:';
+  td.appendChild(label);
+
+  vurd.forEach((v, i) => {
+    const item = document.createElement('span');
+    item.className = 'vurd-row-item';
+    if (v.day && DAY_LABEL[v.day]) {
+      const dayEl = document.createElement('strong');
+      dayEl.className = 'vurd-row-day';
+      dayEl.textContent = DAY_LABEL[v.day] + ': ';
+      item.appendChild(document.createTextNode(' '));
+      item.appendChild(dayEl);
+    } else {
+      item.appendChild(document.createTextNode(' '));
+    }
+    item.appendChild(document.createTextNode(v.description || v.notes || 'Vurdering'));
+    td.appendChild(item);
+    if (i < vurd.length - 1) {
+      const sep = document.createElement('span');
+      sep.className = 'vurd-row-sep';
+      sep.textContent = ' · ';
+      td.appendChild(sep);
+    }
+  });
+  return tr;
 }
 
 function buildListCell(items, className) {
@@ -808,9 +907,16 @@ function buildHomeworkList(elements, prefixMode) {
     cb.addEventListener('change', () => { toggleDone(id, cb.checked); li.classList.toggle('done', cb.checked); });
     const span = document.createElement('span');
     span.className = 'hw-text rich-content';
-    const prefix = (prefixMode === 'subject')
-      ? (el.subject ? '<strong>' + escapeHtml(el.subject) + ':</strong> ' : '')
-      : (daysLabel(el.day) ? '<strong>' + daysLabel(el.day) + ':</strong> ' : '');
+    let prefix = '';
+    if (prefixMode === 'subject') {
+      // Day view: "Norsk:" — but a lekse without a day applies all week, so
+      // mark it "Norsk ukelekse:".
+      const weekly = parseDays(el.day).length === 0;
+      if (el.subject)   prefix = '<strong>' + escapeHtml(el.subject) + (weekly ? ' ukelekse' : '') + ':</strong> ';
+      else if (weekly)  prefix = '<strong>Ukelekse:</strong> ';
+    } else if (daysLabel(el.day)) {
+      prefix = '<strong>' + daysLabel(el.day) + ':</strong> ';
+    }
     span.innerHTML = prefix + sanitizeHtml(el.description || '');
     label.appendChild(cb);
     label.appendChild(span);
@@ -843,25 +949,6 @@ function parseDays(s) {
 }
 function daysLabel(s) { return parseDays(s).map(d => DAY_LABEL[d]).join(', '); }
 function isMultiWeek(el) { return el.weekTo && el.weekTo > el.week; }
-
-function buildVurdCell(vurd) {
-  const td = document.createElement('td');
-  td.className = 'cell-vurd';
-  if (vurd.length === 0) { td.classList.add('cell-empty'); td.textContent = '—'; return td; }
-  vurd.forEach(v => {
-    const tag = document.createElement('span');
-    tag.className = 'vurd-tag';
-    const dot = document.createElement('span');
-    dot.className = 'vurd-dot';
-    tag.appendChild(dot);
-    const label = v.day && DAY_LABEL[v.day] ? DAY_LABEL[v.day] : '';
-    tag.appendChild(document.createTextNode(
-      (label ? label + ': ' : '') + (v.description || v.notes || 'Vurdering')
-    ));
-    td.appendChild(tag);
-  });
-  return td;
-}
 
 function homeworkText(h) {
   if (h.day && DAY_LABEL[h.day]) return DAY_LABEL[h.day] + ': ' + h.description;

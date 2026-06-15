@@ -200,9 +200,9 @@ body.scroll-locked { overflow: hidden; }
 }
 .plan-table td { padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: top; font-size: 14px; overflow-wrap: anywhere; }
 .plan-table tr:last-child td { border-bottom: none; }
-.plan-table th:first-child, .plan-table td:first-child { width: 120px; }
+.plan-table th:first-child, .plan-table td:first-child { width: 150px; }
 
-.cell-subject { font-weight: 700; color: var(--text); }
+.cell-subject { font-weight: 700; color: var(--text); overflow-wrap: break-word; hyphens: auto; }
 .cell-empty   { color: var(--off-text); }
 .cell-goals, .cell-homework { color: var(--text); white-space: pre-line; }
 .cell-list    { list-style: none; display: flex; flex-direction: column; gap: 4px; }
@@ -216,9 +216,19 @@ body.scroll-locked { overflow: hidden; }
 .hw-text  { white-space: pre-line; }
 .homework-item.done .hw-text { text-decoration: line-through; color: var(--text-muted); }
 
+/* Vurdering chips (used in the Fag-progresjon tab's Vurdering column) */
 .vurd-tag { display: flex; align-items: baseline; gap: 6px; font-weight: 500; }
 .vurd-tag + .vurd-tag { margin-top: 4px; }
 .vurd-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--vurd); flex-shrink: 0; transform: translateY(-1px); }
+
+/* Vurdering shown as a full-width strip under the subject row (weekly board) */
+.plan-table tr.has-vurd td, .plan-table tr.has-vurd { border-bottom: none; }
+.cell-vurd-row {
+  padding: 6px 14px 10px; font-size: 14px; color: var(--text);
+}
+.vurd-row-label { font-weight: 700; }
+.vurd-row-day { font-weight: 700; }
+.vurd-row-sep { color: var(--text-muted); }
 
 .empty-state { padding: 32px 16px; text-align: center; color: var(--text-muted); }
 
@@ -308,6 +318,30 @@ body.scroll-locked { overflow: hidden; }
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: all; }
 .toast-action { background: transparent; border: none; color: #93c5fd; font-weight: 600; cursor: pointer; }
+
+/* ── In-app dialogs (alert / confirm / prompt / link) ──────── */
+.ui-dialog-overlay { position: fixed; inset: 0; z-index: 300; background: rgba(15,23,42,.5); }
+.ui-dialog {
+  position: fixed; z-index: 301; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 420px; max-width: 92vw; max-height: 88vh; overflow-y: auto;
+  background: var(--surface); border-radius: var(--radius-card);
+  box-shadow: 0 12px 40px rgba(0,0,0,.25); padding: 22px;
+}
+.ui-dialog-title { font-size: 18px; font-weight: 700; margin-bottom: 12px; }
+.ui-dialog-body { display: flex; flex-direction: column; gap: 12px; }
+.ui-dialog-message { font-size: 14px; line-height: 1.5; color: var(--text); }
+.ui-dialog-field { display: flex; flex-direction: column; gap: 5px; }
+.ui-dialog-label { font-size: 13px; font-weight: 600; color: var(--text-muted); }
+.ui-dialog-input {
+  width: 100%; padding: 9px 11px; font-family: var(--font); font-size: 14px;
+  color: var(--text); background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius-btn); outline: none;
+}
+.ui-dialog-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
+.ui-dialog-error { font-size: 13px; color: var(--danger); margin-top: 8px; }
+.ui-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+.ui-dialog .btn-danger { background: var(--danger); color: #fff; border-color: var(--danger); }
+@media (hover: hover) { .ui-dialog .btn-danger:hover { background: #b91c1c; border-color: #b91c1c; } }
 
 /* ── Tabs ──────────────────────────────────────────────────── */
 .tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 2px solid var(--border); margin-bottom: 12px; }
@@ -410,6 +444,6 @@ body.scroll-locked { overflow: hidden; }
   .cell-goals::before     { content: 'Tema og læringsmål'; }
   .cell-resources::before { content: 'Ressurser'; }
   .cell-homework::before  { content: 'Lekser'; }
-  .cell-vurd::before      { content: 'Vurdering'; }
+  .cell-vurd::before      { content: 'Vurdering'; } /* Fag-progresjon tab keeps the column */
   .cell-empty { display: none; } /* hide empty category labels on mobile */
 }

@@ -44,6 +44,14 @@ allowed tags: `<strong> <em> <u> <a href> <br>`; links must be http(s)/mailto.
 The student side renders it with `renderRich()`. Assessment descriptions stay
 plain text (authored via the modal, stored in the old backend).
 
+`rich.js` also hosts the app's **in-app dialogs** (`uiAlert` / `uiConfirm` /
+`uiPrompt` / `uiLinkDialog`, built on `buildUiDialog`) that replace native
+`alert`/`confirm`/`prompt` — promise-based, built dynamically, styled via
+`.ui-dialog*` in `styles.css`. The link toolbar button opens `uiLinkDialog`,
+which takes both the URL and an optional display text; the editor selection is
+captured before the modal and restored after (the blur-driven reset is
+suppressed via `ed._linking` so the saved Range stays valid).
+
 ## Running locally
 
 ```bash
@@ -90,9 +98,12 @@ The vurderingskalender URL is `VURD_URL` in both (for the assessment merge).
 - **Subject-cell types** (`SUBJECT_TYPES = ['læringsmål','ressurs','lekse']`):
   always carry a `subject`. `læringsmål` (Tema og læringsmål) and `ressurs`
   (Ressurser, e.g. textbook pages) are week-level rich cells; `lekse` is a
-  per-item list that may carry a `day`. The board columns are Fag · Tema og
-  læringsmål · Ressurser · Lekser · Vurdering. The allowed `type` list also
-  lives in `ukeplan_GAS.js` (`TYPES`) — adding a type means redeploying the GAS.
+  per-item list that may carry a `day`. The teacher board columns are Fag · Tema
+  og læringsmål · Ressurser · Lekser · Vurdering; the student weekly board drops
+  the Vurdering column and instead shows a full-width "Vurdering:" strip under a
+  subject's row when it has one that week (the Fag-progresjon tab keeps its
+  Vurdering column). The allowed `type` list also lives in `ukeplan_GAS.js`
+  (`TYPES`) — adding a type means redeploying the GAS.
 - **General types** (`GENERAL_TYPES = ['beskjed','timeendring','utstyr',
   'aktivitet','annet']`): `subject` is OPTIONAL (shown as "Fag:" prefix when set),
   may carry day(s). Rendered grouped one box per type in the banner (student) /
@@ -122,7 +133,11 @@ The vurderingskalender URL is `VURD_URL` in both (for the assessment merge).
 - **Ukeplan tab** has a Uke/Dag toggle. Uke = the fag-rader board + Mon–Fri
   strip. Dag = clicking a strip day shows everything for that day inline
   (vurderinger, that day's lekser, week-general beskjeder). The old slide-in
-  panel was removed.
+  panel was removed. **Beskjeder/praktisk info also surface a day early**: a
+  day-specific general element appears both on its day and on the previous
+  school day. Mon–Thu pull the next weekday from `planData`; Friday needs the
+  *next week's* Monday, so `ensureNextWeekData()` loads that week (reusing the
+  per-week cache, `previewWeekData`) and re-renders.
 - Homework rows have local check-off boxes (`localStorage: up_done`, keyed by
   element id).
 - Subject board shows only subjects with content.
@@ -134,9 +149,19 @@ The vurderingskalender URL is `VURD_URL` in both (for the assessment merge).
 
 - Login screen (with a required name field) → dashboard. Token in
   `sessionStorage` (`up_token`); a write returning `Unauthorized` forces re-login.
-- **Tabs:** Ukeplan (the editable board + beskjeder), Vurderinger (a table of the
-  class's assessments with edit/delete + "Ny vurdering"; the add/edit modal shows
-  a ±7-day conflict panel), and Oversikt. Oversikt has two modes:
+- **Tabs:** Ukeplan (the editable board + beskjeder), Vurderinger, and Oversikt.
+  The **Vurderinger** tab has two views — Tabell and Kalender (`vurdView`) — over
+  the same filtered set (`getVurdFiltered`). Filters (`vfClasses`, `vfSubjects`,
+  `vfTeachers`, `vfDesc`, `vfStart`/`vfEnd`; empty = all) are decoupled from the
+  global class pill and edited via a single filter modal (`#vurdFilterModal`)
+  opened by clicking any table **column header** or the "Filtrer" button (the
+  button shows an active-filter count; a summary line sits above the views). The
+  table has Dato·Uke·Klasse(r)·Fag·Beskrivelse·Lærer columns with edit/delete +
+  "Ny vurdering"; the calendar is month cards with a dot per assessment, and
+  clicking a day shows that day's assessments (editable) plus a "+ legg til"
+  for that date. The add/edit modal shows a ±7-day conflict panel and a Lærer
+  field (defaults to the dashboard name, overridable per entry). Oversikt has two
+  modes:
   «Sammenlign klasser» (one week, rows = classes, fetched via `?action=week&week=…`
   with no class filter into `oversiktData`) and «Progresjon» (one class + subject,
   rows = weeks, fetched via `?action=public` into `allPlanData`). Progresjon mode
@@ -178,4 +203,9 @@ teacher always sees all subjects.
   verify login/CRUD in the browser.
 - The school-calendar iCal feed is the same Nes-kommune endpoint used by
   vurderingskalender; events are cached 24 h in `localStorage` (`up_school_cal`).
+- `sw.js` serves the app shell **network-first** (fresh when online, cached copy
+  only as an offline fallback), so HTML/JS/CSS changes appear on the next load.
+  Still bump `CACHE` (`ukeplan-shell-vNN`) when you change assets — the new
+  version precaches fresh copies on install and purges the old cache on activate.
+  Apps Script requests are never intercepted (data caching is `localStorage`).
 ```

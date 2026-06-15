@@ -156,6 +156,66 @@
 .link-btn:hover { text-decoration: underline; }
 .muted { color: var(--text-muted); font-size: 12px; }
 
+/* ── Vurderinger views + column-header filtering ───────────── */
+.vurd-view-toggle { margin-bottom: 0; }   /* override .view-toggle's bottom gap inside pane-head */
+
+/* Filter button (in pane-head) + active count badge */
+#vurdFilterBtn.has-filters { border-color: var(--primary); color: var(--primary); }
+.vf-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 16px; height: 16px; padding: 0 4px; margin-left: 4px;
+  font-size: 11px; font-weight: 700; line-height: 1;
+  background: var(--primary); color: #fff; border-radius: 999px;
+}
+.vurd-filter-summary {
+  font-size: 12px; color: var(--text-muted); margin-bottom: 12px;
+  padding: 6px 10px; background: #f8fafc; border: 1px solid var(--border); border-radius: var(--radius-btn);
+}
+
+/* Clickable table column headers */
+.vurd-table th { padding: 0; }
+.vurd-table th.action-th, .vurd-table th:last-child { padding: 10px 12px; }
+.th-filter-btn {
+  display: flex; align-items: center; gap: 2px; width: 100%;
+  padding: 10px 12px; font-family: var(--font); font-size: 12px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .03em; color: var(--text-muted);
+  background: transparent; border: none; cursor: pointer; text-align: left;
+  transition: background var(--transition), color var(--transition);
+}
+.th-filter-btn:hover { background: var(--primary-light); color: var(--primary-dark); }
+.th-caret { font-size: 10px; }
+.vurd-table th.th-filtered .th-filter-btn { color: var(--primary); }
+.empty-cell { padding: 24px 12px !important; text-align: center; color: var(--text-muted); }
+
+/* Filter modal controls (reuses .class-modal styling) */
+.filter-date-row { display: flex; flex-wrap: wrap; gap: 10px 16px; }
+.date-label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-muted); }
+.date-label .input { padding: 6px 8px; }
+.vf-empty { font-size: 13px; color: var(--off-text); font-style: italic; }
+.vf-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.vf-chip {
+  padding: 5px 10px; font-family: var(--font); font-size: 13px; font-weight: 600;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border);
+  border-radius: 999px; cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+.vf-chip:hover { border-color: var(--primary); }
+.vf-chip.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.section-flash { border-radius: var(--radius-btn); animation: sectionFlash 1.1s ease-out; }
+@keyframes sectionFlash {
+  0%   { box-shadow: 0 0 0 3px var(--primary-light); }
+  100% { box-shadow: 0 0 0 3px transparent; }
+}
+
+/* Calendar day-detail cards */
+.vurd-detail-card { padding: 10px 12px; }
+.vurd-detail-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.vurd-detail-meta { font-size: 13px; font-weight: 700; color: var(--text); }
+.vurd-detail-desc { font-size: 14px; color: var(--text); margin-top: 4px; white-space: pre-wrap; }
+.vurd-detail-desc:empty { display: none; }
+.vurd-detail-teacher { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+.vurd-detail-add { margin-top: 12px; }
+
 /* Clickable chips for multi-week / multi-day elements (edited via modal) */
 .el-chip {
   display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px; margin-top: 6px;
@@ -185,7 +245,8 @@
 
 /* ── Print ─────────────────────────────────────────────────── */
 @media print {
-  .no-print, .controls, .toolbar, .tabs, .pane-head .btn, .teacher-header-actions,
+  .no-print, .controls, .toolbar, .tabs, .pane-head .btn, .pane-head .view-toggle,
+  .vurd-filter-summary, .th-caret, .teacher-header-actions,
   .general-del, .vurd-hint, .hw-edit-del, .hw-edit-add, .week-nav-btn, .class-pill-change { display: none !important; }
   body { background: #fff; }
   .page { max-width: 100%; padding: 0; }

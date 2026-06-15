@@ -97,10 +97,21 @@
 
       <div id="paneVurd" class="tab-pane" hidden>
         <div class="pane-head">
-          <h2 class="pane-title">Vurderinger – <span id="vurdClassLabel"></span></h2>
+          <h2 class="pane-title">Vurderinger</h2>
+          <div class="view-toggle vurd-view-toggle" role="group" aria-label="Visningsvalg">
+            <button id="vurdViewTable" class="vt-btn active" type="button">Tabell</button>
+            <button id="vurdViewCal" class="vt-btn" type="button">Kalender</button>
+          </div>
+          <button id="vurdFilterBtn" class="btn btn-ghost btn-tiny" type="button" title="Filtrer vurderinger">
+            <span aria-hidden="true">▾</span> Filtrer<span id="vurdFilterCount" class="vf-count" hidden></span>
+          </button>
           <button id="addVurdBtn" class="btn btn-primary btn-tiny" type="button">+ Ny vurdering</button>
         </div>
+
+        <p id="vurdFilterSummary" class="vurd-filter-summary" hidden></p>
+
         <div id="vurdTableWrap"></div>
+        <div id="vurdCalWrap" class="calendar" hidden></div>
       </div>
 
       <div id="paneOversikt" class="tab-pane" hidden>
@@ -201,6 +212,11 @@
       <textarea id="descInput" class="input desc-input" rows="3"></textarea>
     </div>
 
+    <div class="form-row" id="teacherRow">
+      <label class="form-label" for="vurdTeacherInput">Lærer</label>
+      <input type="text" id="vurdTeacherInput" class="input" placeholder="Navnet ditt" autocomplete="off">
+    </div>
+
     <div id="conflictPanel" class="conflict-panel" hidden></div>
 
     <div class="add-modal-actions">
@@ -208,6 +224,49 @@
       <span class="add-modal-spacer"></span>
       <button id="addCancel" class="btn btn-ghost">Avbryt</button>
       <button id="addSave" class="btn btn-primary">Lagre</button>
+    </div>
+  </div>
+
+  <!-- Vurderinger filter modal (opened from the table column headers) -->
+  <div id="vurdFilterOverlay" class="class-modal-overlay"></div>
+  <div id="vurdFilterModal" class="class-modal" role="dialog" aria-modal="true" aria-labelledby="vurdFilterTitle">
+    <div class="class-modal-header">
+      <h2 id="vurdFilterTitle" class="class-modal-title">Filtrer vurderinger</h2>
+      <button id="vurdFilterClose" class="panel-close" aria-label="Lukk">&times;</button>
+    </div>
+
+    <div class="form-row" data-section="dato">
+      <label class="form-label">Dato</label>
+      <div class="filter-date-row">
+        <label class="date-label">Fra <input type="date" id="vfStart" class="input"></label>
+        <label class="date-label">Til <input type="date" id="vfEnd" class="input"></label>
+      </div>
+    </div>
+
+    <div class="form-row" data-section="klasse">
+      <label class="form-label">Klasse(r)</label>
+      <div id="vfClassBtns" class="class-modal-grid"></div>
+    </div>
+
+    <div class="form-row" data-section="fag">
+      <label class="form-label">Fag</label>
+      <div id="vfSubjectBtns" class="vf-chip-row"></div>
+    </div>
+
+    <div class="form-row" data-section="beskrivelse">
+      <label class="form-label" for="vfDesc">Beskrivelse</label>
+      <input type="text" id="vfDesc" class="input" placeholder="Søk i beskrivelsen…" autocomplete="off">
+    </div>
+
+    <div class="form-row" data-section="laerer">
+      <label class="form-label">Lærer</label>
+      <div id="vfTeacherBtns" class="vf-chip-row"></div>
+    </div>
+
+    <div class="add-modal-actions">
+      <button id="vurdFilterClear" class="btn btn-ghost" type="button">Tøm alle filtre</button>
+      <span class="add-modal-spacer"></span>
+      <button id="vurdFilterDone" class="btn btn-primary" type="button">Ferdig</button>
     </div>
   </div>
 

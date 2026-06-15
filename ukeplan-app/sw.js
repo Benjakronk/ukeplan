@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE = 'ukeplan-shell-v15';
+const CACHE = 'ukeplan-shell-v19';
 const ASSETS = [
   './',
   'index.html',
@@ -38,19 +38,17 @@ self.addEventListener('fetch', e => {
   // Apps Script API: never intercept — let localStorage handle data caching.
   if (url.hostname.includes('script.google.com')) return;
 
-  // Same-origin GETs only: cache-first, with background revalidation.
+  // Same-origin GETs only: network-first so code/style changes show up on the
+  // next load; fall back to the cached copy only when offline.
   if (url.origin !== self.location.origin) return;
 
   e.respondWith(
-    caches.match(e.request).then(cached => {
-      const networkFetch = fetch(e.request).then(res => {
-        if (res && res.ok) {
-          const clone = res.clone();
-          caches.open(CACHE).then(c => c.put(e.request, clone)).catch(() => {});
-        }
-        return res;
-      }).catch(() => cached);
-      return cached || networkFetch;
-    })
+    fetch(e.request).then(res => {
+      if (res && res.ok) {
+        const clone = res.clone();
+        caches.open(CACHE).then(c => c.put(e.request, clone)).catch(() => {});
+      }
+      return res;
+    }).catch(() => caches.match(e.request))
   );
 });
