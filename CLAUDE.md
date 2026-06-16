@@ -99,11 +99,13 @@ The vurderingskalender URL is `VURD_URL` in both (for the assessment merge).
   always carry a `subject`. `læringsmål` (Tema og læringsmål) and `ressurs`
   (Ressurser, e.g. textbook pages) are week-level rich cells; `lekse` is a
   per-item list that may carry a `day`. The teacher board columns are Fag · Tema
-  og læringsmål · Ressurser · Lekser · Vurdering; the student weekly board drops
-  the Vurdering column and instead shows a full-width "Vurdering:" strip under a
-  subject's row when it has one that week (the Fag-progresjon tab keeps its
-  Vurdering column). The allowed `type` list also lives in `ukeplan_GAS.js`
-  (`TYPES`) — adding a type means redeploying the GAS.
+  og læringsmål · Ressurser · Lekser · Vurdering. The student weekly board is
+  slimmer: Fag · Tema og læringsmål · Lekser — Ressurser is rendered as a
+  "Ressurser" subheading at the bottom of the Tema-cell (`buildGoalsCell`), and
+  Vurdering as a full-width "Vurdering:" strip under the subject's row when it
+  has one that week. The Fag-progresjon tab keeps the full Ressurser + Vurdering
+  columns. The allowed `type` list also lives in `ukeplan_GAS.js` (`TYPES`) —
+  adding a type means redeploying the GAS.
 - **General types** (`GENERAL_TYPES = ['beskjed','timeendring','utstyr',
   'aktivitet','annet']`): `subject` is OPTIONAL (shown as "Fag:" prefix when set),
   may carry day(s). Rendered grouped one box per type in the banner (student) /
@@ -183,6 +185,39 @@ The vurderingskalender URL is `VURD_URL` in both (for the assessment merge).
   class.
 - "Kopier forrige uke" calls `clone`. Print via the browser.
 - Teacher name remembered in `localStorage` (`up_teacher_name`).
+
+## Adapted plans (individuell tilrettelegging)
+
+A pupil who needs an adapted weekly plan gets an opaque **code** instead of any
+stored identity. The stored key is `<CLASS>-<SUFFIX>` (uppercase, e.g.
+`8A-K7X9M`), but **pupils and teachers only ever see/enter the SUFFIX**
+(`K7X9M`) — the class comes from the class choice, so a code resolves only
+together with the right class and never reveals which class it belongs to (a
+second factor + privacy). `planKey()` returns `variantCode || selectedClass`;
+`variantCode` is the full key built as `selectedClass + '-' + suffix`;
+`parseVariantClass()` / `variantSuffix()` split the stored key.
+
+- **No identifying data is stored.** Plan content lives as ordinary elements
+  with `classes = <CLASS>-<SUFFIX>`; the code↔pupil mapping stays with the
+  teacher offline. There is no registry sheet.
+- **Wrong class or suffix → empty plan** (no match), shown with a "check class
+  and code" hint rather than an error.
+- **Plan content** (board, inline edits, clone, add-modal, Fag-tab, day-view
+  preview) is keyed by `planKey()`. **Assessments, the calendar and the class
+  label** keep using the base class (`selectedClass`), so an adapted plan
+  inherits its class's vurderinger.
+- **Student:** picks their class (required) and types the code in a discreet
+  "Har du fått en egen kode?" field in the class modal (`up_variant` holds the
+  full key). The plan view is identical to a normal class (anti-stigma) — the
+  pill shows the base class, no markers anywhere others see.
+- **Teacher:** the class modal's "Tilpasset plan" box generates a code for the
+  currently-selected class (the SUFFIX is shown once via `uiAlert` to hand to
+  the pupil) or opens an existing suffix; editing a variant sets
+  `variantCode` (pill shows the code). The add-modal hides the class picker for
+  plan elements (saves under the code) but keeps it for `vurdering` (class-wide).
+  "Hent fra klassen" seeds the variant from its base class via `clone` with the
+  new optional `toClasses` param (class → code, same week). Picking a normal
+  class exits variant editing.
 
 ## Class & subject lists
 

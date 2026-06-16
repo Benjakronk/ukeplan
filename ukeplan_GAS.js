@@ -256,9 +256,14 @@ function deleteEntry(id) {
 // `toWeek` (new ids, fresh timestamps). Powers the
 // "Kopier fra forrige uke" button. Vurderinger are not touched
 // (they live in the other backend).
+//
+// Optional `toClasses` re-targets the copies to another class string — used to
+// seed an adapted plan from its base class (class → code), where fromWeek and
+// toWeek are the same week.
 function cloneWeek(p) {
   if (!p.fromWeek || !p.toWeek) return { error: 'Mangler fromWeek/toWeek' };
-  if (p.fromWeek === p.toWeek)  return { error: 'Kilde- og måluke er like' };
+  var retarget = p.toClasses ? String(p.toClasses).trim() : '';
+  if (p.fromWeek === p.toWeek && !retarget) return { error: 'Kilde- og måluke er like' };
 
   var selected = parseClasses(p.classes);
   var source = readSheet().filter(function(entry) {
@@ -272,14 +277,16 @@ function cloneWeek(p) {
   var now   = new Date();
   var tz    = Session.getScriptTimeZone();
   var created = source.map(function(entry) {
-    var id = Utilities.getUuid();
+    var id  = Utilities.getUuid();
+    var cls = retarget || entry.classes;
     sheet.appendRow([
       id, now, entry.type,
-      entry.classes, p.toWeek, entry.day,
+      cls, p.toWeek, entry.day,
       entry.subject, entry.description, entry.teacher, p.toWeek
     ]);
     return Object.assign({}, entry, {
       id: id,
+      classes: cls,
       week: p.toWeek,
       weekTo: p.toWeek,
       timestamp: Utilities.formatDate(now, tz, 'yyyy-MM-dd HH:mm')

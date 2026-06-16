@@ -8,6 +8,7 @@ const VURD_URL   = 'https://script.google.com/macros/s/AKfycbwsXqoLZW8RlIAwvGN1y
 const TOKEN_KEY   = 'up_token';
 const CLASS_KEY   = 'up_teacher_class';
 const TNAME_KEY   = 'up_teacher_name';
+const VARIANT_KEY = 'up_teacher_variant';   // adapted-plan code being edited, e.g. "8A-K7X9M"
 
 const SCHOOL_CAL_URL    = 'https://sspkalender.prokom.no/api/iCalTidspunkt/?Kunde=nesakskoleruta&Id=0&Categories=438,439';
 const SCHOOL_CAL_KEY    = 'up_school_cal';
@@ -53,6 +54,30 @@ let token         = sessionStorage.getItem(TOKEN_KEY) || null;
 let vurdToken     = sessionStorage.getItem(VURD_TOKEN_KEY) || null;
 let editingVurd   = null; // the vurdering object being edited in the modal, or null
 let selectedClass = localStorage.getItem(CLASS_KEY) || null;
+let variantCode   = null;   // adapted-plan code being edited, or null
+
+// Plan content (board, inline edits, clone, add-modal) is keyed by the variant
+// code when one is active; assessments + the Oversikt tab keep using the base
+// class (selectedClass), so an adapted plan inherits its class's vurderinger.
+function planKey() { return variantCode || selectedClass; }
+
+// Stored key is "<CLASS>-<SUFFIX>", but only the SUFFIX is handed to pupils —
+// the class comes from their class choice, so a code resolves only with the
+// right class and never reveals which class it belongs to.
+function parseVariantClass(code) {
+  const m = /^(\d{1,2}[A-Z])-[A-Z0-9]{3,}$/.exec(String(code || '').trim().toUpperCase());
+  return m && CLASSES.includes(m[1]) ? m[1] : null;
+}
+function variantSuffix(full) {
+  const i = String(full || '').indexOf('-');
+  return i < 0 ? '' : full.slice(i + 1);
+}
+function genSuffix() {
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';  // no easily-confused chars
+  let s = '';
+  for (let i = 0; i < 5; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
 let teacherName   = localStorage.getItem(TNAME_KEY) || '';
 let weekMonday    = mondayOf(new Date());
 let planData      = [];
@@ -97,6 +122,11 @@ function init() {
   loadSchoolCalendar();
 
   if (selectedClass && !CLASSES.includes(selectedClass)) selectedClass = null;
+  variantCode = localStorage.getItem(VARIANT_KEY) || null;
+  if (variantCode) {
+    const base = parseVariantClass(variantCode);
+    if (base) selectedClass = base; else variantCode = null;
+  }
   document.getElementById('teacherName').value = teacherName;
 
   if (token) {
@@ -245,7 +275,7 @@ async function loadData(opts = {}) {
   if (background) showBgLoading(); else showOverlay();
   const week = dateToWeek(weekMonday);
   try {
-    const url = `${SCRIPT_URL}?action=week&classes=${encodeURIComponent(selectedClass)}&week=${encodeURIComponent(week)}`;
+    const url = `${SCRIPT_URL}?action=week&classes=${encodeURIComponent(planKey())}&week=${encodeURIComponent(week)}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
@@ -303,6 +333,9 @@ function setupDashboardListeners() {
   document.getElementById('classModalOverlay').addEventListener('click', closeClassModal);
   document.getElementById('addBtn').addEventListener('click', () => openAddModal());
   document.getElementById('cloneBtn').addEventListener('click', cloneFromPreviousWeek);
+  document.getElementById('cloneFromClassBtn').addEventListener('click', cloneFromBaseClass);
+  document.getElementById('variantNewBtn').addEventListener('click', startNewVariant);
+  document.getElementById('variantOpenBtn').addEventListener('click', openVariantFromInput);
   document.getElementById('printBtn').addEventListener('click', () => window.print());
 
   document.getElementById('tTabUkeplan').addEventListener('click', () => setTeacherTab('ukeplan'));
@@ -348,7 +381,45 @@ function setupDashboardListeners() {
 // ─── Class selection ──────────────────────────────────────────
 
 function updateClassLabel() {
-  document.getElementById('classBtnLabel').textContent = selectedClass || 'Velg klasse';
+  document.getElementById('classBtnLabel').textContent = variantCode || selectedClass || 'Velg klasse';
+  const b = document.getElementById('cloneFromClassBtn');
+  if (b) b.hidden = !variantCode;
+}
+
+// Activate an adapted-plan code for editing (base class derived from the code).
+function applyVariant(code, base) {
+  variantCode   = code;
+  selectedClass = base;
+  localStorage.setItem(VARIANT_KEY, code);
+  localStorage.setItem(CLASS_KEY, base);
+  planData = [];
+  updateClassLabel();
+  closeClassModal();
+  loadData();
+}
+
+async function startNewVariant() {
+  const base = variantCode ? parseVariantClass(variantCode) : selectedClass;
+  if (!base || !CLASSES.includes(base)) { await uiAlert('Velg først en vanlig klasse å lage en tilpasset plan for.'); return; }
+  const suffix = genSuffix();
+  applyVariant(base + '-' + suffix, base);
+  await uiAlert(
+    'Tilpasset plan opprettet for ' + base + '.\n\n' +
+    'Kode til eleven: ' + suffix + '\n\n' +
+    'Eleven velger klasse ' + base + ' og skriver inn denne koden – koden virker bare med riktig klasse. ' +
+    'Appen lagrer ikke hvem koden tilhører; noter koblingen trygt utenfor appen, og skriv aldri elevnavn i appen. ' +
+    'Bruk «Hent fra klassen» hvis du vil starte fra klassens plan.',
+    { title: 'Ny tilpasset plan' }
+  );
+}
+
+function openVariantFromInput() {
+  const base = variantCode ? parseVariantClass(variantCode) : selectedClass;
+  const err  = document.getElementById('variantTError');
+  if (!base || !CLASSES.includes(base)) { err.textContent = 'Velg først en vanlig klasse.'; err.hidden = false; return; }
+  const suffix = document.getElementById('variantCodeInput').value.trim();
+  if (!/^[A-Za-z0-9]{3,}$/.test(suffix)) { err.textContent = 'Ugyldig kode (f.eks. K7X9M).'; err.hidden = false; return; }
+  applyVariant((base + '-' + suffix).toUpperCase(), base);
 }
 
 function showClassModal() {
@@ -372,6 +443,12 @@ function showClassModal() {
     });
     grid.appendChild(wrap);
   });
+  const vIn = document.getElementById('variantCodeInput');
+  if (vIn) vIn.value = '';
+  const vErr = document.getElementById('variantTError');
+  if (vErr) vErr.hidden = true;
+  const vBox = document.getElementById('teacherVariantBox');
+  if (vBox) vBox.open = !!variantCode;
   document.getElementById('classModalOverlay').classList.add('open');
   document.getElementById('classModal').classList.add('open');
   document.body.classList.add('scroll-locked');
@@ -379,7 +456,10 @@ function showClassModal() {
 
 function pickClass(cls) {
   selectedClass = cls;
+  variantCode = null;                 // a normal class exits any adapted-plan editing
   localStorage.setItem(CLASS_KEY, cls);
+  localStorage.removeItem(VARIANT_KEY);
+  planData = [];
   updateClassLabel();
   closeClassModal();
   loadData();
@@ -650,9 +730,9 @@ async function commitHomeworkRow(row) {
   ed._busy = true; setSaving();
   try {
     if (id) {
-      await api('update', { id, type: 'lekse', classes: selectedClass, week, day, subject, description: val, teacher: teacherName });
+      await api('update', { id, type: 'lekse', classes: planKey(), week, day, subject, description: val, teacher: teacherName });
     } else {
-      const created = await api('create', { type: 'lekse', classes: selectedClass, week, day, subject, description: val, teacher: teacherName });
+      const created = await api('create', { type: 'lekse', classes: planKey(), week, day, subject, description: val, teacher: teacherName });
       ed.dataset.id = created && created.id ? created.id : '';
     }
     ed._original = sanitizeHtml(ed.innerHTML);
@@ -717,14 +797,14 @@ async function commitRichCell(ed, html) {
       ed.dataset.ids = '[]';
     } else if (ids.length) {
       await api('update', {
-        id: ids[0], type, classes: selectedClass, week,
+        id: ids[0], type, classes: planKey(), week,
         day: '', subject, description: val, teacher: teacherName,
       });
       for (const extra of ids.slice(1)) await api('delete', { id: extra });
       ed.dataset.ids = JSON.stringify([ids[0]]);
     } else {
       const created = await api('create', {
-        type, classes: selectedClass, week,
+        type, classes: planKey(), week,
         day: '', subject, description: val, teacher: teacherName,
       });
       ed.dataset.ids = JSON.stringify(created && created.id ? [created.id] : []);
@@ -802,7 +882,10 @@ function openAddModal(preset = {}) {
   editingVurd    = null;
   editingElement = null;
   modalType      = preset.type || 'lekse';
-  modalClasses   = preset.classes ? preset.classes.slice() : [selectedClass];
+  // In an adapted plan, plan elements are saved under the code; assessments
+  // (vurdering) stay on the base class so they're shared with the whole class.
+  modalClasses   = preset.classes ? preset.classes.slice()
+                 : (variantCode && modalType !== 'vurdering' ? [variantCode] : [selectedClass]);
   modalDays      = preset.days ? preset.days.slice() : [];
   modalWeekFrom  = preset.weekFrom || weekMonday;
   modalWeekTo    = preset.weekTo || modalWeekFrom;
@@ -931,6 +1014,21 @@ function selectModalType(t) {
   if (!hasDay) { modalDays = []; syncDayBtns(); }
   const subjSel = document.getElementById('subjectSelect');
   if (SUBJECT_TYPES.includes(t) && !subjSel.value) subjSel.value = SUBJECTS[0];
+
+  // Adapted plan: plan elements target the code (hide the class picker, show a
+  // note); vurdering keeps the normal class picker (assessments are class-wide).
+  const variantPlan = !!variantCode && !isVurd;
+  const classRow = document.getElementById('classRow');
+  const note     = document.getElementById('variantClassNote');
+  if (classRow) classRow.style.display = variantPlan ? 'none' : '';
+  if (note) {
+    note.hidden = !variantPlan;
+    if (variantPlan) note.querySelector('strong').textContent = variantCode;
+  }
+  if (variantCode && !editingElement && !editingVurd) {
+    modalClasses = variantPlan ? [variantCode] : [selectedClass];
+    buildModalClassBtns();
+  }
   refreshConflicts();
 }
 
@@ -1078,16 +1176,39 @@ async function cloneFromPreviousWeek() {
   const toWeek   = dateToWeek(weekMonday);
   const fromWeek = dateToWeek(addDays(weekMonday, -7));
   const hasContent = planData.some(p => SUBJECT_TYPES.includes(p.type) || GENERAL_TYPES.includes(p.type));
+  const where = variantCode ? 'den tilpassede planen' : selectedClass;
   const msg = hasContent
     ? `Denne uka (${toWeek}) har allerede innhold. Kopier fra forrige uke likevel? (Det kan gi dobbeltoppføringer.)`
-    : `Kopiere alt fra forrige uke til uke ${getWeekNumber(weekMonday)} for ${selectedClass}?`;
+    : `Kopiere alt fra forrige uke til uke ${getWeekNumber(weekMonday)} for ${where}?`;
   if (!await uiConfirm(msg, { title: 'Kopier forrige uke', okText: 'Kopier' })) return;
 
   setSaving();
   try {
-    const result = await api('clone', { fromWeek, toWeek, classes: selectedClass });
+    const result = await api('clone', { fromWeek, toWeek, classes: planKey() });
     setSaved();
     showToast(`Kopierte ${result.count || 0} element(er) fra forrige uke.`);
+    loadData({ background: true });
+  } catch (err) {
+    setSaveError(err.message);
+  }
+}
+
+// Seed the adapted plan's current week from its base class (one clone call,
+// class → code). Only meaningful while editing a variant.
+async function cloneFromBaseClass() {
+  if (!variantCode) return;
+  const week = dateToWeek(weekMonday);
+  const hasContent = planData.some(p => SUBJECT_TYPES.includes(p.type) || GENERAL_TYPES.includes(p.type));
+  const msg = hasContent
+    ? `Den tilpassede planen har allerede innhold denne uka. Hente fra ${selectedClass} likevel? (Kan gi dobbeltoppføringer.)`
+    : `Hente innholdet fra ${selectedClass} (uke ${getWeekNumber(weekMonday)}) inn i den tilpassede planen, som utgangspunkt?`;
+  if (!await uiConfirm(msg, { title: 'Hent fra klassen', okText: 'Hent' })) return;
+
+  setSaving();
+  try {
+    const result = await api('clone', { fromWeek: week, toWeek: week, classes: selectedClass, toClasses: variantCode });
+    setSaved();
+    showToast(`Hentet ${result.count || 0} element(er) fra ${selectedClass}.`);
     loadData({ background: true });
   } catch (err) {
     setSaveError(err.message);

@@ -204,6 +204,11 @@ body.scroll-locked { overflow: hidden; }
 
 .cell-subject { font-weight: 700; color: var(--text); overflow-wrap: break-word; hyphens: auto; }
 .cell-empty   { color: var(--off-text); }
+.cell-subheading {
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+  color: var(--text-muted); margin-bottom: 4px;
+}
+.cell-subheading-sep { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
 .cell-goals, .cell-homework { color: var(--text); white-space: pre-line; }
 .cell-list    { list-style: none; display: flex; flex-direction: column; gap: 4px; }
 .cell-list li { position: relative; padding-left: 14px; white-space: pre-line; }
@@ -301,6 +306,18 @@ body.scroll-locked { overflow: hidden; }
 }
 .class-modal-btn:hover { border-color: var(--primary); }
 .class-modal-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+/* Personal / adapted-plan code field in the class modal */
+.variant-box { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
+.variant-box summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-muted); }
+.variant-box summary:hover { color: var(--text); }
+.variant-input {
+  width: 100%; margin-top: 8px; padding: 9px 11px;
+  font-family: var(--font); font-size: 14px; text-transform: uppercase;
+  border: 1px solid var(--border); border-radius: var(--radius-btn); outline: none;
+}
+.variant-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
+.variant-error { margin-top: 8px; font-size: 13px; color: var(--danger); }
 
 /* ── Footer ────────────────────────────────────────────────── */
 .site-footer { padding: 18px 0; margin-top: 24px; border-top: 1px solid var(--border); text-align: center; }
@@ -437,12 +454,11 @@ body.scroll-locked { overflow: hidden; }
   .plan-table tr:last-child { border-bottom: none; }
   .plan-table td { border-bottom: none; padding: 4px 14px; }
   .cell-subject { font-size: 16px; padding-top: 12px; }
-  .cell-goals::before, .cell-resources::before, .cell-homework::before, .cell-vurd::before {
+  .cell-goals::before, .cell-homework::before, .cell-vurd::before {
     display: block; font-size: 11px; font-weight: 600; text-transform: uppercase;
     letter-spacing: .03em; color: var(--text-muted); margin-bottom: 2px;
   }
   .cell-goals::before     { content: 'Tema og læringsmål'; }
-  .cell-resources::before { content: 'Ressurser'; }
   .cell-homework::before  { content: 'Lekser'; }
   .cell-vurd::before      { content: 'Vurdering'; } /* Fag-progresjon tab keeps the column */
   .cell-empty { display: none; } /* hide empty category labels on mobile */

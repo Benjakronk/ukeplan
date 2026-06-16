@@ -17,6 +17,7 @@ const VURD_TS_KEY    = 'up_vurd_ts';
 const DONE_KEY       = 'up_done';            // { elementId: true } — locally checked-off homework
 const ALL_CACHE_KEY  = 'up_all';             // all plan elements (for fag-progresjon)
 const ALL_TS_KEY     = 'up_all_ts';
+const VARIANT_KEY    = 'up_variant';         // personal/adapted-plan code, e.g. "8A-K7X9M"
 const CACHE_TTL      = 60 * 60 * 1000;       // 1 hour
 
 const SCHOOL_CAL_URL    = 'https://sspkalender.prokom.no/api/iCalTidspunkt/?Kunde=nesakskoleruta&Id=0&Categories=438,439';
@@ -51,7 +52,25 @@ const GENERAL_TYPES = ['beskjed', 'timeendring', 'utstyr', 'aktivitet', 'annet']
 const GENERAL_ICON  = { beskjed: '📣', timeendring: '🕑', utstyr: '🎒', aktivitet: '🚌', annet: '📌' };
 
 let selectedClass = null;
+let variantCode   = null;               // active personal-plan code, or null
 let weekMonday    = mondayOf(new Date());
+
+// Plan content is fetched/filtered under the variant code when one is active;
+// assessments, calendar and the class label keep using the base class
+// (selectedClass), so a personal plan inherits its class's vurderinger.
+function planKey() { return variantCode || selectedClass; }
+
+// The stored key is "<CLASS>-<SUFFIX>", but pupils only ever enter/receive the
+// SUFFIX — the class comes from their class choice, so a code resolves only
+// together with the right class (and never reveals which class it belongs to).
+function parseVariantClass(code) {
+  const m = /^(\d{1,2}[A-Z])-[A-Z0-9]{3,}$/.exec(String(code || '').trim().toUpperCase());
+  return m && CLASSES.includes(m[1]) ? m[1] : null;
+}
+function variantSuffix(full) {
+  const i = String(full || '').indexOf('-');
+  return i < 0 ? '' : full.slice(i + 1);
+}
 let planData      = [];                 // plan elements for current class+week
 let previewWeekData = [];               // next week's elements (Friday "day before" preview)
 let previewWeekKey  = null;             // "class|week" the preview data is for / in flight
@@ -85,6 +104,12 @@ async function init() {
 
   selectedClass = localStorage.getItem(CLASS_KEY);
   if (selectedClass && !CLASSES.includes(selectedClass)) selectedClass = null;
+  // A stored personal-plan code derives the base class from its prefix.
+  variantCode = localStorage.getItem(VARIANT_KEY) || null;
+  if (variantCode) {
+    const base = parseVariantClass(variantCode);
+    if (base) selectedClass = base; else variantCode = null;
+  }
   electives = loadElectives();
   populateFagSubjects();
 
@@ -200,25 +225,26 @@ function updateWeekLabel() {
 async function loadWeek(opts = {}) {
   const { skipCache = false } = opts;
   const week = dateToWeek(weekMonday);
-  const background = planData.length > 0 || !!getCachedWeek(selectedClass, week);
+  const key  = planKey();
+  const background = planData.length > 0 || !!getCachedWeek(key, week);
 
   // Assessments cache (small dataset, fetched once per hour).
   loadAssessments({ skipCache });
 
   if (!skipCache) {
-    const cached = getCachedWeek(selectedClass, week);
+    const cached = getCachedWeek(key, week);
     if (cached) {
       planData = cached;
       render();
       hideOverlay();
       // refresh in the background
-      fetchWeek(selectedClass, week, { background: true });
+      fetchWeek(key, week, { background: true });
       return;
     }
   }
 
   if (background) showBgLoading(); else showOverlay();
-  await fetchWeek(selectedClass, week, { background });
+  await fetchWeek(key, week, { background });
 }
 
 async function fetchWeek(cls, week, opts = {}) {
@@ -229,8 +255,8 @@ async function fetchWeek(cls, week, opts = {}) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (!Array.isArray(data)) throw new Error(data.error || 'Ugyldig svar');
-    // Only adopt if still the active class+week (user may have navigated away).
-    if (cls === selectedClass && week === dateToWeek(weekMonday)) {
+    // Only adopt if still the active plan+week (user may have navigated away).
+    if (cls === planKey() && week === dateToWeek(weekMonday)) {
       planData = data;
       render();
     }
@@ -248,18 +274,19 @@ async function fetchWeek(cls, week, opts = {}) {
 // data is loaded (reusing the per-week cache) and re-render when it arrives.
 function ensureNextWeekData() {
   if (!selectedClass) return;
+  const planK = planKey();
   const nextWeek = dateToWeek(addDays(weekMonday, 7));
-  const key = selectedClass + '|' + nextWeek;
+  const key = planK + '|' + nextWeek;
   if (previewWeekKey === key) return;          // already loaded or in flight
   previewWeekKey = key;
-  const cached = getCachedWeek(selectedClass, nextWeek);
+  const cached = getCachedWeek(planK, nextWeek);
   if (cached) { previewWeekData = cached; return; }
-  const url = `${SCRIPT_URL}?action=week&classes=${encodeURIComponent(selectedClass)}&week=${encodeURIComponent(nextWeek)}`;
+  const url = `${SCRIPT_URL}?action=week&classes=${encodeURIComponent(planK)}&week=${encodeURIComponent(nextWeek)}`;
   fetch(url)
     .then(res => (res.ok ? res.json() : null))
     .then(data => {
       if (!Array.isArray(data)) return;
-      setCachedWeek(selectedClass, nextWeek, data);
+      setCachedWeek(planK, nextWeek, data);
       if (previewWeekKey !== key) return;       // user navigated away meanwhile
       previewWeekData = data;
       if (currentTab === 'ukeplan' && ukeplanView === 'dag') renderDayView();
@@ -342,6 +369,7 @@ function showClassModal() {
       btn.addEventListener('click', () => {
         modalClass = cls;
         grid.querySelectorAll('.class-modal-btn').forEach(b => b.classList.toggle('active', b === btn));
+        document.getElementById('variantError').hidden = true;
         updateClassConfirm();
       });
       wrap.appendChild(btn);
@@ -365,6 +393,12 @@ function showClassModal() {
     eg.appendChild(btn);
   });
 
+  const vInput = document.getElementById('variantInput');
+  vInput.value = variantSuffix(variantCode);
+  document.getElementById('variantError').hidden = true;
+  document.querySelector('.variant-box').open = !!variantCode;
+  vInput.oninput = () => { document.getElementById('variantError').hidden = true; };
+
   updateClassConfirm();
   rememberFocus();
   document.getElementById('classModalOverlay').classList.add('open');
@@ -374,15 +408,34 @@ function showClassModal() {
 }
 
 function updateClassConfirm() {
+  // A class is always required; the code is an optional add-on that only works
+  // together with the chosen class.
   document.getElementById('classConfirm').disabled = !modalClass;
 }
 
 function confirmClassModal() {
   if (!modalClass) return;
-  selectedClass = modalClass;
+  const suffix = document.getElementById('variantInput').value.trim();
+  if (suffix) {
+    if (!/^[A-Za-z0-9]{3,}$/.test(suffix)) {
+      const err = document.getElementById('variantError');
+      err.textContent = 'Ugyldig kode. Bruk bokstavene og tallene du fikk av læreren (f.eks. K7X9M).';
+      err.hidden = false;
+      return;
+    }
+    variantCode   = (modalClass + '-' + suffix).toUpperCase();
+    selectedClass = modalClass;
+    localStorage.setItem(VARIANT_KEY, variantCode);
+  } else {
+    variantCode = null;
+    selectedClass = modalClass;
+    localStorage.removeItem(VARIANT_KEY);
+  }
   localStorage.setItem(CLASS_KEY, selectedClass);
   electives = modalElectives.slice();
   localStorage.setItem(ELECTIVE_KEY, JSON.stringify(electives));
+  planData = [];           // drop any previous plan so the new one is fetched fresh
+  previewWeekKey = null;
   updateClassLabel();
   populateFagSubjects();
   closeClassModal();
@@ -438,7 +491,7 @@ function renderFag() {
   board.innerHTML = '';
   const subject = document.getElementById('fagSubject').value;
 
-  const plan = allPlanData.filter(p => p.subject === subject && classMatches(p.classes, selectedClass));
+  const plan = allPlanData.filter(p => p.subject === subject && classMatches(p.classes, planKey()));
   const vurd = vurdData.filter(v => v.date && v.subject === subject && classMatches(v.classes, selectedClass));
 
   const weeks = new Set();
@@ -598,7 +651,7 @@ function buildDayDetail(i, weekVurd) {
     preview = planData.filter(p => isGeneral(p) && parseDays(p.day).includes(nextKey));
   } else {
     const nextWeek = dateToWeek(addDays(weekMonday, 7));
-    preview = previewWeekData.filter(p => isGeneral(p) && classMatches(p.classes, selectedClass) &&
+    preview = previewWeekData.filter(p => isGeneral(p) && classMatches(p.classes, planKey()) &&
       parseDays(p.day).includes('man') && weeksBetween(p.week, p.weekTo || p.week).includes(nextWeek));
   }
   // Don't repeat an item that's already shown as today's (multi-day elements).
@@ -759,8 +812,8 @@ function buildGeneralSection(elements) {
   return wrap.children.length ? wrap : null;
 }
 
-// Subject rows: Fag | Tema og læringsmål | Ressurser | Lekser, with a
-// full-width "Vurdering:" strip under any subject that has one this week.
+// Subject rows: Fag | Tema og læringsmål | Lekser. Ressurser is a subheading
+// inside the Tema-cell; Vurdering is a full-width strip under the subject row.
 function buildSubjectBoard(weekVurd) {
   // Collect subjects that have any content this week.
   const bySubject = {};
@@ -784,12 +837,14 @@ function buildSubjectBoard(weekVurd) {
   if (subjects.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'empty-state';
-    empty.textContent = 'Ingen ukeplan lagt inn for ' + selectedClass + ' denne uka ennå.';
+    empty.textContent = variantCode
+      ? 'Ingen tilpasset plan å vise denne uka. Sjekk at du har valgt riktig klasse og skrevet koden riktig.'
+      : 'Ingen ukeplan lagt inn for ' + selectedClass + ' denne uka ennå.';
     wrap.appendChild(empty);
     return wrap;
   }
 
-  const COLS = ['Fag', 'Tema og læringsmål', 'Ressurser', 'Lekser'];
+  const COLS = ['Fag', 'Tema og læringsmål', 'Lekser'];
   const table = document.createElement('table');
   table.className = 'plan-table';
   const thead = table.createTHead();
@@ -809,8 +864,7 @@ function buildSubjectBoard(weekVurd) {
     tdSubject.className = 'cell-subject';
     tdSubject.textContent = subject;
 
-    tr.appendChild(buildListCell(data.goals.map(g => g.description), 'cell-goals'));
-    tr.appendChild(buildListCell(data.resources.map(r => r.description), 'cell-resources'));
+    tr.appendChild(buildGoalsCell(data.goals.map(g => g.description), data.resources.map(r => r.description)));
     tr.appendChild(buildHomeworkCell(data.homework.slice().sort(byDay)));
 
     // Vurderinger no longer have a column — they show as a full-width strip
@@ -863,17 +917,39 @@ function buildVurdRow(vurd, colspan) {
   return tr;
 }
 
-function buildListCell(items, className) {
+// Tema og læringsmål cell: goals, then (if any) a "Ressurser" subheading with
+// the resources listed below — Ressurser no longer has its own column.
+function buildGoalsCell(goals, resources) {
+  goals = goals.filter(Boolean);
+  resources = resources.filter(Boolean);
   const td = document.createElement('td');
-  td.className = className;
-  items = items.filter(Boolean);
-  if (items.length === 0) { td.classList.add('cell-empty'); td.textContent = '—'; return td; }
-  if (items.length === 1) { td.classList.add('rich-content'); renderRich(td, items[0]); return td; }
+  td.className = 'cell-goals';
+  if (!goals.length && !resources.length) { td.classList.add('cell-empty'); td.textContent = '—'; return td; }
+
+  if (goals.length) appendRichItems(td, goals);
+  if (resources.length) {
+    const h = document.createElement('div');
+    h.className = 'cell-subheading' + (goals.length ? ' cell-subheading-sep' : '');
+    h.textContent = 'Ressurser';
+    td.appendChild(h);
+    appendRichItems(td, resources);
+  }
+  return td;
+}
+
+// Render rich-text items into a parent: a single item inline, several as a list.
+function appendRichItems(parent, items) {
+  if (items.length === 1) {
+    const div = document.createElement('div');
+    div.className = 'rich-content';
+    renderRich(div, items[0]);
+    parent.appendChild(div);
+    return;
+  }
   const ul = document.createElement('ul');
   ul.className = 'cell-list';
   items.forEach(t => { const li = document.createElement('li'); li.classList.add('rich-content'); renderRich(li, t); ul.appendChild(li); });
-  td.appendChild(ul);
-  return td;
+  parent.appendChild(ul);
 }
 
 // Homework cell with local check-off boxes (one per homework element).

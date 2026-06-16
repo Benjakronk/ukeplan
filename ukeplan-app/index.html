@@ -32,6 +32,13 @@
     <p class="class-modal-hint" style="margin-top:16px">Valgfag og tilvalgsfag du har (huk av):</p>
     <div id="electiveGrid" class="class-modal-grid elective-grid"></div>
 
+    <details class="variant-box">
+      <summary>Har du fått en egen kode?</summary>
+      <p class="class-modal-hint">Noen elever får en egen, tilpasset plan. Velg klassen din over, og skriv inn koden du fikk av læreren her. Koden virker bare sammen med riktig klasse. La feltet stå tomt ellers.</p>
+      <input type="text" id="variantInput" class="variant-input" placeholder="f.eks. K7X9M" autocomplete="off" autocapitalize="characters" spellcheck="false">
+      <p id="variantError" class="variant-error" hidden></p>
+    </details>
+
     <div class="class-modal-actions">
       <button id="classConfirm" class="btn btn-primary" disabled>Bekreft</button>
     </div>

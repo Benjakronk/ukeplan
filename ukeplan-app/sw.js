@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE = 'ukeplan-shell-v19';
+const CACHE = 'ukeplan-shell-v23';
 const ASSETS = [
   './',
   'index.html',
@@ -42,8 +42,11 @@ self.addEventListener('fetch', e => {
   // next load; fall back to the cached copy only when offline.
   if (url.origin !== self.location.origin) return;
 
+  // `cache: 'no-cache'` forces the browser to revalidate against the server
+  // (conditional request) so a stale HTTP-cached copy of script.js/styles.css
+  // can't be served. Falls back to the SW cache only when offline.
   e.respondWith(
-    fetch(e.request).then(res => {
+    fetch(e.request, { cache: 'no-cache' }).then(res => {
       if (res && res.ok) {
         const clone = res.clone();
         caches.open(CACHE).then(c => c.put(e.request, clone)).catch(() => {});

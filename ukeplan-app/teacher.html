@@ -79,6 +79,7 @@
         <div class="toolbar" id="toolbar">
           <button id="addBtn" class="btn btn-primary btn-tiny">+ Legg til</button>
           <button id="cloneBtn" class="btn btn-ghost btn-tiny" title="Kopier alt fra forrige uke til denne uka">&#10697; Kopier forrige uke</button>
+          <button id="cloneFromClassBtn" class="btn btn-ghost btn-tiny" title="Hent innholdet fra klassen som utgangspunkt for den tilpassede planen" hidden>&#10515; Hent fra klassen</button>
           <button id="printBtn" class="btn btn-ghost btn-tiny" title="Skriv ut ukeplanen">&#128424; Skriv ut</button>
           <span id="saveStatus" class="save-status" aria-live="polite"></span>
         </div>
@@ -163,6 +164,17 @@
     </div>
     <p class="class-modal-hint">Velg klassen du vil redigere ukeplan for.</p>
     <div id="classModalGrid" class="class-modal-grid"></div>
+
+    <details id="teacherVariantBox" class="variant-box">
+      <summary>Tilpasset plan (individuelt tilrettelagt)</summary>
+      <p class="class-modal-hint">Velg først en vanlig klasse over. Lag så en egen ukeplan for én eller flere elever uten å lagre navn. Du får en kode du gir til eleven(e), som virker sammen med klassen deres; appen vet ikke hvem den tilhører. <strong>Skriv aldri elevnavn i appen.</strong></p>
+      <button id="variantNewBtn" class="btn btn-ghost btn-tiny" type="button">+ Lag ny tilpasset plan</button>
+      <div class="variant-row">
+        <input type="text" id="variantCodeInput" class="variant-input" placeholder="eller åpne kode: K7X9M" autocomplete="off" autocapitalize="characters" spellcheck="false">
+        <button id="variantOpenBtn" class="btn btn-ghost btn-tiny" type="button">Åpne</button>
+      </div>
+      <p id="variantTError" class="variant-error" hidden></p>
+    </details>
   </div>
 
   <!-- Add / edit modal -->
@@ -197,10 +209,11 @@
       <select id="subjectSelect" class="input"></select>
     </div>
 
-    <div class="form-row">
+    <div class="form-row" id="classRow">
       <label class="form-label">Klasse(r)</label>
       <div id="classBtns" class="class-modal-grid"></div>
     </div>
+    <p class="form-row variant-note" id="variantClassNote" hidden>Lagres i tilpasset plan: <strong></strong></p>
 
     <div class="form-row" id="dayRow">
       <label class="form-label">Dag(er) (valgfritt – tomt = hele uka)</label>
