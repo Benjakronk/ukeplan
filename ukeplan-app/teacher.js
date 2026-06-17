@@ -6,9 +6,14 @@ const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxP4BS2wc1RWcjjqEtrS
 const VURD_URL   = 'https://script.google.com/macros/s/AKfycbwsXqoLZW8RlIAwvGN1yQXgpLnB3aCbVtjrmt4X5v302Fpbd9XFsSiobBOOTC4z1q5n/exec';
 
 const TOKEN_KEY   = 'up_token';
+const EXPIRES_KEY = 'up_token_exp';         // ms timestamp when the session token dies
 const CLASS_KEY   = 'up_teacher_class';
 const TNAME_KEY   = 'up_teacher_name';
 const VARIANT_KEY = 'up_teacher_variant';   // adapted-plan code being edited, e.g. "8A-K7X9M"
+
+// Must mirror the CacheService put-TTL (14400 s) in ukeplan_GAS.js — the token
+// is valid for exactly this long from login and is NOT renewed on use.
+const TOKEN_TTL   = 4 * 60 * 60 * 1000;
 
 const SCHOOL_CAL_URL    = 'https://sspkalender.prokom.no/api/iCalTidspunkt/?Kunde=nesakskoleruta&Id=0&Categories=438,439';
 const SCHOOL_CAL_KEY    = 'up_school_cal';
@@ -52,6 +57,8 @@ const VURD_TOKEN_KEY = 'up_vurd_token';
 
 let token         = sessionStorage.getItem(TOKEN_KEY) || null;
 let vurdToken     = sessionStorage.getItem(VURD_TOKEN_KEY) || null;
+let expiryTimer   = null;
+let cloning       = false;   // true while a clone request is in flight (guards double-clicks)
 let editingVurd   = null; // the vurdering object being edited in the modal, or null
 let selectedClass = localStorage.getItem(CLASS_KEY) || null;
 let variantCode   = null;   // adapted-plan code being edited, or null
@@ -129,7 +136,15 @@ function init() {
   }
   document.getElementById('teacherName').value = teacherName;
 
+  // A session that already expired (e.g. tab reopened hours later) → straight to login.
+  if (token && isSessionExpired()) {
+    sessionStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(EXPIRES_KEY);
+    token = null;
+  }
+
   if (token) {
+    scheduleExpiry();
     showDashboard();
     updateClassLabel();
     updateWeekLabel();
@@ -145,6 +160,29 @@ function init() {
 function setupAuthListeners() {
   document.getElementById('loginForm').addEventListener('submit', handleLogin);
   document.getElementById('logoutBtn').addEventListener('click', handleLogout);
+  // Re-check when the tab is shown/focused, in case the single timer was
+  // throttled while the tab was in the background.
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) scheduleExpiry(); });
+  window.addEventListener('focus', scheduleExpiry);
+}
+
+// ─── Session expiry ───────────────────────────────────────────
+
+function isSessionExpired() {
+  const exp = Number(sessionStorage.getItem(EXPIRES_KEY)) || 0;
+  return exp > 0 && Date.now() >= exp;
+}
+
+// Arm (or re-arm) a timer that logs the teacher out the moment the token dies.
+// Logs out right away if the deadline has already passed.
+function scheduleExpiry() {
+  if (expiryTimer) { clearTimeout(expiryTimer); expiryTimer = null; }
+  if (!token) return;
+  let exp = Number(sessionStorage.getItem(EXPIRES_KEY)) || 0;
+  if (!exp) { exp = Date.now() + TOKEN_TTL; sessionStorage.setItem(EXPIRES_KEY, String(exp)); }
+  const remaining = exp - Date.now();
+  if (remaining <= 0) { handleExpired(); return; }
+  expiryTimer = setTimeout(handleExpired, remaining);   // 4h is well within setTimeout's range
 }
 
 async function handleLogin(e) {
@@ -162,6 +200,8 @@ async function handleLogin(e) {
     if (data.error) throw new Error(data.error);
     token = data.token;
     sessionStorage.setItem(TOKEN_KEY, token);
+    sessionStorage.setItem(EXPIRES_KEY, String(Date.now() + TOKEN_TTL));
+    scheduleExpiry();
     teacherName = name;
     localStorage.setItem(TNAME_KEY, name);
     document.getElementById('teacherName').value = name;
@@ -183,7 +223,9 @@ async function handleLogin(e) {
 }
 
 function handleLogout() {
+  if (expiryTimer) { clearTimeout(expiryTimer); expiryTimer = null; }
   sessionStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(EXPIRES_KEY);
   sessionStorage.removeItem(VURD_TOKEN_KEY);
   token = null;
   vurdToken = null;
@@ -191,7 +233,10 @@ function handleLogout() {
 }
 
 function handleExpired() {
+  if (!token) return;   // already handled (timer + a racing Unauthorized)
+  if (expiryTimer) { clearTimeout(expiryTimer); expiryTimer = null; }
   sessionStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(EXPIRES_KEY);
   token = null;
   showLogin();
   showToast('Økten utløp — logg inn på nytt.');
@@ -783,7 +828,12 @@ function buildVurdCell(subject, vurd) {
   return td;
 }
 
+// Per-field _busy serializes saves so a fast blur→re-edit→blur can't reach the
+// create branch twice before the first create has set the id (→ duplicates).
+// A commit arriving mid-save is remembered and re-run once the first finishes.
 async function commitRichCell(ed, html) {
+  if (ed._busy) { ed._pendingHtml = html; return; }
+  ed._busy = true;
   const ids     = JSON.parse(ed.dataset.ids || '[]');
   const subject = ed.dataset.subject;
   const type    = ed.dataset.type;
@@ -813,6 +863,12 @@ async function commitRichCell(ed, html) {
     setSaved();
   } catch (err) {
     setSaveError(err.message);
+  } finally {
+    ed._busy = false;
+    if (ed._pendingHtml !== undefined) {
+      const next = ed._pendingHtml; ed._pendingHtml = undefined;
+      commitRichCell(ed, next);
+    }
   }
 }
 
@@ -1172,46 +1228,66 @@ async function deleteFromModal() {
 
 // ─── Clone previous week ──────────────────────────────────────
 
-async function cloneFromPreviousWeek() {
-  const toWeek   = dateToWeek(weekMonday);
-  const fromWeek = dateToWeek(addDays(weekMonday, -7));
-  const hasContent = planData.some(p => SUBJECT_TYPES.includes(p.type) || GENERAL_TYPES.includes(p.type));
-  const where = variantCode ? 'den tilpassede planen' : selectedClass;
-  const msg = hasContent
-    ? `Denne uka (${toWeek}) har allerede innhold. Kopier fra forrige uke likevel? (Det kan gi dobbeltoppføringer.)`
-    : `Kopiere alt fra forrige uke til uke ${getWeekNumber(weekMonday)} for ${where}?`;
-  if (!await uiConfirm(msg, { title: 'Kopier forrige uke', okText: 'Kopier' })) return;
+// Disable both clone buttons while a clone is running so a slow network can't
+// let a second click create duplicate entries.
+function setCloneButtonsDisabled(disabled) {
+  ['cloneBtn', 'cloneFromClassBtn'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) b.disabled = disabled;
+  });
+}
 
-  setSaving();
+async function cloneFromPreviousWeek() {
+  if (cloning) return;
+  cloning = true;
+  setCloneButtonsDisabled(true);
   try {
+    const toWeek   = dateToWeek(weekMonday);
+    const fromWeek = dateToWeek(addDays(weekMonday, -7));
+    const hasContent = planData.some(p => SUBJECT_TYPES.includes(p.type) || GENERAL_TYPES.includes(p.type));
+    const where = variantCode ? 'den tilpassede planen' : selectedClass;
+    const msg = hasContent
+      ? `Denne uka (${toWeek}) har allerede innhold. Kopier fra forrige uke likevel? (Det kan gi dobbeltoppføringer.)`
+      : `Kopiere alt fra forrige uke til uke ${getWeekNumber(weekMonday)} for ${where}?`;
+    if (!await uiConfirm(msg, { title: 'Kopier forrige uke', okText: 'Kopier' })) return;
+
+    setSaving();
     const result = await api('clone', { fromWeek, toWeek, classes: planKey() });
     setSaved();
     showToast(`Kopierte ${result.count || 0} element(er) fra forrige uke.`);
     loadData({ background: true });
   } catch (err) {
     setSaveError(err.message);
+  } finally {
+    cloning = false;
+    setCloneButtonsDisabled(false);
   }
 }
 
 // Seed the adapted plan's current week from its base class (one clone call,
 // class → code). Only meaningful while editing a variant.
 async function cloneFromBaseClass() {
-  if (!variantCode) return;
-  const week = dateToWeek(weekMonday);
-  const hasContent = planData.some(p => SUBJECT_TYPES.includes(p.type) || GENERAL_TYPES.includes(p.type));
-  const msg = hasContent
-    ? `Den tilpassede planen har allerede innhold denne uka. Hente fra ${selectedClass} likevel? (Kan gi dobbeltoppføringer.)`
-    : `Hente innholdet fra ${selectedClass} (uke ${getWeekNumber(weekMonday)}) inn i den tilpassede planen, som utgangspunkt?`;
-  if (!await uiConfirm(msg, { title: 'Hent fra klassen', okText: 'Hent' })) return;
-
-  setSaving();
+  if (!variantCode || cloning) return;
+  cloning = true;
+  setCloneButtonsDisabled(true);
   try {
+    const week = dateToWeek(weekMonday);
+    const hasContent = planData.some(p => SUBJECT_TYPES.includes(p.type) || GENERAL_TYPES.includes(p.type));
+    const msg = hasContent
+      ? `Den tilpassede planen har allerede innhold denne uka. Hente fra ${selectedClass} likevel? (Kan gi dobbeltoppføringer.)`
+      : `Hente innholdet fra ${selectedClass} (uke ${getWeekNumber(weekMonday)}) inn i den tilpassede planen, som utgangspunkt?`;
+    if (!await uiConfirm(msg, { title: 'Hent fra klassen', okText: 'Hent' })) return;
+
+    setSaving();
     const result = await api('clone', { fromWeek: week, toWeek: week, classes: selectedClass, toClasses: variantCode });
     setSaved();
     showToast(`Hentet ${result.count || 0} element(er) fra ${selectedClass}.`);
     loadData({ background: true });
   } catch (err) {
     setSaveError(err.message);
+  } finally {
+    cloning = false;
+    setCloneButtonsDisabled(false);
   }
 }
 
@@ -1862,6 +1938,8 @@ function buildProgEditCell(cls, subject, type, wk, elements) {
 }
 
 async function commitProgCell(ed, html) {
+  if (ed._busy) { ed._pendingHtml = html; return; }   // serialize — see commitRichCell
+  ed._busy = true;
   const ids = JSON.parse(ed.dataset.ids || '[]');
   const cls = ed.dataset.cls, subject = ed.dataset.subject, type = ed.dataset.type, week = ed.dataset.week;
   const val = html.trim();
@@ -1882,6 +1960,12 @@ async function commitProgCell(ed, html) {
     setSaved();
   } catch (err) {
     setSaveError(err.message);
+  } finally {
+    ed._busy = false;
+    if (ed._pendingHtml !== undefined) {
+      const next = ed._pendingHtml; ed._pendingHtml = undefined;
+      commitProgCell(ed, next);
+    }
   }
 }
 

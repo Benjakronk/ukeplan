@@ -151,6 +151,12 @@ The vurderingskalender URL is `VURD_URL` in both (for the assessment merge).
 
 - Login screen (with a required name field) → dashboard. Token in
   `sessionStorage` (`up_token`); a write returning `Unauthorized` forces re-login.
+  The session also expires **proactively**: the backend keeps the token ~4 h
+  (`CacheService` TTL in `ukeplan_GAS.js`, not renewed on use), so the frontend
+  mirrors that as `TOKEN_TTL`, stamps `up_token_exp` at login, and
+  `scheduleExpiry()` logs out the moment it elapses (re-checked on tab
+  focus/visibility; an already-expired token is dropped on load). Keep
+  `TOKEN_TTL` in sync with the backend TTL.
 - **Tabs:** Ukeplan (the editable board + beskjeder), Vurderinger, and Oversikt.
   The **Vurderinger** tab has two views — Tabell and Kalender (`vurdView`) — over
   the same filtered set (`getVurdFiltered`). Filters (`vfClasses`, `vfSubjects`,
@@ -185,6 +191,12 @@ The vurderingskalender URL is `VURD_URL` in both (for the assessment merge).
   class.
 - "Kopier forrige uke" calls `clone`. Print via the browser.
 - Teacher name remembered in `localStorage` (`up_teacher_name`).
+- **Double-submit guards (avoid duplicate rows):** every path that can `create`
+  serializes itself so a re-click/blur mid-request can't create twice. Inline
+  rich/lekse cells use a per-field `ed._busy` flag with a `_pending`/`_pendingHtml`
+  re-run (`commitRichCell`, `commitHomeworkRow`, `commitProgCell`); the add modal
+  uses `modalSaving` (disables the Save button); clones use `cloning` (disables
+  both clone buttons). Any new create path must follow the same pattern.
 
 ## Adapted plans (individuell tilrettelegging)
 
