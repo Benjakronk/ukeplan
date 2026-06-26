@@ -134,7 +134,14 @@ body.scroll-locked { overflow: hidden; }
   cursor: pointer; transition: background var(--transition), color var(--transition);
 }
 .week-nav-btn:hover { background: var(--bg); color: var(--text); }
-.week-nav-center { text-align: center; min-width: 150px; }
+.week-nav-center {
+  text-align: center; min-width: 150px;
+  font-family: var(--font); color: inherit; background: transparent;
+  border: 1px solid transparent; border-radius: var(--radius-btn);
+  padding: 2px 8px; cursor: pointer; transition: background var(--transition), border-color var(--transition);
+}
+.week-nav-center:hover { background: var(--bg); border-color: var(--border); }
+.week-nav-center:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
 .week-label { display: block; font-size: 17px; font-weight: 700; }
 .week-range { display: block; font-size: 12px; color: var(--text-muted); }
 
@@ -306,6 +313,8 @@ body.scroll-locked { overflow: hidden; }
 }
 .class-modal-btn:hover { border-color: var(--primary); }
 .class-modal-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.class-modal-btn.locked, .class-modal-btn:disabled { opacity: .5; cursor: not-allowed; }
+.class-modal-btn.locked:hover { border-color: var(--border); }
 
 /* Personal / adapted-plan code field in the class modal */
 .variant-box { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
@@ -356,6 +365,8 @@ body.scroll-locked { overflow: hidden; }
 }
 .ui-dialog-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
 .ui-dialog-error { font-size: 13px; color: var(--danger); margin-top: 8px; }
+.ui-dialog-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); cursor: pointer; }
+.ui-dialog-check input { width: 15px; height: 15px; }
 .ui-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 .ui-dialog .btn-danger { background: var(--danger); color: #fff; border-color: var(--danger); }
 @media (hover: hover) { .ui-dialog .btn-danger:hover { background: #b91c1c; border-color: #b91c1c; } }
@@ -462,4 +473,11 @@ body.scroll-locked { overflow: hidden; }
   .cell-homework::before  { content: 'Lekser'; }
   .cell-vurd::before      { content: 'Vurdering'; } /* Fag-progresjon tab keeps the column */
   .cell-empty { display: none; } /* hide empty category labels on mobile */
+
+  /* Fag-progresjon table: per-cell headings via data-label (Uke/Ressurser too). */
+  .fag-table td[data-label]:not(.cell-empty)::before {
+    display: block; font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: .03em; color: var(--text-muted); margin-bottom: 2px;
+    content: attr(data-label);
+  }
 }

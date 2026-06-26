@@ -127,7 +127,9 @@ The vurderingskalender URL is `VURD_URL` in both (for the assessment merge).
 ## Student page (`script.js`)
 
 - Single class choice, remembered in `localStorage` (`up_class`).
-- Week navigation (◀ ▶ / arrow keys / "Denne uka"). Per class+week localStorage
+- Week navigation (◀ ▶ / arrow keys / "Denne uka"; clicking the week label opens
+  `uiWeekPicker` — dropdown of the school year's weeks or type a week number).
+  Per class+week localStorage
   cache (`up_weeks`, 1 h) with background revalidation.
 - **Tabs:** Ukeplan and Vurderingskalender. The Vurderingskalender tab is a
   3-month grid of the class's assessments; clicking a day shows that day's
@@ -172,8 +174,13 @@ The vurderingskalender URL is `VURD_URL` in both (for the assessment merge).
   modes:
   «Sammenlign klasser» (one week, rows = classes, fetched via `?action=week&week=…`
   with no class filter into `oversiktData`) and «Progresjon» (one class + subject,
-  rows = weeks, fetched via `?action=public` into `allPlanData`). Progresjon mode
-  has an "Eksporter .docx" button that builds a fagrapport for the class+subject
+  rows = weeks, fetched via `?action=public` into `allPlanData`). **Both modes are
+  editable (no dead-ends):** Progresjon edits Tema/Ressurser/Lekser inline and
+  vurderinger via the modal, all bound to the row's class+week (`buildHomeworkEditCell`
+  / `buildVurdCell` take an `{cls, week|weekFrom}` opts); Sammenlign klasser makes
+  every item click-to-edit (`buildCompareCell` → `openElementEdit`,
+  `buildCompareVurdCell` → `openVurdEdit`; legacy id-less vurderinger stay
+  read-only). Progresjon mode also has an "Eksporter .docx" button that builds a fagrapport for the class+subject
   via `docx.js` (`buildDocx` → `saveBlob`).
 - The add modal's week dropdown lets you write to a week other than the one shown.
 - Editable board shows ALL `SUBJECTS` as rows. Each Læringsmål/Lekser cell is a
@@ -191,6 +198,35 @@ The vurderingskalender URL is `VURD_URL` in both (for the assessment merge).
   class.
 - "Kopier forrige uke" calls `clone`. Print via the browser.
 - Teacher name remembered in `localStorage` (`up_teacher_name`).
+- **Profile / settings modal:** the header "Lærer"-feltet is now a `profile-btn`
+  that opens `#profileModal` (the `teacherName` input moved inside it). Local
+  settings live in `localStorage` (`up_settings`): `confirmDelete` (default true)
+  gates the delete-confirmation below, and `defaultSubject` (default '' = none)
+  pre-fills the add-modal Fag field. The add modal no longer defaults to
+  `SUBJECTS[0]` ("Norsk") — `modalDefaultSubject(type)` returns the teacher's
+  chosen default or '' (general types never carry one), so cell types fall to the
+  required-subject check instead of silently picking Norsk.
+- **Delete confirmation (clear-on-empty):** emptying an inline cell that had
+  content asks `confirmDeletion()` first (skippable via an "ikke spør igjen"
+  checkbox that flips the `confirmDelete` setting; re-enable in the profile
+  modal). Cancelling restores the previous text (`restoreRichCell`).
+- **Undo / redo:** every plan-element and vurdering mutation records an inverse
+  on `undoStack`/`redoStack` (toolbar buttons + Ctrl+Z / Ctrl+Y; native Ctrl+Z is
+  left to focused text fields). Each entry holds `undo`/`redo` closures that hit
+  the backend; a mutable `ref.id` keeps re-created rows reachable. `clone` is not
+  undoable. Every undo/redo runs `refreshAfterChange()` so the board rebuilds
+  from the server (stale `dataset.ids` are moot).
+- **Vurdering date rule:** assessments may be placed on any school day in the
+  year (no longer locked to the open week), but `vurdDateProblem()` blocks
+  weekends and school-free / planning days (skoleruta) at save time. To avoid
+  silently saving on the wrong date, a NEW vurdering defaults to the *viewed
+  week's* context (`contextualVurdDate()` — today only when it falls in
+  `modalWeekFrom`'s week, else that week's Monday), and `updateDateInfo()` shows
+  a plain-language `#dateEcho` ("Vurdering legges på: Tirsdag 23. september (uke
+  39)") plus a `#dateWarn` that flags weekends/skoleruta AND a week mismatch
+  (selected week ≠ `modalWeekFrom`).
+- **Save errors are loud:** `setSaveError` shows a red toast + "⚠ Ikke lagret!"
+  and the offending inline field gets an `.unsaved` outline until it saves.
 - **Double-submit guards (avoid duplicate rows):** every path that can `create`
   serializes itself so a re-click/blur mid-request can't create twice. Inline
   rich/lekse cells use a per-field `ed._busy` flag with a `_pending`/`_pendingHtml`

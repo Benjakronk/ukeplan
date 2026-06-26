@@ -43,10 +43,10 @@
           <p class="site-subtitle">Runni ungdomsskole</p>
         </div>
         <div class="teacher-header-actions">
-          <label class="teacher-name-field">
-            <span>Lærer</span>
-            <input type="text" id="teacherName" class="input" placeholder="Navnet ditt" autocomplete="off">
-          </label>
+          <button id="profileBtn" class="profile-btn" type="button" title="Profil og innstillinger">
+            <span class="profile-btn-icon" aria-hidden="true">👤</span>
+            <span id="profileBtnName" class="profile-btn-name">Lærer</span>
+          </button>
           <button id="refreshBtn" class="btn btn-ghost btn-tiny" title="Hent ferske data">&#8635;</button>
           <button id="logoutBtn" class="btn btn-ghost btn-tiny">Logg ut</button>
         </div>
@@ -63,10 +63,10 @@
 
           <div class="week-nav">
             <button id="prevWeekBtn" class="week-nav-btn" type="button" aria-label="Forrige uke">&lsaquo;</button>
-            <div class="week-nav-center">
+            <button id="weekJumpBtn" class="week-nav-center" type="button" title="Velg uke" aria-label="Velg uke">
               <span id="weekLabel" class="week-label">Uke –</span>
               <span id="weekRange" class="week-range"></span>
-            </div>
+            </button>
             <button id="nextWeekBtn" class="week-nav-btn" type="button" aria-label="Neste uke">&rsaquo;</button>
           </div>
 
@@ -81,14 +81,17 @@
           <button id="cloneBtn" class="btn btn-ghost btn-tiny" title="Kopier alt fra forrige uke til denne uka">&#10697; Kopier forrige uke</button>
           <button id="cloneFromClassBtn" class="btn btn-ghost btn-tiny" title="Hent innholdet fra klassen som utgangspunkt for den tilpassede planen" hidden>&#10515; Hent fra klassen</button>
           <button id="printBtn" class="btn btn-ghost btn-tiny" title="Skriv ut ukeplanen">&#128424; Skriv ut</button>
+          <span class="toolbar-sep" aria-hidden="true"></span>
+          <button id="undoBtn" class="btn btn-ghost btn-tiny" title="Angre siste endring (Ctrl+Z)" disabled>&#8634; Angre</button>
+          <button id="redoBtn" class="btn btn-ghost btn-tiny" title="Gjør om (Ctrl+Y)" disabled>&#8635; Gjør om</button>
           <span id="saveStatus" class="save-status" aria-live="polite"></span>
         </div>
       </div>
 
-      <div class="tabs">
-        <button id="tTabUkeplan" class="tab active" type="button">Ukeplan</button>
-        <button id="tTabVurd" class="tab" type="button">Vurderinger</button>
-        <button id="tTabOversikt" class="tab" type="button">Oversikt</button>
+      <div class="tabs" role="tablist" aria-label="Visning">
+        <button id="tTabUkeplan" class="tab active" type="button" role="tab" aria-selected="true">Ukeplan</button>
+        <button id="tTabVurd" class="tab" type="button" role="tab" aria-selected="false">Vurderinger</button>
+        <button id="tTabOversikt" class="tab" type="button" role="tab" aria-selected="false">Oversikt</button>
       </div>
 
       <div id="paneUkeplan" class="tab-pane">
@@ -202,6 +205,8 @@
     <div class="form-row" id="dateRow" style="display:none">
       <label class="form-label" for="dateInput">Dato</label>
       <input type="date" id="dateInput" class="input">
+      <p id="dateEcho" class="date-echo" hidden></p>
+      <p id="dateWarn" class="date-warn" hidden></p>
     </div>
 
     <div class="form-row" id="subjectRow">
@@ -212,6 +217,7 @@
     <div class="form-row" id="classRow">
       <label class="form-label">Klasse(r)</label>
       <div id="classBtns" class="class-modal-grid"></div>
+      <p class="form-hint" id="editClassNote" hidden>Klassen kan ikke endres her. Slett elementet og lag et nytt for å bytte klasse.</p>
     </div>
     <p class="form-row variant-note" id="variantClassNote" hidden>Lagres i tilpasset plan: <strong></strong></p>
 
@@ -280,6 +286,40 @@
       <button id="vurdFilterClear" class="btn btn-ghost" type="button">Tøm alle filtre</button>
       <span class="add-modal-spacer"></span>
       <button id="vurdFilterDone" class="btn btn-primary" type="button">Ferdig</button>
+    </div>
+  </div>
+
+  <!-- Profile / settings modal -->
+  <div id="profileOverlay" class="class-modal-overlay"></div>
+  <div id="profileModal" class="class-modal" role="dialog" aria-modal="true" aria-labelledby="profileTitle">
+    <div class="class-modal-header">
+      <h2 id="profileTitle" class="class-modal-title">Profil og innstillinger</h2>
+      <button id="profileClose" class="panel-close" aria-label="Lukk">&times;</button>
+    </div>
+
+    <div class="form-row">
+      <label class="form-label" for="teacherName">Navnet ditt</label>
+      <input type="text" id="teacherName" class="input" placeholder="Navnet ditt" autocomplete="off">
+      <p class="form-hint">Brukes som standard «Lærer» på det du legger inn.</p>
+    </div>
+
+    <div class="form-row">
+      <label class="form-label" for="setDefaultSubject">Standard fag i «Legg til»</label>
+      <select id="setDefaultSubject" class="input"></select>
+      <p class="form-hint">Fylles inn automatisk i fag-feltet når du legger til noe nytt. La stå på «(velg hver gang)» hvis du vil velge fag selv hver gang.</p>
+    </div>
+
+    <div class="form-row">
+      <label class="form-label">Innstillinger</label>
+      <label class="settings-toggle">
+        <input type="checkbox" id="setConfirmDelete">
+        <span>Spør før jeg sletter innhold ved å tømme en celle</span>
+      </label>
+    </div>
+
+    <div class="add-modal-actions">
+      <span class="add-modal-spacer"></span>
+      <button id="profileDone" class="btn btn-primary" type="button">Ferdig</button>
     </div>
   </div>
 

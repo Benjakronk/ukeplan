@@ -43,6 +43,9 @@ const ELECTIVE_SUBJECTS = [
   'Innsats for andre','Programmering','Teknologi og design','Design og redesign',
 ];
 const SUBJECTS = [...CORE_SUBJECTS, ...ELECTIVE_SUBJECTS];
+// Alphabetical (Norwegian) order for the Fag dropdown; the board keeps the
+// curriculum order of SUBJECTS (see subjectSort).
+const SUBJECTS_SORTED = [...SUBJECTS].sort((a, b) => a.localeCompare(b, 'no'));
 
 const DAYS = ['man','tir','ons','tor','fre'];
 const DAY_LABEL = { man: 'Man', tir: 'Tir', ons: 'Ons', tor: 'Tor', fre: 'Fre' };
@@ -128,6 +131,7 @@ function setupListeners() {
   document.getElementById('prevWeekBtn').addEventListener('click', () => changeWeek(-1));
   document.getElementById('nextWeekBtn').addEventListener('click', () => changeWeek(1));
   document.getElementById('jumpTodayBtn').addEventListener('click', jumpToThisWeek);
+  document.getElementById('weekJumpBtn').addEventListener('click', openWeekPicker);
   document.getElementById('refreshBtn').addEventListener('click', () => {
     if (currentTab === 'fag') loadAllPlan({ skipCache: true });
     else loadWeek({ skipCache: true });
@@ -160,8 +164,13 @@ function setupListeners() {
       const modal = document.getElementById('classModal');
       if (modal.classList.contains('open')) trapFocus(modal, e);
     }
-    // Week navigation with arrow keys (only in the Ukeplan tab, no modal open).
-    if (!document.getElementById('classModal').classList.contains('open') && selectedClass && currentTab === 'ukeplan') {
+    // Week navigation with arrow keys (only in the Ukeplan tab, no modal/dialog
+    // open, and not while typing in a field).
+    const ae = document.activeElement;
+    const typing = ae && (ae.isContentEditable || /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName));
+    if (!document.getElementById('classModal').classList.contains('open') &&
+        !document.querySelector('.ui-dialog') && !typing &&
+        selectedClass && currentTab === 'ukeplan') {
       if (e.key === 'ArrowLeft')  changeWeek(-1);
       if (e.key === 'ArrowRight') changeWeek(1);
     }
@@ -172,9 +181,12 @@ function setupListeners() {
 
 function setTab(tab) {
   currentTab = tab;
-  document.getElementById('tabUkeplan').classList.toggle('active', tab === 'ukeplan');
-  document.getElementById('tabFag').classList.toggle('active', tab === 'fag');
-  document.getElementById('tabVurd').classList.toggle('active', tab === 'vurd');
+  [['tabUkeplan', 'ukeplan'], ['tabFag', 'fag'], ['tabVurd', 'vurd']].forEach(([id, t]) => {
+    const btn = document.getElementById(id);
+    const on = tab === t;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
   const isUke = tab === 'ukeplan';
   // visibility (not display) so the controls-row keeps a constant size across tabs
   document.querySelector('.week-nav').style.visibility     = isUke ? 'visible' : 'hidden';
@@ -210,6 +222,29 @@ function changeWeek(delta) {
 
 function jumpToThisWeek() {
   weekMonday = mondayOf(new Date());
+  updateWeekLabel();
+  if (selectedClass) loadWeek();
+}
+
+// All weeks of the school year containing the viewed week (for the week picker).
+function schoolYearWeeks() {
+  const b = getSchoolYearBounds(weekMonday);
+  const parse = iso => { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d); };
+  const out = [];
+  let m = mondayOf(parse(b.start));
+  const end = mondayOf(parse(b.end));
+  let guard = 0;
+  while (m <= end && guard++ < 60) {
+    out.push({ value: toISODate(m), weekNo: getWeekNumber(m), label: 'Uke ' + getWeekNumber(m) + ' · ' + formatWeekRange(m, addDays(m, 4)) });
+    m = addDays(m, 7);
+  }
+  return out;
+}
+async function openWeekPicker() {
+  const chosen = await uiWeekPicker({ weeks: schoolYearWeeks(), current: toISODate(weekMonday) });
+  if (!chosen) return;
+  const [y, mo, d] = chosen.split('-').map(Number);
+  weekMonday = mondayOf(new Date(y, mo - 1, d));
   updateWeekLabel();
   if (selectedClass) loadWeek();
 }
@@ -341,7 +376,7 @@ function populateFagSubjects() {
   const sel = document.getElementById('fagSubject');
   const current = sel.value;
   sel.innerHTML = '';
-  SUBJECTS.filter(subjectVisible).forEach(s => {
+  SUBJECTS_SORTED.filter(subjectVisible).forEach(s => {
     const o = document.createElement('option'); o.value = s; o.textContent = s; sel.appendChild(o);
   });
   if ([...sel.options].some(o => o.value === current)) sel.value = current;
@@ -520,7 +555,7 @@ function renderFag() {
   const wrap = document.createElement('div');
   wrap.className = 'board-wrap';
   const table = document.createElement('table');
-  table.className = 'plan-table';
+  table.className = 'plan-table fag-table';
   const thead = table.createTHead();
   const hr = thead.insertRow();
   ['Uke', 'Tema og læringsmål', 'Ressurser', 'Lekser', 'Vurdering'].forEach(h => { const th = document.createElement('th'); th.textContent = h; hr.appendChild(th); });
@@ -539,15 +574,19 @@ function renderFag() {
     wc.className = 'prog-week' + (wk === nowWeek ? ' is-now' : '');
     wc.innerHTML = 'Uke ' + getWeekNumber(monday) + '<span class="prog-week-range">' + formatWeekRange(monday, addDays(monday, 4)) + '</span>';
 
+    // data-label drives a per-cell heading on mobile (the table stacks there).
     const gc = tr.insertCell();
+    gc.dataset.label = 'Tema og læringsmål';
     if (goals.length) { gc.className = 'rich-content'; gc.innerHTML = goals.map(sanitizeHtml).join('<br>'); }
     else { gc.className = 'cell-empty'; gc.textContent = '—'; }
 
     const rc = tr.insertCell();
+    rc.dataset.label = 'Ressurser';
     if (resources.length) { rc.className = 'rich-content'; rc.innerHTML = resources.map(sanitizeHtml).join('<br>'); }
     else { rc.className = 'cell-empty'; rc.textContent = '—'; }
 
     const hc = tr.insertCell();
+    hc.dataset.label = 'Lekser';
     if (hw.length) {
       hw.forEach(h => {
         const d = document.createElement('div');
@@ -559,6 +598,7 @@ function renderFag() {
     } else { hc.className = 'cell-empty'; hc.textContent = '—'; }
 
     const vc = tr.insertCell();
+    vc.dataset.label = 'Vurdering';
     vc.className = 'cell-vurd';
     if (wv.length) {
       wv.forEach(v => {
@@ -668,7 +708,9 @@ function buildDayDetail(i, weekVurd) {
   if (!sch && !dayVurd.length && !dayHw.length && !dayGeneralAll.length) {
     const empty = document.createElement('p');
     empty.className = 'empty-state';
-    empty.textContent = 'Ingenting registrert for denne dagen.';
+    empty.textContent = variantCode
+      ? 'Finner ingenting her. Har du skrevet koden riktig?'
+      : 'Ingenting registrert for denne dagen.';
     wrap.appendChild(empty);
   }
   return wrap;
@@ -838,7 +880,7 @@ function buildSubjectBoard(weekVurd) {
     const empty = document.createElement('p');
     empty.className = 'empty-state';
     empty.textContent = variantCode
-      ? 'Ingen tilpasset plan å vise denne uka. Sjekk at du har valgt riktig klasse og skrevet koden riktig.'
+      ? 'Finner ingenting her. Har du skrevet koden riktig?'
       : 'Ingen ukeplan lagt inn for ' + selectedClass + ' denne uka ennå.';
     wrap.appendChild(empty);
     return wrap;

@@ -55,10 +55,10 @@
 
           <div class="week-nav">
             <button id="prevWeekBtn" class="week-nav-btn" type="button" aria-label="Forrige uke">&lsaquo;</button>
-            <div class="week-nav-center">
+            <button id="weekJumpBtn" class="week-nav-center" type="button" title="Velg uke" aria-label="Velg uke">
               <span id="weekLabel" class="week-label">Uke –</span>
               <span id="weekRange" class="week-range"></span>
-            </div>
+            </button>
             <button id="nextWeekBtn" class="week-nav-btn" type="button" aria-label="Neste uke">&rsaquo;</button>
           </div>
 
@@ -72,10 +72,10 @@
         </div>
       </div>
 
-      <div class="tabs">
-        <button id="tabUkeplan" class="tab active" type="button">Ukeplan</button>
-        <button id="tabFag" class="tab" type="button">Fag</button>
-        <button id="tabVurd" class="tab" type="button">Vurderingskalender</button>
+      <div class="tabs" role="tablist" aria-label="Visning">
+        <button id="tabUkeplan" class="tab active" type="button" role="tab" aria-selected="true">Ukeplan</button>
+        <button id="tabFag" class="tab" type="button" role="tab" aria-selected="false">Fag</button>
+        <button id="tabVurd" class="tab" type="button" role="tab" aria-selected="false">Vurderingskalender</button>
       </div>
 
       <div id="viewToggle" class="view-toggle">

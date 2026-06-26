@@ -25,15 +25,41 @@
 .teacher-header-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .teacher-header-titles .site-title { font-size: 22px; }
 .teacher-header-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.teacher-name-field { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-muted); }
-.teacher-name-field input { width: 150px; }
+
+/* Profile button (opens the profile/settings modal) */
+.profile-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  border: 1px solid var(--border); background: var(--surface);
+  border-radius: 999px; padding: 5px 12px 5px 9px; cursor: pointer;
+  font-family: var(--font); font-size: 13px; font-weight: 600; color: var(--text);
+}
+@media (hover: hover) { .profile-btn:hover { border-color: var(--primary); } }
+.profile-btn-icon { font-size: 15px; line-height: 1; }
+.profile-btn-name { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Profile modal extras */
+.form-hint { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+.settings-toggle { display: flex; align-items: flex-start; gap: 9px; font-size: 14px; cursor: pointer; line-height: 1.4; }
+.settings-toggle input { margin-top: 2px; width: 16px; height: 16px; flex-shrink: 0; }
 
 /* ── Toolbar ───────────────────────────────────────────────── */
 .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.toolbar-sep { width: 1px; align-self: stretch; min-height: 18px; background: var(--border); margin: 0 2px; }
 .save-status { font-size: 13px; margin-left: auto; min-height: 18px; }
 .save-status.saving { color: var(--text-muted); }
 .save-status.saved  { color: #16a34a; }
-.save-status.error  { color: var(--danger); }
+.save-status.error  { color: var(--danger); font-weight: 700; }
+
+/* Undo/redo buttons disabled state */
+#undoBtn[disabled], #redoBtn[disabled] { opacity: .4; cursor: default; }
+
+/* Date echo + warning (vurdering): make the chosen date impossible to miss */
+.date-echo { font-size: 13px; color: var(--text); margin-top: 6px; font-weight: 600; }
+.date-warn { font-size: 13px; color: #b45309; background: #fef3c7; border: 1px solid #fcd34d;
+  border-radius: 8px; padding: 6px 10px; margin-top: 6px; font-weight: 600; }
+
+/* A cell whose last save failed — flag it so the teacher notices */
+.rich-field.unsaved, .edit-rich.unsaved { box-shadow: 0 0 0 2px var(--danger); border-radius: 6px; }
 
 /* ── General (messages) section ────────────────────────────── */
 .general-section { margin-bottom: 16px; }
@@ -137,6 +163,12 @@
   background: transparent; border: none; cursor: pointer; padding: 2px 0;
 }
 .vurd-add:hover { text-decoration: underline; }
+
+/* Click-to-edit items in the Oversikt «Sammenlign klasser» view */
+.ov-editable { cursor: pointer; border-radius: 5px; padding: 2px 5px; margin: 1px -3px;
+  transition: background var(--transition); }
+.ov-editable:hover:not(.legacy) { background: var(--primary-light); }
+.ov-editable.legacy { cursor: default; color: var(--text-muted); }
 
 /* ── Tab panes ─────────────────────────────────────────────── */
 /* Tilpasset plan (variant) controls in the class modal + add modal */
@@ -264,7 +296,6 @@
 /* ── Responsive ────────────────────────────────────────────── */
 @media (max-width: 640px) {
   .teacher-header-row { flex-direction: column; align-items: flex-start; gap: 10px; }
-  .teacher-name-field input { width: 120px; }
   .add-modal { width: 92vw; }
 
   /* Editable board → stacked cards (labels via ::before) */

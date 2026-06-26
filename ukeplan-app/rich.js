@@ -227,6 +227,62 @@ function uiLinkDialog(opts = {}) {
   });
 }
 
+// Week picker: pick from a dropdown OR type a week number. `weeks` is an array
+// of { value, weekNo, label } (value = Monday ISO). Resolves the chosen value
+// (Monday ISO) or null.
+function uiWeekPicker(opts = {}) {
+  const weeks = opts.weeks || [];
+  const current = opts.current || (weeks[0] && weeks[0].value) || '';
+  return buildUiDialog({
+    title: opts.title || 'Gå til uke',
+    initialFocus: '.ui-week-num',
+    render: ctx => {
+      const numField = _uiLabelledInput('Skriv ukenummer', '', 'f.eks. 39', 'number');
+      numField.input.classList.add('ui-week-num');
+      numField.input.min = '1'; numField.input.max = '53';
+      ctx.body.appendChild(numField.field);
+
+      const selField = document.createElement('label');
+      selField.className = 'ui-dialog-field';
+      const span = document.createElement('span');
+      span.className = 'ui-dialog-label';
+      span.textContent = 'eller velg fra lista';
+      selField.appendChild(span);
+      const sel = document.createElement('select');
+      sel.className = 'ui-dialog-input ui-week-sel';
+      weeks.forEach(w => {
+        const o = document.createElement('option');
+        o.value = w.value; o.textContent = w.label;
+        if (w.value === current) o.selected = true;
+        sel.appendChild(o);
+      });
+      selField.appendChild(sel);
+      ctx.body.appendChild(selField);
+
+      // Typing a week number jumps the dropdown to the matching week.
+      numField.input.addEventListener('input', () => {
+        const n = parseInt(numField.input.value, 10);
+        const match = weeks.find(w => w.weekNo === n);
+        if (match) { sel.value = match.value; ctx.setError(''); }
+      });
+      sel.addEventListener('change', () => { numField.input.value = ''; ctx.setError(''); });
+      return { num: numField.input, sel };
+    },
+    buttons: [
+      { label: 'Avbryt', className: 'btn-ghost', value: null },
+      { label: 'Gå til uke', className: 'btn-primary', primary: true, onClick: (ctx, f) => {
+        if (f.num.value !== '') {
+          const n = parseInt(f.num.value, 10);
+          const match = weeks.find(w => w.weekNo === n);
+          if (!match) { ctx.setError('Fant ikke uke ' + f.num.value + ' i skoleåret.'); return undefined; }
+          return match.value;
+        }
+        return f.sel.value || null;
+      } },
+    ],
+  });
+}
+
 // ─── Floating toolbar ─────────────────────────────────────────
 
 let _richToolbar = null;
@@ -289,9 +345,20 @@ function positionRichToolbar(editor) {
   _activeRichField = editor;
   const bar = ensureRichToolbar();
   bar.style.display = 'flex';
-  const r = editor.getBoundingClientRect();
-  bar.style.top  = (window.scrollY + r.top - bar.offsetHeight - 6) + 'px';
-  bar.style.left = (window.scrollX + r.left) + 'px';
+  const r    = editor.getBoundingClientRect();
+  const barH = bar.offsetHeight || 36;
+  const barW = bar.offsetWidth  || 140;
+  const vw   = document.documentElement.clientWidth;
+  // Above the field by default; drop below when there isn't room near the top.
+  let top = (r.top - barH - 6 < 4) ? (window.scrollY + r.bottom + 6)
+                                   : (window.scrollY + r.top - barH - 6);
+  // Keep it inside the viewport horizontally.
+  let left = window.scrollX + r.left;
+  const maxLeft = window.scrollX + vw - barW - 6;
+  if (left > maxLeft) left = maxLeft;
+  if (left < window.scrollX + 6) left = window.scrollX + 6;
+  bar.style.top  = top + 'px';
+  bar.style.left = left + 'px';
 }
 function hideRichToolbar() { if (_richToolbar) _richToolbar.style.display = 'none'; }
 

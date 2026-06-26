@@ -37,6 +37,9 @@ const ELECTIVE_SUBJECTS = [
   'Innsats for andre','Programmering','Teknologi og design','Design og redesign',
 ];
 const SUBJECTS = [...CORE_SUBJECTS, ...ELECTIVE_SUBJECTS];
+// Alphabetical (Norwegian) order for the dropdown menus. The board rows keep the
+// curriculum order of SUBJECTS (see subjectSort).
+const SUBJECTS_SORTED = [...SUBJECTS].sort((a, b) => a.localeCompare(b, 'no'));
 
 const DAYS = ['man','tir','ons','tor','fre'];
 const DAY_LABEL = { man: 'Man', tir: 'Tir', ons: 'Ons', tor: 'Tor', fre: 'Fre' };
@@ -58,6 +61,7 @@ const VURD_TOKEN_KEY = 'up_vurd_token';
 let token         = sessionStorage.getItem(TOKEN_KEY) || null;
 let vurdToken     = sessionStorage.getItem(VURD_TOKEN_KEY) || null;
 let expiryTimer   = null;
+let expiryWarnTimer = null;  // fires ~5 min before the token dies (E1)
 let cloning       = false;   // true while a clone request is in flight (guards double-clicks)
 let editingVurd   = null; // the vurdering object being edited in the modal, or null
 let selectedClass = localStorage.getItem(CLASS_KEY) || null;
@@ -118,6 +122,32 @@ let allPlanTs    = 0;
 let ovFrom       = null;       // week range filter (progresjon)
 let ovTo         = null;
 
+let modalInitialDesc = '';     // descInput value when the modal opened (dirty check)
+
+// ─── Local settings (profile modal) ───────────────────────────
+const SETTINGS_KEY = 'up_settings';
+let settings = loadSettings();
+function loadSettings() {
+  const defaults = { confirmDelete: true, defaultSubject: '' };
+  try { return Object.assign(defaults, JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}); }
+  catch { return Object.assign({}, defaults); }
+}
+// Subject to pre-fill in the add modal: the teacher's chosen default (if valid),
+// else empty — never an arbitrary "Norsk". General types carry no subject.
+function modalDefaultSubject(type) {
+  if (GENERAL_TYPES.includes(type)) return '';
+  const ds = settings.defaultSubject;
+  return ds && SUBJECTS.includes(ds) ? ds : '';
+}
+function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
+
+// ─── Undo / redo ──────────────────────────────────────────────
+// Each entry knows how to undo and redo itself against the backend.
+// ref.id is mutable so a redo (which re-creates and gets a new id) keeps the
+// later undo pointing at the right row.
+let undoStack = [];
+let redoStack = [];
+
 // ─── Lifecycle ────────────────────────────────────────────────
 
 window.addEventListener('DOMContentLoaded', init);
@@ -135,6 +165,7 @@ function init() {
     if (base) selectedClass = base; else variantCode = null;
   }
   document.getElementById('teacherName').value = teacherName;
+  updateProfileButton();
 
   // A session that already expired (e.g. tab reopened hours later) → straight to login.
   if (token && isSessionExpired()) {
@@ -177,12 +208,20 @@ function isSessionExpired() {
 // Logs out right away if the deadline has already passed.
 function scheduleExpiry() {
   if (expiryTimer) { clearTimeout(expiryTimer); expiryTimer = null; }
+  if (expiryWarnTimer) { clearTimeout(expiryWarnTimer); expiryWarnTimer = null; }
   if (!token) return;
   let exp = Number(sessionStorage.getItem(EXPIRES_KEY)) || 0;
   if (!exp) { exp = Date.now() + TOKEN_TTL; sessionStorage.setItem(EXPIRES_KEY, String(exp)); }
   const remaining = exp - Date.now();
   if (remaining <= 0) { handleExpired(); return; }
   expiryTimer = setTimeout(handleExpired, remaining);   // 4h is well within setTimeout's range
+  // Heads-up a few minutes before logout so unsaved work can be finished.
+  const WARN_LEAD = 5 * 60 * 1000;
+  if (remaining > WARN_LEAD) {
+    expiryWarnTimer = setTimeout(() => {
+      showToast('Du blir logget ut om ca. 5 minutter. Fullfør og klikk ut av feltet du jobber i, så det blir lagret.', { duration: 9000 });
+    }, remaining - WARN_LEAD);
+  }
 }
 
 async function handleLogin(e) {
@@ -205,6 +244,7 @@ async function handleLogin(e) {
     teacherName = name;
     localStorage.setItem(TNAME_KEY, name);
     document.getElementById('teacherName').value = name;
+    updateProfileButton();
     // Best-effort: log into the vurderingskalender backend with the same
     // password so assessments can be edited here. Silent if it differs.
     vurdLogin(pw).catch(() => {});
@@ -217,13 +257,14 @@ async function handleLogin(e) {
     else showClassModal();
   } catch (err) {
     hideOverlay();
-    errEl.textContent = err.message || 'Innlogging feilet';
+    errEl.textContent = translateError(err.message) || 'Innlogging feilet';
     errEl.hidden = false;
   }
 }
 
 function handleLogout() {
   if (expiryTimer) { clearTimeout(expiryTimer); expiryTimer = null; }
+  if (expiryWarnTimer) { clearTimeout(expiryWarnTimer); expiryWarnTimer = null; }
   sessionStorage.removeItem(TOKEN_KEY);
   sessionStorage.removeItem(EXPIRES_KEY);
   sessionStorage.removeItem(VURD_TOKEN_KEY);
@@ -235,6 +276,7 @@ function handleLogout() {
 function handleExpired() {
   if (!token) return;   // already handled (timer + a racing Unauthorized)
   if (expiryTimer) { clearTimeout(expiryTimer); expiryTimer = null; }
+  if (expiryWarnTimer) { clearTimeout(expiryWarnTimer); expiryWarnTimer = null; }
   sessionStorage.removeItem(TOKEN_KEY);
   sessionStorage.removeItem(EXPIRES_KEY);
   token = null;
@@ -287,12 +329,12 @@ async function vurdLogin(password) {
 // ukeplan password differed (so the silent login failed).
 async function ensureVurdToken() {
   if (vurdToken) return true;
-  const pw = await uiPrompt('Skriv inn passordet for vurderingskalenderen for å kunne lagre vurderinger.', {
-    title: 'Passord', label: 'Passord', password: true, okText: 'Logg inn',
+  const pw = await uiPrompt('Skriv det samme passordet på nytt for å lagre vurderinger. Vurderingene ligger i vurderingskalenderen, som bruker samme passord som her.', {
+    title: 'Bekreft passord', label: 'Skriv passordet på nytt', password: true, okText: 'Bekreft',
   });
   if (!pw) return false;
   const ok = await vurdLogin(pw);
-  if (!ok) showToast('Feil passord for vurderingskalenderen.');
+  if (!ok) showToast('Passordet stemte ikke. Prøv på nytt.');
   return ok;
 }
 
@@ -309,6 +351,254 @@ async function vurdApi(action, params = {}) {
     throw new Error(data.error);
   }
   return data;
+}
+
+// ─── Undo / redo plumbing ─────────────────────────────────────
+
+function updateUndoUI() {
+  const u = document.getElementById('undoBtn'), r = document.getElementById('redoBtn');
+  if (u) u.disabled = undoStack.length === 0;
+  if (r) r.disabled = redoStack.length === 0;
+}
+function pushUndo(entry) {
+  undoStack.push(entry);
+  if (undoStack.length > 50) undoStack.shift();
+  redoStack = [];
+  updateUndoUI();
+}
+async function doUndo() {
+  const entry = undoStack.pop();
+  if (!entry) return;
+  updateUndoUI();
+  setSaving();
+  try {
+    await entry.undo();
+    redoStack.push(entry);
+    setSaved();
+    showToast('Angret: ' + entry.label, { duration: 4000, action: { label: 'Gjør om', onClick: doRedo } });
+    refreshAfterChange();
+  } catch (err) {
+    undoStack.push(entry);   // undo failed — keep it
+    setSaveError(err.message);
+  }
+  updateUndoUI();
+}
+async function doRedo() {
+  const entry = redoStack.pop();
+  if (!entry) return;
+  updateUndoUI();
+  setSaving();
+  try {
+    await entry.redo();
+    undoStack.push(entry);
+    setSaved();
+    showToast('Gjorde om: ' + entry.label, { duration: 3000 });
+    refreshAfterChange();
+  } catch (err) {
+    redoStack.push(entry);
+    setSaveError(err.message);
+  }
+  updateUndoUI();
+}
+
+// Fields needed to re-create / update a plan element.
+function elementCreateParams(el) {
+  return {
+    type: el.type, classes: el.classes, week: el.week, weekTo: el.weekTo || '',
+    day: el.day || '', subject: el.subject || '', description: el.description || '',
+    teacher: el.teacher || teacherName,
+  };
+}
+function elementUpdateFields(el) {
+  return el ? elementCreateParams(el) : null;
+}
+function findLoadedElement(id) {
+  return planData.find(p => p.id === id) || allPlanData.find(p => p.id === id) ||
+         oversiktData.find(p => p.id === id) || null;
+}
+
+// Record helpers (plan elements via api()).
+function recordCreate(params, id, label) {
+  const ref = { id };
+  pushUndo({
+    label: label || 'la til',
+    undo: () => api('delete', { id: ref.id }),
+    redo: async () => { const r = await api('create', params); ref.id = r && r.id; },
+  });
+}
+function recordCreateMany(creates, label) {
+  const refs = creates.map(c => ({ id: c.id, params: c.params }));
+  pushUndo({
+    label: label || 'la til',
+    undo: () => Promise.all(refs.map(r => api('delete', { id: r.id }))),
+    redo: () => Promise.all(refs.map(async r => { const x = await api('create', r.params); r.id = x && x.id; })),
+  });
+}
+function recordDelete(el, label) {
+  const params = elementCreateParams(el);
+  const ref = { id: el.id };
+  pushUndo({
+    label: label || 'slettet',
+    undo: async () => { const r = await api('create', params); ref.id = r && r.id; },
+    redo: () => api('delete', { id: ref.id }),
+  });
+}
+function recordUpdate(id, before, after, label) {
+  if (!before) return;
+  pushUndo({
+    label: label || 'endret',
+    undo: () => api('update', Object.assign({ id }, before)),
+    redo: () => api('update', Object.assign({ id }, after)),
+  });
+}
+
+// Record helpers (assessments via vurdApi()).
+function vurdCreateParams(v) {
+  return { date: v.date, subject: v.subject || '', classes: v.classes || '',
+           description: v.description || v.notes || '', teacher: v.teacher || '' };
+}
+function recordVurdCreate(params, id, label) {
+  const ref = { id };
+  pushUndo({
+    label: label || 'la til vurdering',
+    undo: () => vurdApi('delete', { id: ref.id }),
+    redo: async () => { const r = await vurdApi('create', params); ref.id = r && r.id; },
+  });
+}
+function recordVurdDelete(v, label) {
+  const params = vurdCreateParams(v);
+  const ref = { id: v.id };
+  pushUndo({
+    label: label || 'slettet vurdering',
+    undo: async () => { const r = await vurdApi('create', params); ref.id = r && r.id; },
+    redo: () => vurdApi('delete', { id: ref.id }),
+  });
+}
+function recordVurdUpdate(id, before, after, label) {
+  pushUndo({
+    label: label || 'endret vurdering',
+    undo: () => vurdApi('update', Object.assign({ id }, before)),
+    redo: () => vurdApi('update', Object.assign({ id }, after)),
+  });
+}
+
+// ─── Delete confirmation (A1) ─────────────────────────────────
+// Shown when a cell that HAD content is emptied. Can be turned off via the
+// "ikke spør igjen" checkbox, and back on from the profile modal.
+function confirmDeletion(message) {
+  if (settings.confirmDelete === false) return Promise.resolve(true);
+  return buildUiDialog({
+    title: 'Slette innhold?',
+    render: ctx => {
+      const p = document.createElement('p'); p.className = 'ui-dialog-message'; p.textContent = message; ctx.body.appendChild(p);
+      const lab = document.createElement('label'); lab.className = 'ui-dialog-check';
+      const cb = document.createElement('input'); cb.type = 'checkbox';
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(' Ikke spør om dette igjen'));
+      ctx.body.appendChild(lab);
+      return { cb };
+    },
+    buttons: [
+      { label: 'Avbryt', className: 'btn-ghost', value: false },
+      { label: 'Slett', className: 'btn-danger', primary: true, onClick: (ctx, f) => {
+        if (f.cb.checked) { settings.confirmDelete = false; saveSettings(); }
+        return true;
+      } },
+    ],
+  }).then(v => v === true);
+}
+// Put the previous text back into a cleared cell when a deletion is cancelled.
+function restoreRichCell(ed, ids) {
+  const html = ids.map(id => { const el = findLoadedElement(id); return el && el.description; }).filter(Boolean).join('<br>');
+  ed.innerHTML = sanitizeHtml(html);
+  ed._original = ed.innerHTML;
+}
+
+// ─── Profile / settings modal ─────────────────────────────────
+function updateProfileButton() {
+  const el = document.getElementById('profileBtnName');
+  if (el) el.textContent = teacherName || 'Lærer';
+}
+function openProfileModal() {
+  document.getElementById('teacherName').value = teacherName;
+  document.getElementById('setConfirmDelete').checked = settings.confirmDelete !== false;
+  document.getElementById('setDefaultSubject').value = SUBJECTS.includes(settings.defaultSubject) ? settings.defaultSubject : '';
+  document.getElementById('profileOverlay').classList.add('open');
+  document.getElementById('profileModal').classList.add('open');
+  document.body.classList.add('scroll-locked');
+  setTimeout(() => document.getElementById('teacherName').focus(), 60);
+}
+function closeProfileModal() {
+  document.getElementById('profileOverlay').classList.remove('open');
+  document.getElementById('profileModal').classList.remove('open');
+  document.body.classList.remove('scroll-locked');
+}
+
+// ─── Vurdering date rules (B2) ────────────────────────────────
+// Assessments may be placed on any school day, but NOT on weekends or on
+// school-free / planning days from the school calendar.
+function getSchoolYearBounds(today) {
+  const y = today.getFullYear(), m = today.getMonth(), d = today.getDate();
+  const pastJun21 = m > 5 || (m === 5 && d > 21);
+  if (pastJun21) return { start: `${y}-08-15`, end: `${y + 1}-06-21` };
+  return { start: `${y - 1}-08-15`, end: `${y}-06-21` };
+}
+function vurdDateProblem(iso) {
+  if (!iso) return null;
+  const d = isoToDate(iso);
+  const dow = d.getDay();                 // 0 = Sun, 6 = Sat
+  if (dow === 0 || dow === 6) return 'Datoen er i helgen';
+  const sch = schoolDays[iso];
+  if (sch && (sch.type === 'off' || sch.type === 'planning')) {
+    return 'Skoleruta: ' + (sch.summaries && sch.summaries.length ? sch.summaries.join(', ') : 'fri/planleggingsdag');
+  }
+  return null;
+}
+// The contextual default date for a NEW vurdering: today only when it actually
+// falls inside the week the modal was opened for (modalWeekFrom) — otherwise the
+// Monday of that week, so adding from a board you're viewing never silently
+// lands on today in a different week.
+function contextualVurdDate() {
+  const monday   = modalWeekFrom || weekMonday;
+  const startISO = toISODate(monday);
+  const endISO   = toISODate(addDays(monday, 6));
+  const todayISO = toISODate(new Date());
+  return (todayISO >= startISO && todayISO <= endISO) ? todayISO : startISO;
+}
+
+// Echo the chosen date in plain language + warn on weekend / school-free days
+// and when the date lands in a different week than the one being viewed.
+function updateDateInfo() {
+  const echo = document.getElementById('dateEcho');
+  const warn = document.getElementById('dateWarn');
+  if (modalType !== 'vurdering') {
+    if (echo) echo.hidden = true;
+    if (warn) warn.hidden = true;
+    return;
+  }
+  const iso = document.getElementById('dateInput').value;
+
+  if (echo) {
+    if (iso) {
+      const d = isoToDate(iso);
+      echo.textContent = 'Vurdering legges på: ' +
+        capitalizeFirst(d.toLocaleDateString('no', { weekday: 'long', day: 'numeric', month: 'long' })) +
+        ' (uke ' + getWeekNumber(d) + ')';
+      echo.hidden = false;
+    } else echo.hidden = true;
+  }
+
+  if (warn) {
+    const problem = vurdDateProblem(iso);
+    if (problem) {
+      warn.textContent = '⚠ ' + problem + '. Velg en vanlig skoledag.';
+      warn.hidden = false;
+    } else if (iso && modalWeekFrom && dateToWeek(isoToDate(iso)) !== dateToWeek(modalWeekFrom)) {
+      warn.textContent = '⚠ Denne havner i uke ' + getWeekNumber(isoToDate(iso)) +
+        ' – du ser på uke ' + getWeekNumber(modalWeekFrom) + '.';
+      warn.hidden = false;
+    } else warn.hidden = true;
+  }
 }
 
 // ─── Data loading ─────────────────────────────────────────────
@@ -360,6 +650,28 @@ function jumpToThisWeek() {
   if (!selectedClass) return;
   if (teacherTab === 'oversikt') refreshOversikt(); else loadData();
 }
+
+// All weeks of the school year containing the viewed week (for the week picker).
+function schoolYearWeeks() {
+  const b = getSchoolYearBounds(weekMonday);
+  const out = [];
+  let m = mondayOf(isoToDate(b.start));
+  const end = mondayOf(isoToDate(b.end));
+  let guard = 0;
+  while (m <= end && guard++ < 60) {
+    out.push({ value: toISODate(m), weekNo: getWeekNumber(m), label: 'Uke ' + getWeekNumber(m) + ' · ' + formatWeekRange(m, addDays(m, 4)) });
+    m = addDays(m, 7);
+  }
+  return out;
+}
+async function openWeekPicker() {
+  const chosen = await uiWeekPicker({ weeks: schoolYearWeeks(), current: toISODate(weekMonday) });
+  if (!chosen) return;
+  weekMonday = mondayOf(isoToDate(chosen));
+  updateWeekLabel();
+  if (!selectedClass) return;
+  if (teacherTab === 'oversikt') refreshOversikt(); else loadData();
+}
 function updateWeekLabel() {
   const friday = addDays(weekMonday, 4);
   document.getElementById('weekLabel').textContent = 'Uke ' + getWeekNumber(weekMonday);
@@ -372,6 +684,7 @@ function setupDashboardListeners() {
   document.getElementById('prevWeekBtn').addEventListener('click', () => changeWeek(-1));
   document.getElementById('nextWeekBtn').addEventListener('click', () => changeWeek(1));
   document.getElementById('jumpTodayBtn').addEventListener('click', jumpToThisWeek);
+  document.getElementById('weekJumpBtn').addEventListener('click', openWeekPicker);
   document.getElementById('refreshBtn').addEventListener('click', () => loadData({ background: true }));
   document.getElementById('classBtn').addEventListener('click', showClassModal);
   document.getElementById('classModalClose').addEventListener('click', closeClassModal);
@@ -402,7 +715,7 @@ function setupDashboardListeners() {
   buildVurdClassBtns();
 
   const subjSel = document.getElementById('oversiktSubject');
-  SUBJECTS.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; subjSel.appendChild(o); });
+  SUBJECTS_SORTED.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; subjSel.appendChild(o); });
   subjSel.addEventListener('change', () => { ovFrom = null; ovTo = null; renderOversiktActive(); });
   document.getElementById('oversiktGrade').addEventListener('change', renderOversikt);
 
@@ -420,7 +733,38 @@ function setupDashboardListeners() {
   nameInput.addEventListener('input', () => {
     teacherName = nameInput.value.trim();
     localStorage.setItem(TNAME_KEY, teacherName);
+    updateProfileButton();
   });
+
+  // Profile / settings modal
+  document.getElementById('profileBtn').addEventListener('click', openProfileModal);
+  document.getElementById('profileClose').addEventListener('click', closeProfileModal);
+  document.getElementById('profileOverlay').addEventListener('click', closeProfileModal);
+  document.getElementById('profileDone').addEventListener('click', closeProfileModal);
+  document.getElementById('setConfirmDelete').addEventListener('change', e => {
+    settings.confirmDelete = e.target.checked;
+    saveSettings();
+  });
+  const dsSel = document.getElementById('setDefaultSubject');
+  const noneOpt = document.createElement('option');
+  noneOpt.value = ''; noneOpt.textContent = '(velg hver gang)';
+  dsSel.appendChild(noneOpt);
+  SUBJECTS_SORTED.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; dsSel.appendChild(o); });
+  dsSel.addEventListener('change', e => { settings.defaultSubject = e.target.value; saveSettings(); });
+
+  // Undo / redo (buttons + keyboard). Native Ctrl+Z is left to text fields.
+  document.getElementById('undoBtn').addEventListener('click', doUndo);
+  document.getElementById('redoBtn').addEventListener('click', doRedo);
+  document.addEventListener('keydown', e => {
+    if (!token) return;
+    const t = e.target;
+    if (t && (t.isContentEditable || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+    if (!(e.ctrlKey || e.metaKey)) return;
+    const k = e.key.toLowerCase();
+    if (k === 'z' && !e.shiftKey)      { e.preventDefault(); doUndo(); }
+    else if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); doRedo(); }
+  });
+  updateUndoUI();
 }
 
 // ─── Class selection ──────────────────────────────────────────
@@ -683,7 +1027,10 @@ function buildElementChip(el) {
 // homework. Each row maps to one element.
 const DAY_OPTIONS = [['', '—'], ['man', 'Man'], ['tir', 'Tir'], ['ons', 'Ons'], ['tor', 'Tor'], ['fre', 'Fre']];
 
-function buildHomeworkEditCell(subject, elements) {
+// opts.cls / opts.week bind the cell to a specific class + ISO week (used by the
+// Progresjon view, where each row is one week); the board passes neither and
+// falls back to the current class (planKey) and viewed week.
+function buildHomeworkEditCell(subject, elements, opts = {}) {
   const td = document.createElement('td');
   td.className = 'cell-edit cell-homework-edit';
   // Simple lekser (single week, ≤1 day) edit inline; multi-week/multi-day → chips.
@@ -692,14 +1039,14 @@ function buildHomeworkEditCell(subject, elements) {
   const list = document.createElement('div');
   list.className = 'hw-edit-list';
   td.appendChild(list);
-  simple.forEach(el => list.appendChild(buildHomeworkRow(subject, el)));
+  simple.forEach(el => list.appendChild(buildHomeworkRow(subject, el, opts)));
 
   const add = document.createElement('button');
   add.type = 'button';
   add.className = 'hw-edit-add';
   add.textContent = '+ lekse';
   add.addEventListener('click', () => {
-    const row = buildHomeworkRow(subject, null);
+    const row = buildHomeworkRow(subject, null, opts);
     list.appendChild(row);
     const f = row.querySelector('.rich-field'); if (f) f.focus();
   });
@@ -708,7 +1055,7 @@ function buildHomeworkEditCell(subject, elements) {
   return td;
 }
 
-function buildHomeworkRow(subject, el) {
+function buildHomeworkRow(subject, el, opts = {}) {
   const row = document.createElement('div');
   row.className = 'hw-edit-row';
 
@@ -725,6 +1072,8 @@ function buildHomeworkRow(subject, el) {
   });
   ed.dataset.id      = (el && el.id) || '';
   ed.dataset.subject = subject;
+  if (opts.cls)  ed.dataset.cls  = opts.cls;
+  if (opts.week) ed.dataset.week = opts.week;
 
   daySel.addEventListener('change', () => commitHomeworkRow(row));
 
@@ -755,7 +1104,9 @@ async function commitHomeworkRow(row) {
   const id      = ed.dataset.id;
   const day     = daySel.value;
   const subject = ed.dataset.subject;
-  const week    = dateToWeek(weekMonday);
+  // Progresjon rows bind class + week; the board falls back to current context.
+  const week    = ed.dataset.week || dateToWeek(weekMonday);
+  const classes = ed.dataset.cls  || planKey();
 
   const rerunIfPending = () => {
     ed._busy = false;
@@ -764,9 +1115,20 @@ async function commitHomeworkRow(row) {
 
   if (!val) {
     if (id) {
+      if (!await confirmDeletion('Du er i ferd med å slette denne leksa.')) {
+        const el = findLoadedElement(id);
+        ed.innerHTML = sanitizeHtml((el && el.description) || '');
+        ed._original = ed.innerHTML;
+        return;
+      }
       ed._busy = true; setSaving();
-      try { await api('delete', { id }); ed.dataset.id = ''; ed._original = ''; setSaved(); }
-      catch (err) { setSaveError(err.message); }
+      try {
+        const el = findLoadedElement(id);
+        await api('delete', { id });
+        if (el) recordDelete(el, 'lekse');
+        ed.dataset.id = ''; ed._original = ''; ed.classList.remove('unsaved'); setSaved();
+      }
+      catch (err) { ed.classList.add('unsaved'); setSaveError(err.message); }
       finally { rerunIfPending(); }
     }
     return;
@@ -775,15 +1137,23 @@ async function commitHomeworkRow(row) {
   ed._busy = true; setSaving();
   try {
     if (id) {
-      await api('update', { id, type: 'lekse', classes: planKey(), week, day, subject, description: val, teacher: teacherName });
+      const el = findLoadedElement(id);
+      const before = elementUpdateFields(el);
+      await api('update', { id, type: 'lekse', classes, week, day, subject, description: val, teacher: teacherName });
+      recordUpdate(id, before, { type: 'lekse', classes, week, weekTo: '', day, subject, description: val, teacher: teacherName }, 'lekse');
+      if (el) { el.description = val; el.day = day; }
     } else {
-      const created = await api('create', { type: 'lekse', classes: planKey(), week, day, subject, description: val, teacher: teacherName });
+      const params = { type: 'lekse', classes, week, day, subject, description: val, teacher: teacherName };
+      const created = await api('create', params);
       ed.dataset.id = created && created.id ? created.id : '';
+      if (created && created.id) recordCreate(params, created.id, 'lekse');
     }
     ed._original = sanitizeHtml(ed.innerHTML);
     allPlanTs = 0;
+    ed.classList.remove('unsaved');
     setSaved();
   } catch (err) {
+    ed.classList.add('unsaved');
     setSaveError(err.message);
   } finally {
     rerunIfPending();
@@ -794,14 +1164,17 @@ async function deleteHomeworkRow(row) {
   const ed = row.querySelector('.rich-field');
   const id = ed && ed.dataset.id;
   if (id) {
+    if (!await confirmDeletion('Slette denne leksa?')) return;
     setSaving();
-    try { await api('delete', { id }); setSaved(); }
+    try { const el = findLoadedElement(id); await api('delete', { id }); if (el) recordDelete(el, 'lekse'); setSaved(); }
     catch (err) { setSaveError(err.message); return; }
   }
   row.remove();
 }
 
-function buildVurdCell(subject, vurd) {
+// opts.cls / opts.weekFrom target a specific class + week when adding (used by
+// Progresjon); the board passes neither and adds for the viewed class+week.
+function buildVurdCell(subject, vurd, opts = {}) {
   const td = document.createElement('td');
   td.className = 'cell-vurd';
   vurd.forEach(v => {
@@ -823,7 +1196,13 @@ function buildVurdCell(subject, vurd) {
   add.type = 'button';
   add.className = 'vurd-add';
   add.textContent = vurd.length ? '+ vurdering' : '+ legg til';
-  add.addEventListener('click', () => openVurdAdd(subject));
+  add.addEventListener('click', () => {
+    if (opts.cls || opts.weekFrom) {
+      openAddModal({ type: 'vurdering', subject, classes: opts.cls ? [opts.cls] : undefined, weekFrom: opts.weekFrom });
+    } else {
+      openVurdAdd(subject);
+    }
+  });
   td.appendChild(add);
   return td;
 }
@@ -833,35 +1212,49 @@ function buildVurdCell(subject, vurd) {
 // A commit arriving mid-save is remembered and re-run once the first finishes.
 async function commitRichCell(ed, html) {
   if (ed._busy) { ed._pendingHtml = html; return; }
-  ed._busy = true;
   const ids     = JSON.parse(ed.dataset.ids || '[]');
   const subject = ed.dataset.subject;
   const type    = ed.dataset.type;
   const week    = dateToWeek(weekMonday);
   const val     = html.trim();
 
+  // Emptying a cell that had content = deletion. Confirm, and put the text back
+  // if the teacher backs out.
+  if (!val && ids.length) {
+    if (!await confirmDeletion('Du er i ferd med å slette alt innholdet i denne cellen.')) {
+      restoreRichCell(ed, ids);
+      return;
+    }
+  }
+
+  ed._busy = true;
   setSaving();
   try {
     if (!val) {
-      for (const id of ids) await api('delete', { id });
+      for (const id of ids) { const el = findLoadedElement(id); await api('delete', { id }); if (el) recordDelete(el, 'sletting'); }
       ed.dataset.ids = '[]';
     } else if (ids.length) {
+      const el = findLoadedElement(ids[0]);
+      const before = elementUpdateFields(el);
       await api('update', {
         id: ids[0], type, classes: planKey(), week,
         day: '', subject, description: val, teacher: teacherName,
       });
+      recordUpdate(ids[0], before, { type, classes: planKey(), week, weekTo: '', day: '', subject, description: val, teacher: teacherName }, 'endring');
+      if (el) el.description = val;
       for (const extra of ids.slice(1)) await api('delete', { id: extra });
       ed.dataset.ids = JSON.stringify([ids[0]]);
     } else {
-      const created = await api('create', {
-        type, classes: planKey(), week,
-        day: '', subject, description: val, teacher: teacherName,
-      });
+      const params = { type, classes: planKey(), week, day: '', subject, description: val, teacher: teacherName };
+      const created = await api('create', params);
       ed.dataset.ids = JSON.stringify(created && created.id ? [created.id] : []);
+      if (created && created.id) recordCreate(params, created.id, 'tekst');
     }
     allPlanTs = 0;
+    ed.classList.remove('unsaved');
     setSaved();
   } catch (err) {
+    ed.classList.add('unsaved');
     setSaveError(err.message);
   } finally {
     ed._busy = false;
@@ -876,9 +1269,9 @@ async function commitRichCell(ed, html) {
 // ─── Add modal ────────────────────────────────────────────────
 
 function setupModalListeners() {
-  document.getElementById('addModalClose').addEventListener('click', closeAddModal);
-  document.getElementById('addCancel').addEventListener('click', closeAddModal);
-  document.getElementById('modalOverlay').addEventListener('click', closeAddModal);
+  document.getElementById('addModalClose').addEventListener('click', () => closeAddModal());
+  document.getElementById('addCancel').addEventListener('click', () => closeAddModal());
+  document.getElementById('modalOverlay').addEventListener('click', () => closeAddModal({ viaOverlay: true }));
   document.getElementById('addSave').addEventListener('click', saveFromModal);
   document.getElementById('addDelete').addEventListener('click', deleteFromModal);
   document.getElementById('weekFrom').addEventListener('change', e => {
@@ -892,12 +1285,12 @@ function setupModalListeners() {
     if (modalWeekTo < modalWeekFrom) { modalWeekFrom = modalWeekTo; buildModalWeekOptions(); }
     refreshConflicts();
   });
-  document.getElementById('dateInput').addEventListener('change', refreshConflicts);
+  document.getElementById('dateInput').addEventListener('change', () => { updateDateInfo(); refreshConflicts(); });
 
   // Subject select options ("(uten fag)" allowed for general types)
   const sel = document.getElementById('subjectSelect');
   const none = document.createElement('option'); none.value = ''; none.textContent = '(uten fag)'; sel.appendChild(none);
-  SUBJECTS.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; sel.appendChild(o); });
+  SUBJECTS_SORTED.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; sel.appendChild(o); });
 
   // Type buttons
   const typeWrap = document.getElementById('typeBtns');
@@ -946,8 +1339,9 @@ function openAddModal(preset = {}) {
   modalWeekFrom  = preset.weekFrom || weekMonday;
   modalWeekTo    = preset.weekTo || modalWeekFrom;
   document.getElementById('descInput').value = '';
+  modalInitialDesc = '';
   document.getElementById('vurdTeacherInput').value = preset.teacher || teacherName;
-  document.getElementById('subjectSelect').value = preset.subject || (SUBJECT_TYPES.includes(modalType) ? SUBJECTS[0] : '');
+  document.getElementById('subjectSelect').value = preset.subject || modalDefaultSubject(modalType);
   buildModalWeekOptions();
   setDateInputBounds(preset.date);
   document.getElementById('addModalTitle').textContent = 'Legg til element';
@@ -972,6 +1366,7 @@ function openElementEdit(el) {
   modalWeekFrom  = weekStringToMonday(el.week);
   modalWeekTo    = weekStringToMonday(el.weekTo || el.week);
   document.getElementById('descInput').value = el.description || '';
+  modalInitialDesc = el.description || '';
   document.getElementById('vurdTeacherInput').value = el.teacher || teacherName;
   document.getElementById('subjectSelect').value = SUBJECTS.includes(el.subject) ? el.subject : '';
   buildModalWeekOptions();
@@ -1002,8 +1397,9 @@ function openVurdEdit(v) {
   modalWeekFrom = v.date ? mondayOf(isoToDate(v.date)) : weekMonday;
   modalWeekTo   = modalWeekFrom;
   document.getElementById('descInput').value = v.description || v.notes || '';
+  modalInitialDesc = v.description || v.notes || '';
   document.getElementById('vurdTeacherInput').value = v.teacher || teacherName;
-  document.getElementById('subjectSelect').value = SUBJECTS.includes(v.subject) ? v.subject : SUBJECTS[0];
+  document.getElementById('subjectSelect').value = SUBJECTS.includes(v.subject) ? v.subject : modalDefaultSubject('vurdering');
   buildModalWeekOptions();
   setDateInputBounds(v.date);
   document.getElementById('dateInput').value = v.date || '';
@@ -1023,19 +1419,27 @@ function showModal() {
   setTimeout(() => document.getElementById('descInput').focus(), 60);
 }
 
-// Constrain the date picker (vurdering) to the modal's start week.
+// Date picker (vurdering): free choice within the school year. Weekends and
+// school-free / planning days are blocked at validation time (vurdDateProblem),
+// since <input type=date> can't disable individual dates.
 function setDateInputBounds(preferred) {
   const input = document.getElementById('dateInput');
-  const monday = modalWeekFrom || weekMonday;
-  const sunday = addDays(monday, 6);
-  input.min = toISODate(monday);
-  input.max = toISODate(sunday);
-  if (preferred) { input.value = preferred; return; }
-  const todayISO = toISODate(new Date());
-  input.value = (todayISO >= input.min && todayISO <= input.max) ? todayISO : input.min;
+  const b = getSchoolYearBounds(new Date());
+  input.min = b.start;
+  input.max = b.end;
+  if (preferred) { input.value = preferred; updateDateInfo(); return; }
+  // New vurdering: default to the viewed week's context, clamped to the year.
+  let v = contextualVurdDate();
+  if (v < b.start) v = b.start;
+  if (v > b.end)   v = b.end;
+  input.value = v;
+  updateDateInfo();
 }
 
-// Populate the from/til week dropdowns centred on the modal's start week.
+// Populate the from/til week dropdowns centred on the modal's start week. The
+// forward range reaches the END of the school year containing the centre week,
+// so a teacher planning on the August planning days (uke 32/33) can set lekser
+// all the way to June of the coming school year — with a sensible minimum.
 function buildModalWeekOptions() {
   const fromSel = document.getElementById('weekFrom');
   const toSel   = document.getElementById('weekTo');
@@ -1044,7 +1448,10 @@ function buildModalWeekOptions() {
   const toISO   = toISODate(modalWeekTo || center);
   fromSel.innerHTML = '';
   toSel.innerHTML = '';
-  for (let off = -4; off <= 40; off++) {
+  const endMonday  = mondayOf(isoToDate(getSchoolYearBounds(center).end));
+  const weeksToEnd = Math.round((endMonday - mondayOf(center)) / (7 * 86400000));
+  const maxOff     = Math.max(44, weeksToEnd + 1);
+  for (let off = -4; off <= maxOff; off++) {
     const m = addDays(center, off * 7);
     const label = 'Uke ' + getWeekNumber(m) + ' · ' + formatWeekRange(m, addDays(m, 4));
     const o1 = document.createElement('option'); o1.value = toISODate(m); o1.textContent = label; if (o1.value === fromISO) o1.selected = true; fromSel.appendChild(o1);
@@ -1052,7 +1459,20 @@ function buildModalWeekOptions() {
   }
 }
 
-function closeAddModal() {
+function closeAddModal(opts = {}) {
+  // Guard accidental backdrop clicks when there's unsaved text (A3).
+  if (opts.viaOverlay) {
+    const cur = document.getElementById('descInput').value.trim();
+    if (cur && cur !== modalInitialDesc.trim()) {
+      uiConfirm('Du har ikke lagret. Lukke og forkaste det du har skrevet?', {
+        title: 'Forkaste endringer?', okText: 'Forkast', danger: true,
+      }).then(ok => { if (ok) reallyCloseAddModal(); });
+      return;
+    }
+  }
+  reallyCloseAddModal();
+}
+function reallyCloseAddModal() {
   document.getElementById('modalOverlay').classList.remove('open');
   document.getElementById('addModal').classList.remove('open');
   document.body.classList.remove('scroll-locked');
@@ -1069,7 +1489,7 @@ function selectModalType(t) {
   document.getElementById('dayRow').style.display        = hasDay ? '' : 'none';
   if (!hasDay) { modalDays = []; syncDayBtns(); }
   const subjSel = document.getElementById('subjectSelect');
-  if (SUBJECT_TYPES.includes(t) && !subjSel.value) subjSel.value = SUBJECTS[0];
+  if (!subjSel.value) subjSel.value = modalDefaultSubject(t);
 
   // Adapted plan: plan elements target the code (hide the class picker, show a
   // note); vurdering keeps the normal class picker (assessments are class-wide).
@@ -1085,7 +1505,12 @@ function selectModalType(t) {
     modalClasses = variantPlan ? [variantCode] : [selectedClass];
     buildModalClassBtns();
   }
+  // Editing an existing plan element: lock the class so a stray click can't put
+  // two classes on one row (the other classes have their own separate rows) (B5).
+  const editNote = document.getElementById('editClassNote');
+  if (editNote) editNote.hidden = !(editingElement && !variantPlan);
   refreshConflicts();
+  updateDateInfo();
 }
 
 function buildModalClassBtns() {
@@ -1104,12 +1529,18 @@ function buildModalClassBtns() {
       btn.className = 'class-modal-btn';
       btn.textContent = cls;
       if (modalClasses.includes(cls)) btn.classList.add('active');
-      btn.addEventListener('click', () => {
-        if (modalClasses.includes(cls)) modalClasses = modalClasses.filter(c => c !== cls);
-        else modalClasses.push(cls);
-        btn.classList.toggle('active');
-        refreshConflicts();
-      });
+      // Lock class selection when editing an existing plan element (B5).
+      if (editingElement) {
+        btn.disabled = true;
+        btn.classList.add('locked');
+      } else {
+        btn.addEventListener('click', () => {
+          if (modalClasses.includes(cls)) modalClasses = modalClasses.filter(c => c !== cls);
+          else modalClasses.push(cls);
+          btn.classList.toggle('active');
+          refreshConflicts();
+        });
+      }
       wrap.appendChild(btn);
     });
     grid.appendChild(wrap);
@@ -1145,16 +1576,18 @@ async function saveFromModal() {
     setSaving();
     try {
       if (editingElement) {
-        await api('update', {
-          id: editingElement.id, type: modalType, classes: modalClasses.join(' '),
-          week: weekFrom, weekTo, day, subject, description: desc, teacher,
-        });
+        const before = elementUpdateFields(editingElement);
+        const after  = { type: modalType, classes: modalClasses.join(' '), week: weekFrom, weekTo, day, subject, description: desc, teacher };
+        await api('update', Object.assign({ id: editingElement.id }, after));
+        recordUpdate(editingElement.id, before, after, 'endring');
       } else {
+        const creates = [];
         for (const cls of modalClasses) {
-          await api('create', {
-            type: modalType, classes: cls, week: weekFrom, weekTo, day, subject, description: desc, teacher,
-          });
+          const params = { type: modalType, classes: cls, week: weekFrom, weekTo, day, subject, description: desc, teacher };
+          const r = await api('create', params);
+          creates.push({ params, id: r && r.id });
         }
+        recordCreateMany(creates, 'la til ' + (TYPE_LABEL[modalType] || 'element'));
       }
       setSaved();
       closeAddModal();
@@ -1191,6 +1624,9 @@ function endModalSaving() {
 async function saveVurderingFromModal(desc) {
   const date = document.getElementById('dateInput').value;
   if (!date) { showToast('Velg en dato for vurderingen.'); return; }
+  // B2: no assessments on weekends or school-free / planning days.
+  const problem = vurdDateProblem(date);
+  if (problem) { showToast(problem + '. Velg en vanlig skoledag.'); return; }
   const subject = document.getElementById('subjectSelect').value;
   const classes = modalClasses.join(' ');
   const teacher = modalTeacherValue();
@@ -1198,9 +1634,14 @@ async function saveVurderingFromModal(desc) {
   setSaving();
   try {
     if (editingVurd && editingVurd.id) {
-      await vurdApi('update', { id: editingVurd.id, date, subject, classes, description: desc, teacher });
+      const before = { date: editingVurd.date, subject: editingVurd.subject || '', classes: editingVurd.classes || '', description: editingVurd.description || editingVurd.notes || '', teacher: editingVurd.teacher || '' };
+      const after  = { date, subject, classes, description: desc, teacher };
+      await vurdApi('update', Object.assign({ id: editingVurd.id }, after));
+      recordVurdUpdate(editingVurd.id, before, after, 'endret vurdering');
     } else {
-      await vurdApi('create', { date, subject, classes, description: desc, teacher });
+      const params = { date, subject, classes, description: desc, teacher };
+      const r = await vurdApi('create', params);
+      if (r && r.id) recordVurdCreate(params, r.id, 'la til vurdering');
     }
     setSaved();
     closeAddModal();
@@ -1214,14 +1655,14 @@ async function deleteFromModal() {
   if (editingVurd && editingVurd.id) {
     if (!await uiConfirm('Slette denne vurderingen?', { title: 'Slette vurdering', okText: 'Slett', danger: true })) return;
     setSaving();
-    try { await vurdApi('delete', { id: editingVurd.id }); setSaved(); closeAddModal(); loadAssessments(); }
+    try { const v = editingVurd; await vurdApi('delete', { id: v.id }); recordVurdDelete(v, 'slettet vurdering'); setSaved(); closeAddModal(); loadAssessments(); }
     catch (err) { setSaveError(err.message); }
     return;
   }
   if (editingElement && editingElement.id) {
     if (!await uiConfirm('Slette dette elementet' + (isMultiWeek(editingElement) ? ' (gjelder ' + weekRangeShort(editingElement) + ')' : '') + '?', { title: 'Slette element', okText: 'Slett', danger: true })) return;
     setSaving();
-    try { await api('delete', { id: editingElement.id }); setSaved(); closeAddModal(); refreshAfterChange(); }
+    try { const el = editingElement; await api('delete', { id: el.id }); recordDelete(el, 'slettet element'); setSaved(); closeAddModal(); refreshAfterChange(); }
     catch (err) { setSaveError(err.message); }
   }
 }
@@ -1297,7 +1738,9 @@ function setTeacherTab(tab) {
   teacherTab = tab;
   [['ukeplan', 'tTabUkeplan', 'paneUkeplan'], ['vurd', 'tTabVurd', 'paneVurd'], ['oversikt', 'tTabOversikt', 'paneOversikt']]
     .forEach(([t, btnId, paneId]) => {
-      document.getElementById(btnId).classList.toggle('active', t === tab);
+      const btn = document.getElementById(btnId);
+      btn.classList.toggle('active', t === tab);
+      btn.setAttribute('aria-selected', t === tab ? 'true' : 'false');
       document.getElementById(paneId).hidden = t !== tab;
     });
   document.getElementById('toolbar').style.display = tab === 'ukeplan' ? '' : 'none';
@@ -1858,48 +2301,56 @@ function renderOversikt() {
   const tbody = table.createTBody();
 
   classes.forEach(cls => {
-    const els   = oversiktData.filter(p => p.subject === subject && classMatches(p.classes, cls));
-    const goals = els.filter(p => p.type === 'læringsmål').map(p => p.description).filter(Boolean);
-    const resources = els.filter(p => p.type === 'ressurs').map(p => p.description).filter(Boolean);
-    const hw    = els.filter(p => p.type === 'lekse' && p.description).sort(byDay);
-    const vurd  = vurdData.filter(v => v.date && dateToWeek(isoToDate(v.date)) === week && v.subject === subject && classMatches(v.classes, cls));
+    const els     = oversiktData.filter(p => p.subject === subject && classMatches(p.classes, cls));
+    const goalEls = els.filter(p => p.type === 'læringsmål' && p.description);
+    const resEls  = els.filter(p => p.type === 'ressurs' && p.description);
+    const hwEls   = els.filter(p => p.type === 'lekse' && p.description).slice().sort(byDay);
+    const vurd    = vurdData.filter(v => v.date && dateToWeek(isoToDate(v.date)) === week && v.subject === subject && classMatches(v.classes, cls));
 
     const tr = tbody.insertRow();
     const c = tr.insertCell(); c.className = 'cell-subject'; c.textContent = cls;
 
-    const gc = tr.insertCell();
-    if (goals.length) { gc.className = 'rich-content'; gc.innerHTML = goals.map(sanitizeHtml).join('<br>'); }
-    else { gc.className = 'cell-empty'; gc.textContent = '—'; }
-
-    const rc = tr.insertCell();
-    if (resources.length) { rc.className = 'rich-content'; rc.innerHTML = resources.map(sanitizeHtml).join('<br>'); }
-    else { rc.className = 'cell-empty'; rc.textContent = '—'; }
-
-    const hc = tr.insertCell();
-    if (hw.length) {
-      hw.forEach(h => {
-        const d = document.createElement('div');
-        d.className = 'rich-content';
-        const dp = (h.day && DAY_LABEL[h.day]) ? '<strong>' + DAY_LABEL[h.day] + ':</strong> ' : '';
-        d.innerHTML = dp + sanitizeHtml(h.description || '');
-        hc.appendChild(d);
-      });
-    } else { hc.className = 'cell-empty'; hc.textContent = '—'; }
-
-    const vc = tr.insertCell();
-    vc.className = 'cell-vurd';
-    if (vurd.length) {
-      vurd.forEach(v => {
-        const vd = dayOf(isoToDate(v.date));
-        const s = document.createElement('div');
-        s.textContent = (vd && DAY_LABEL[vd] ? DAY_LABEL[vd] + ': ' : '') + (v.description || v.notes || 'Vurdering');
-        vc.appendChild(s);
-      });
-    } else { vc.classList.add('cell-empty'); vc.textContent = '—'; }
+    // Every item is click-to-edit (opens the right modal); no dead-ends.
+    tr.appendChild(buildCompareCell(goalEls, false));
+    tr.appendChild(buildCompareCell(resEls, false));
+    tr.appendChild(buildCompareCell(hwEls, true));
+    tr.appendChild(buildCompareVurdCell(vurd));
   });
 
   div.appendChild(table);
   board.appendChild(div);
+}
+
+// A read-but-editable cell for the compare view: each element opens the edit
+// modal on click. showDay prefixes the weekday for lekser.
+function buildCompareCell(elements, showDay) {
+  const td = document.createElement('td');
+  if (!elements.length) { td.className = 'cell-empty'; td.textContent = '—'; return td; }
+  elements.forEach(el => {
+    const d = document.createElement('div');
+    d.className = 'rich-content ov-editable';
+    const dp = showDay && daysLabel(el.day) ? '<strong>' + escapeHtml(daysLabel(el.day)) + ':</strong> ' : '';
+    d.innerHTML = dp + sanitizeHtml(el.description || '');
+    d.title = 'Klikk for å redigere';
+    d.addEventListener('click', () => openElementEdit(el));
+    td.appendChild(d);
+  });
+  return td;
+}
+function buildCompareVurdCell(vurd) {
+  const td = document.createElement('td');
+  td.className = 'cell-vurd';
+  if (!vurd.length) { td.classList.add('cell-empty'); td.textContent = '—'; return td; }
+  vurd.forEach(v => {
+    const vd = dayOf(isoToDate(v.date));
+    const s = document.createElement('div');
+    s.className = 'ov-editable' + (v.id ? '' : ' legacy');
+    s.textContent = (vd && DAY_LABEL[vd] ? DAY_LABEL[vd] + ': ' : '') + (v.description || v.notes || 'Vurdering');
+    if (v.id) { s.title = 'Klikk for å redigere'; s.addEventListener('click', () => openVurdEdit(v)); }
+    else { s.title = 'Fra det gamle systemet — kan ikke redigeres her'; }
+    td.appendChild(s);
+  });
+  return td;
 }
 
 // Progresjon: one class + one subject, week by week.
@@ -1939,26 +2390,42 @@ function buildProgEditCell(cls, subject, type, wk, elements) {
 
 async function commitProgCell(ed, html) {
   if (ed._busy) { ed._pendingHtml = html; return; }   // serialize — see commitRichCell
-  ed._busy = true;
   const ids = JSON.parse(ed.dataset.ids || '[]');
   const cls = ed.dataset.cls, subject = ed.dataset.subject, type = ed.dataset.type, week = ed.dataset.week;
   const val = html.trim();
+
+  if (!val && ids.length) {
+    if (!await confirmDeletion('Du er i ferd med å slette alt innholdet i denne cellen.')) {
+      restoreRichCell(ed, ids);
+      return;
+    }
+  }
+
+  ed._busy = true;
   setSaving();
   try {
     if (!val) {
-      for (const id of ids) await api('delete', { id });
+      for (const id of ids) { const el = findLoadedElement(id); await api('delete', { id }); if (el) recordDelete(el, 'sletting'); }
       ed.dataset.ids = '[]';
     } else if (ids.length) {
+      const el = findLoadedElement(ids[0]);
+      const before = elementUpdateFields(el);
       await api('update', { id: ids[0], type, classes: cls, week, day: '', subject, description: val, teacher: teacherName });
+      recordUpdate(ids[0], before, { type, classes: cls, week, weekTo: '', day: '', subject, description: val, teacher: teacherName }, 'endring');
+      if (el) el.description = val;
       for (const extra of ids.slice(1)) await api('delete', { id: extra });
       ed.dataset.ids = JSON.stringify([ids[0]]);
     } else {
-      const c = await api('create', { type, classes: cls, week, day: '', subject, description: val, teacher: teacherName });
+      const params = { type, classes: cls, week, day: '', subject, description: val, teacher: teacherName };
+      const c = await api('create', params);
       ed.dataset.ids = JSON.stringify(c && c.id ? [c.id] : []);
+      if (c && c.id) recordCreate(params, c.id, 'tekst');
     }
     allPlanTs = 0; // invalidate so a later reload picks up the change
+    ed.classList.remove('unsaved');
     setSaved();
   } catch (err) {
+    ed.classList.add('unsaved');
     setSaveError(err.message);
   } finally {
     ed._busy = false;
@@ -2025,31 +2492,11 @@ function renderOversiktProg() {
     wc.className = 'prog-week' + (wk === nowWeek ? ' is-now' : '');
     wc.innerHTML = 'Uke ' + getWeekNumber(monday) + '<span class="prog-week-range">' + formatWeekRange(monday, addDays(monday, 4)) + '</span>';
 
-    // Tema og Ressurser are editable per week (single-week inline; multi-week as chips).
+    // All four content columns are editable, bound to this row's class + week.
     tr.appendChild(buildProgEditCell(cls, subject, 'læringsmål', wk, temaEls));
     tr.appendChild(buildProgEditCell(cls, subject, 'ressurs', wk, resEls));
-
-    const hc = tr.insertCell();
-    if (hw.length) {
-      hw.forEach(h => {
-        const d = document.createElement('div');
-        d.className = 'rich-content';
-        const dp = daysLabel(h.day) ? '<strong>' + daysLabel(h.day) + ':</strong> ' : '';
-        d.innerHTML = dp + sanitizeHtml(h.description || '');
-        hc.appendChild(d);
-      });
-    } else { hc.className = 'cell-empty'; hc.textContent = '—'; }
-
-    const vc = tr.insertCell();
-    vc.className = 'cell-vurd';
-    if (wv.length) {
-      wv.forEach(v => {
-        const vd = dayOf(isoToDate(v.date));
-        const s = document.createElement('div');
-        s.textContent = (vd && DAY_LABEL[vd] ? DAY_LABEL[vd] + ': ' : '') + (v.description || v.notes || 'Vurdering');
-        vc.appendChild(s);
-      });
-    } else { vc.classList.add('cell-empty'); vc.textContent = '—'; }
+    tr.appendChild(buildHomeworkEditCell(subject, hw, { cls, week: wk }));
+    tr.appendChild(buildVurdCell(subject, wv, { cls, weekFrom: monday }));
   });
 
   wrap.appendChild(table);
@@ -2152,9 +2599,27 @@ function setSaved()   {
   el.textContent = 'Lagret ✓'; el.className = 'save-status saved';
   clearTimeout(saveTimer); saveTimer = setTimeout(() => { el.textContent = ''; }, 2500);
 }
+// Turn technical / English backend or network errors into friendly Norwegian.
+// The backend already returns Norwegian for most cases, so those pass through.
+function translateError(msg) {
+  const m = String(msg || '').trim();
+  const map = {
+    'Unauthorized': 'Du er logget ut. Logg inn på nytt.',
+    'Unknown action': 'Noe gikk galt i kontakten med serveren.',
+    'Failed to fetch': 'Ingen nettforbindelse. Sjekk at du er på nett.',
+    'NetworkError when attempting to fetch resource.': 'Ingen nettforbindelse. Sjekk at du er på nett.',
+    'Load failed': 'Ingen nettforbindelse. Sjekk at du er på nett.',
+  };
+  if (map[m]) return map[m];
+  if (!m || /^(HTTP \d|Unexpected token|JSON|TypeError|undefined|null)/i.test(m)) return 'Noe gikk galt. Prøv igjen.';
+  return m;
+}
+
 function setSaveError(msg) {
   const el = document.getElementById('saveStatus');
-  el.textContent = 'Feil: ' + (msg || 'kunne ikke lagre'); el.className = 'save-status error';
+  el.textContent = '⚠ Ikke lagret!'; el.className = 'save-status error';
+  clearTimeout(saveTimer); saveTimer = setTimeout(() => { el.textContent = ''; }, 8000);
+  showToast('Kunne ikke lagre: ' + translateError(msg) + ' Endringen er IKKE lagret.', { duration: 6000 });
 }
 
 function showOverlay() {
@@ -2185,16 +2650,29 @@ function updateStatus() {
   document.getElementById('lastUpdated').textContent = 'Sist oppdatert: ' + new Date().toLocaleString('no');
 }
 
+function hideToast() {
+  const toast = document.getElementById('toast');
+  toast.classList.remove('show');
+  setTimeout(() => { toast.hidden = true; }, 250);
+}
 function showToast(message, opts = {}) {
   const toast = document.getElementById('toast');
   toast.querySelector('.toast-msg').textContent = message;
+  const actionBtn = toast.querySelector('.toast-action');
+  if (actionBtn) {
+    if (opts.action) {
+      actionBtn.textContent = opts.action.label;
+      actionBtn.hidden = false;
+      actionBtn.onclick = () => { hideToast(); opts.action.onClick(); };
+    } else {
+      actionBtn.hidden = true;
+      actionBtn.onclick = null;
+    }
+  }
   toast.hidden = false;
   requestAnimationFrame(() => toast.classList.add('show'));
   clearTimeout(toast._timer);
-  toast._timer = setTimeout(() => {
-    toast.classList.remove('show');
-    setTimeout(() => { toast.hidden = true; }, 250);
-  }, opts.duration ?? 3000);
+  toast._timer = setTimeout(hideToast, opts.duration ?? 3000);
 }
 
 // ─── Utilities ────────────────────────────────────────────────
