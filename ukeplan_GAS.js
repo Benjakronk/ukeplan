@@ -1,9 +1,9 @@
 // =============================================================
-// UKEPLAN — Apps Script backend
+// UKEPLAN – Apps Script backend
 //
 // Backend for the NEW "Planelementer" sheet (homework, learning
 // goals, messages, etc.). Assessments ("vurderinger") are NOT
-// stored here — the frontend reads those read-only from the
+// stored here – the frontend reads those read-only from the
 // existing vurderingskalender backend and merges them in.
 //
 // Auth, token and response conventions mirror the
@@ -19,6 +19,10 @@ var SHEET_NAME = 'Planelementer';
 // Allowed element types. Kept here so the backend can reject
 // garbage, but the frontend owns the canonical list/labels.
 var TYPES = ['lekse', 'læringsmål', 'ressurs', 'beskjed', 'timeendring', 'utstyr', 'aktivitet', 'annet'];
+
+// Class-wide banner types (no required subject) – used by cloneWeek's
+// optional `general` flag. Mirrors GENERAL_TYPES in teacher.js.
+var GENERAL_TYPES = ['beskjed', 'timeendring', 'utstyr', 'aktivitet', 'annet'];
 
 // =============================================================
 // ONE-TIME SETUP
@@ -83,7 +87,7 @@ function doPost(e) {
 function handleLogin(password) {
   if (!password) return { error: 'Passord mangler' };
   var storedHash = PropertiesService.getScriptProperties().getProperty('PASSWORD_HASH');
-  if (!storedHash) return { error: 'Server ikke konfigurert — kjør setupPassword() først' };
+  if (!storedHash) return { error: 'Server ikke konfigurert – kjør setupPassword() først' };
   if (hashString(password) !== storedHash) return { error: 'Feil passord' };
 
   var token = Utilities.getUuid();
@@ -151,7 +155,7 @@ function readSheet() {
     });
 }
 
-// All plan elements (no auth) — fallback / elev-cache.
+// All plan elements (no auth) – fallback / elev-cache.
 function getPublicData() {
   return readSheet();
 }
@@ -257,18 +261,34 @@ function deleteEntry(id) {
 // "Kopier fra forrige uke" button. Vurderinger are not touched
 // (they live in the other backend).
 //
-// Optional `toClasses` re-targets the copies to another class string — used to
+// Optional `toClasses` re-targets the copies to another class string – used to
 // seed an adapted plan from its base class (class → code), where fromWeek and
 // toWeek are the same week.
+//
+// Optional scoping from the frontend's clone dialog:
+//   `subjects` – comma-separated subject names to copy (subject-cell types
+//                only; missing param = no filter, empty string = none).
+//   `general`  – '0' skips the class-wide banner types (GENERAL_TYPES).
 function cloneWeek(p) {
   if (!p.fromWeek || !p.toWeek) return { error: 'Mangler fromWeek/toWeek' };
   var retarget = p.toClasses ? String(p.toClasses).trim() : '';
   if (p.fromWeek === p.toWeek && !retarget) return { error: 'Kilde- og måluke er like' };
 
-  var selected = parseClasses(p.classes);
+  var selected    = parseClasses(p.classes);
+  var subjFilter  = (p.subjects === undefined) ? null
+                  : String(p.subjects).split(',').filter(function(s) { return s !== ''; });
+  var skipGeneral = p.general === '0';
   var source = readSheet().filter(function(entry) {
     var to = entry.weekTo || entry.week;
     if (!(entry.week <= p.fromWeek && to >= p.fromWeek)) return false;
+    // A multi-week element that already covers toWeek would show its content
+    // twice if cloned – skip it (unless re-targeting to another class/code).
+    if (!retarget && entry.week <= p.toWeek && to >= p.toWeek) return false;
+    if (GENERAL_TYPES.indexOf(entry.type) !== -1) {
+      if (skipGeneral) return false;
+    } else if (subjFilter && subjFilter.indexOf(entry.subject) === -1) {
+      return false;
+    }
     if (!selected.length) return true;
     return matchesClasses(entry, selected);
   });

@@ -1,0 +1,19 @@
+# Caddy config for ukeplan: static frontend + API reverse proxy on one origin.
+# Replace ukeplan.example.no with the real hostname (DNS A/AAAA record must
+# point at the VPS first). Caddy fetches and renews Let's Encrypt certificates
+# automatically, and serves gzip/zstd + ETags for the static files.
+#
+# Install: sudo cp Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy
+
+ukeplan.example.no {
+	encode zstd gzip
+
+	# API (the Node server listens on 127.0.0.1:3000)
+	handle /api/* {
+		reverse_proxy 127.0.0.1:3000
+	}
+
+	# Static frontend (the ukeplan-app folder, rsync'ed to /srv/ukeplan)
+	root * /srv/ukeplan
+	file_server
+}

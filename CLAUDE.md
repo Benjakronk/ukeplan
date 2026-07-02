@@ -24,7 +24,15 @@ ukeplan/                           ← parent folder (not pushed to GitHub)
   ukeplan_GAS.js                   ← Apps Script source for the NEW sheet
   reset_password.txt               ← teacher password instructions
   roadmap.md                       ← design decisions
+  audit-teacher-ui.md              ← teacher-UI audit + server-migration analysis
+  server-plan.md                   ← Hetzner VPS plan (provisioning → cutover)
   CLAUDE.md                        ← this file
+
+  ukeplan-server/                  ← Node+SQLite API (drop-in GAS replacement,
+                                     Express + better-sqlite3; see its README.
+                                     Same actions/params/responses as the GAS –
+                                     cutover = repoint SCRIPT_URL. deploy/ has
+                                     the systemd unit + Caddyfile.)
 
   ukeplan-app/                     ← GitHub Pages repo root
     index.html / script.js / styles.css      ← student weekly plan
@@ -75,6 +83,12 @@ run. Sheet columns:
   `getWeekData` returns elements where `week <= W <= weekTo` (ISO strings sort
   lexically). Adding `weekTo` was a schema change — redeploy the GAS.
 - `day` is a comma-separated list of weekday keys (e.g. `man,ons`); empty = whole week.
+- `cloneWeek` skips elements that already cover `toWeek` (a multi-week range
+  would otherwise show its content twice) unless re-targeting via `toClasses`,
+  and takes optional scoping params from the teacher UI: `subjects`
+  (comma-separated subject names; param missing = no filter) and `general`
+  (`'0'` = skip the banner types, listed in `GENERAL_TYPES` in the GAS too).
+  Changing `cloneWeek` means redeploying the GAS.
 
 Endpoints:
 
@@ -85,7 +99,7 @@ Endpoints:
 | `login` | POST | none | Password → token |
 | `all` | GET | token | All elements (teacher) |
 | `create` / `update` / `delete` | POST | token | CRUD by `id` |
-| `clone` | POST | token | Copy `fromWeek`→`toWeek` for `classes` |
+| `clone` | POST | token | Copy `fromWeek`→`toWeek` for `classes` (optional `subjects`/`general`/`toClasses`) |
 
 `isoWeekString()` (backend) and `dateToWeek()` (frontend) produce identical
 `YYYY-Www` strings — keep them in sync if either changes.
@@ -196,7 +210,37 @@ The vurderingskalender URL is `VURD_URL` in both (for the assessment merge).
   day for general), multi-class selection, description. For `vurdering` a single
   entry is created with all selected classes; for the others, one element per
   class.
-- "Kopier forrige uke" calls `clone`. Print via the browser.
+- **"Kopier forrige uke"** first fetches the previous week and opens a checkbox
+  dialog (`cloneChoiceDialog`: subjects with content, pre-checked from Mine
+  fag, plus a "Beskjeder og praktisk info" box) so one teacher's clone doesn't
+  duplicate colleagues' entries; the choices go to `clone` as
+  `subjects`/`general`. Clone and "Hent fra klassen" are undoable — the
+  returned `entries` feed `recordCreateMany`. Print via the browser.
+- **Row copy:** a ⧉ button on board subject rows with content copies that
+  row's plan elements to chosen parallel classes (`copyRowToClasses`,
+  undoable, `copyingRow` double-submit guard; hidden in variant mode).
+- **Week navigation is cache-first:** an in-memory session cache (`weekCache`,
+  `planKey|week` → data) renders visited weeks instantly and revalidates in
+  the background; `prefetchAdjacentWeeks()` warms ±1 week after each load, so
+  the blocking overlay only appears on a truly cold week. Writes go through
+  `loadData({ skipCache: true })` (`refreshAfterChange`, clones, replay);
+  inline commits keep the cache in step via `cacheCurrentWeek()` after
+  `planData` reassignments (pushes mutate the cached array in place and are
+  week-guarded so a slow save can't leak into another week's board).
+- **Assessments are cached** on the teacher page too (`up_teacher_vurd`,
+  10 min TTL — separate keys from the student cache): `loadAssessments` reads
+  the cache instead of refetching on every week change. Any `vurdApi` write
+  clears the TTL, and ↻ passes `force: true`. The re-render is skipped when
+  the fetched data is unchanged.
+- **Renders defer while editing:** all data-arrival renders go through
+  `deferIfEditing()` — if focus is in a board/oversikt field or an inline save
+  is in flight (`_busy`), the rebuild waits (500 ms retry) so typing is never
+  wiped. Inline commits patch `planData`/`allPlanData` in place so a deferred
+  render shows the committed state.
+- **Pending-write replay:** a create/update/delete that dies on an expired
+  token is stashed in `sessionStorage` (`up_pending_writes`) and replayed
+  (if < 1 h old) right after the next login, so the blur-save at the 4 h mark
+  isn't lost.
 - Teacher name remembered in `localStorage` (`up_teacher_name`).
 - **Profile / settings modal:** the header "Lærer"-feltet is now a `profile-btn`
   that opens `#profileModal` (the `teacherName` input moved inside it). Local
@@ -205,7 +249,19 @@ The vurderingskalender URL is `VURD_URL` in both (for the assessment merge).
   pre-fills the add-modal Fag field. The add modal no longer defaults to
   `SUBJECTS[0]` ("Norsk") — `modalDefaultSubject(type)` returns the teacher's
   chosen default or '' (general types never carry one), so cell types fall to the
-  required-subject check instead of silently picking Norsk.
+  required-subject check instead of silently picking Norsk. `mySubjects`
+  (default `[]` = all) holds the teacher's own subjects (chip row in the
+  profile modal): the board's **«Mine fag» filter** shows only those rows plus
+  any subject with content that week (never hides content), with a
+  "Vis alle fag" toggle (`showAllSubjects`, per page-load), and the clone
+  dialog pre-checks them. An emptied name field is never persisted (falls back
+  to the last saved name on modal close).
+- **Esc + discard guard:** ×, Avbryt, backdrop AND Esc all run the dirty check
+  in `closeAddModal()` ("Forkaste endringer?"); programmatic closes after a
+  save pass `{ force: true }`. Esc also closes the other teacher modals
+  (skipped while a `.ui-dialog` is open — those handle their own Esc).
+- The Vurderinger table's date filter defaults to today (`vfStart`) so months
+  of past assessments don't pile up on top; «Tøm alle filtre» shows everything.
 - **Delete confirmation (clear-on-empty):** emptying an inline cell that had
   content asks `confirmDeletion()` first (skippable via an "ikke spør igjen"
   checkbox that flips the `confirmDelete` setting; re-enable in the profile
@@ -213,8 +269,9 @@ The vurderingskalender URL is `VURD_URL` in both (for the assessment merge).
 - **Undo / redo:** every plan-element and vurdering mutation records an inverse
   on `undoStack`/`redoStack` (toolbar buttons + Ctrl+Z / Ctrl+Y; native Ctrl+Z is
   left to focused text fields). Each entry holds `undo`/`redo` closures that hit
-  the backend; a mutable `ref.id` keeps re-created rows reachable. `clone` is not
-  undoable. Every undo/redo runs `refreshAfterChange()` so the board rebuilds
+  the backend; a mutable `ref.id` keeps re-created rows reachable. Clones and
+  row-copies are undoable via `recordCreateMany` (from the clone response's
+  `entries`). Every undo/redo runs `refreshAfterChange()` so the board rebuilds
   from the server (stale `dataset.ids` are moot).
 - **Vurdering date rule:** assessments may be placed on any school day in the
   year (no longer locked to the open week), but `vurdDateProblem()` blocks
@@ -265,7 +322,11 @@ second factor + privacy). `planKey()` returns `variantCode || selectedClass`;
   plan elements (saves under the code) but keeps it for `vurdering` (class-wide).
   "Hent fra klassen" seeds the variant from its base class via `clone` with the
   new optional `toClasses` param (class → code, same week). Picking a normal
-  class exits variant editing.
+  class exits variant editing. While a variant is active, an amber
+  `#variantBanner` sits above the tabs (the pill text alone is easy to miss).
+  Opening an existing suffix runs `warnIfVariantEmpty` (checks `?action=all`
+  and alerts when the code has no content — likely a typo'd code that would
+  silently fork an empty plan the pupil never sees).
 
 ## Class & subject lists
 
@@ -280,6 +341,9 @@ teacher always sees all subjects.
 
 ## Notes
 
+- **No em dashes:** user-facing text (and the codebase generally) uses `–`
+  (en dash, Norwegian tankestrek), never `—` (em dash). Keep it that way in
+  new strings.
 - POST uses `application/x-www-form-urlencoded` (via `URLSearchParams`) to avoid
   a CORS preflight against Apps Script. Do not switch to JSON bodies.
 - `curl` cannot reliably test POST endpoints (Apps Script 302-redirects POSTs);

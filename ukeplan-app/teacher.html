@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Ukeplan — Lærere | Runni ungdomsskole</title>
+  <title>Ukeplan – Lærere | Runni ungdomsskole</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="teacher.css">
   <link rel="manifest" href="manifest.json">
@@ -23,7 +23,7 @@
   <!-- Login screen -->
   <div id="loginScreen" class="login-screen">
     <form id="loginForm" class="login-card" autocomplete="off">
-      <h1 class="login-title">Ukeplan — Lærere</h1>
+      <h1 class="login-title">Ukeplan – Lærere</h1>
       <p class="login-sub">Runni ungdomsskole</p>
       <label class="login-label" for="loginName">Navn</label>
       <input type="text" id="loginName" class="input login-input" autocomplete="name" required>
@@ -39,7 +39,7 @@
     <header class="site-header teacher-header">
       <div class="teacher-header-row">
         <div class="teacher-header-titles">
-          <h1 class="site-title">Ukeplan — Lærere</h1>
+          <h1 class="site-title">Ukeplan – Lærere</h1>
           <p class="site-subtitle">Runni ungdomsskole</p>
         </div>
         <div class="teacher-header-actions">
@@ -87,6 +87,8 @@
           <span id="saveStatus" class="save-status" aria-live="polite"></span>
         </div>
       </div>
+
+      <p id="variantBanner" class="variant-banner no-print" hidden></p>
 
       <div class="tabs" role="tablist" aria-label="Visning">
         <button id="tTabUkeplan" class="tab active" type="button" role="tab" aria-selected="true">Ukeplan</button>
@@ -301,6 +303,12 @@
       <label class="form-label" for="teacherName">Navnet ditt</label>
       <input type="text" id="teacherName" class="input" placeholder="Navnet ditt" autocomplete="off">
       <p class="form-hint">Brukes som standard «Lærer» på det du legger inn.</p>
+    </div>
+
+    <div class="form-row">
+      <label class="form-label">Mine fag</label>
+      <div id="setMySubjects" class="vf-chip-row"></div>
+      <p class="form-hint">Velg fagene du underviser i, så viser ukeplan-brettet bare disse (pluss fag som har innhold). Styrer også hva som er forhåndsvalgt i «Kopier forrige uke». Tomt = vis alle fag.</p>
     </div>
 
     <div class="form-row">

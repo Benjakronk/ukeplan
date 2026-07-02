@@ -58,7 +58,7 @@
 .date-warn { font-size: 13px; color: #b45309; background: #fef3c7; border: 1px solid #fcd34d;
   border-radius: 8px; padding: 6px 10px; margin-top: 6px; font-weight: 600; }
 
-/* A cell whose last save failed — flag it so the teacher notices */
+/* A cell whose last save failed – flag it so the teacher notices */
 .rich-field.unsaved, .edit-rich.unsaved { box-shadow: 0 0 0 2px var(--danger); border-radius: 6px; }
 
 /* ── General (messages) section ────────────────────────────── */
@@ -285,13 +285,35 @@
 @media print {
   .no-print, .controls, .toolbar, .tabs, .pane-head .btn, .pane-head .view-toggle,
   .vurd-filter-summary, .th-caret, .teacher-header-actions,
-  .general-del, .vurd-hint, .hw-edit-del, .hw-edit-add, .week-nav-btn, .class-pill-change { display: none !important; }
+  .general-del, .vurd-hint, .hw-edit-del, .hw-edit-add, .week-nav-btn, .class-pill-change,
+  .board-filter-note, .row-copy-btn { display: none !important; }
   body { background: #fff; }
   .page { max-width: 100%; padding: 0; }
   .board-wrap { box-shadow: none; border-color: #000; }
   .edit-textarea, .general-text { border: none !important; box-shadow: none !important; }
   .plan-table th { background: #fff; }
 }
+
+/* ── Variant banner (adapted-plan editing) ─────────────────── */
+.variant-banner {
+  margin: 10px 0 0; padding: 8px 12px;
+  background: #fef3c7; border: 1px solid #f59e0b; border-radius: var(--radius-btn);
+  color: #92400e; font-size: 13px; font-weight: 600;
+}
+
+/* ── Mine fag: board filter note ───────────────────────────── */
+.board-filter-note {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 0 0 8px; font-size: 13px; color: var(--text-muted);
+}
+
+/* ── Row copy (parallel classes) ───────────────────────────── */
+.row-copy-btn {
+  margin-left: 6px; padding: 2px 5px;
+  background: transparent; border: none; border-radius: var(--radius-btn);
+  color: var(--text-muted); font-size: 13px; cursor: pointer;
+}
+.row-copy-btn:hover { background: var(--primary-light); color: var(--primary-dark); }
 
 /* ── Responsive ────────────────────────────────────────────── */
 @media (max-width: 640px) {

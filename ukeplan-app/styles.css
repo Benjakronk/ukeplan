@@ -30,6 +30,10 @@
 /* Ensure the hidden attribute always wins over display rules (e.g. .calendar). */
 [hidden] { display: none !important; }
 
+/* Reserve the scrollbar gutter so the page doesn't shift sideways when the
+   scrollbar appears/disappears (short vs. long tabs, modals locking scroll). */
+html { scrollbar-gutter: stable; }
+
 html, body { height: 100%; }
 body {
   font-family: var(--font);
@@ -155,7 +159,7 @@ body.scroll-locked { overflow: hidden; }
   border-radius: 50%; animation: spin 0.7s linear infinite;
 }
 
-/* ── Week strip (Mon–Fri) — compact single-line cells ──────── */
+/* ── Week strip (Mon–Fri) – compact single-line cells ──────── */
 .week-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 16px; }
 .strip-day {
   position: relative;
@@ -367,6 +371,7 @@ body.scroll-locked { overflow: hidden; }
 .ui-dialog-error { font-size: 13px; color: var(--danger); margin-top: 8px; }
 .ui-dialog-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); cursor: pointer; }
 .ui-dialog-check input { width: 15px; height: 15px; }
+.ui-dialog-warn { color: #b45309; font-weight: 600; }
 .ui-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 .ui-dialog .btn-danger { background: var(--danger); color: #fff; border-color: var(--danger); }
 @media (hover: hover) { .ui-dialog .btn-danger:hover { background: #b91c1c; border-color: #b91c1c; } }

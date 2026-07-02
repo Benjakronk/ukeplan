@@ -5,7 +5,7 @@
 // NEW ukeplan backend (homework, learning goals, messages, …).
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxP4BS2wc1RWcjjqEtrSfhpydaeGgTvk5GwjCpZ342wJLQmXap7aMwmBPI2L-DCXXcH/exec';
 
-// EXISTING vurderingskalender backend — assessments are read-only
+// EXISTING vurderingskalender backend – assessments are read-only
 // here and merged into the "Vurdering" column.
 const VURD_URL = 'https://script.google.com/macros/s/AKfycbwsXqoLZW8RlIAwvGN1yQXgpLnB3aCbVtjrmt4X5v302Fpbd9XFsSiobBOOTC4z1q5n/exec';
 
@@ -14,7 +14,7 @@ const ELECTIVE_KEY   = 'up_electives';      // chosen elective subjects (array; 
 const WEEK_CACHE_KEY = 'up_weeks';          // { "8A|2026-W24": { ts, data } }
 const VURD_CACHE_KEY = 'up_vurd';
 const VURD_TS_KEY    = 'up_vurd_ts';
-const DONE_KEY       = 'up_done';            // { elementId: true } — locally checked-off homework
+const DONE_KEY       = 'up_done';            // { elementId: true } – locally checked-off homework
 const ALL_CACHE_KEY  = 'up_all';             // all plan elements (for fag-progresjon)
 const ALL_TS_KEY     = 'up_all_ts';
 const VARIANT_KEY    = 'up_variant';         // personal/adapted-plan code, e.g. "8A-K7X9M"
@@ -64,7 +64,7 @@ let weekMonday    = mondayOf(new Date());
 function planKey() { return variantCode || selectedClass; }
 
 // The stored key is "<CLASS>-<SUFFIX>", but pupils only ever enter/receive the
-// SUFFIX — the class comes from their class choice, so a code resolves only
+// SUFFIX – the class comes from their class choice, so a code resolves only
 // together with the right class (and never reveals which class it belongs to).
 function parseVariantClass(code) {
   const m = /^(\d{1,2}[A-Z])-[A-Z0-9]{3,}$/.exec(String(code || '').trim().toUpperCase());
@@ -348,7 +348,7 @@ async function loadAssessments(opts = {}) {
     localStorage.setItem(VURD_TS_KEY, String(Date.now()));
     render();
   } catch {
-    // Silent — keep whatever was cached.
+    // Silent – keep whatever was cached.
   }
 }
 
@@ -578,12 +578,12 @@ function renderFag() {
     const gc = tr.insertCell();
     gc.dataset.label = 'Tema og læringsmål';
     if (goals.length) { gc.className = 'rich-content'; gc.innerHTML = goals.map(sanitizeHtml).join('<br>'); }
-    else { gc.className = 'cell-empty'; gc.textContent = '—'; }
+    else { gc.className = 'cell-empty'; gc.textContent = '–'; }
 
     const rc = tr.insertCell();
     rc.dataset.label = 'Ressurser';
     if (resources.length) { rc.className = 'rich-content'; rc.innerHTML = resources.map(sanitizeHtml).join('<br>'); }
-    else { rc.className = 'cell-empty'; rc.textContent = '—'; }
+    else { rc.className = 'cell-empty'; rc.textContent = '–'; }
 
     const hc = tr.insertCell();
     hc.dataset.label = 'Lekser';
@@ -595,7 +595,7 @@ function renderFag() {
         d.innerHTML = dp + sanitizeHtml(h.description || '');
         hc.appendChild(d);
       });
-    } else { hc.className = 'cell-empty'; hc.textContent = '—'; }
+    } else { hc.className = 'cell-empty'; hc.textContent = '–'; }
 
     const vc = tr.insertCell();
     vc.dataset.label = 'Vurdering';
@@ -608,7 +608,7 @@ function renderFag() {
         tag.appendChild(document.createTextNode((v.day && DAY_LABEL[v.day] ? DAY_LABEL[v.day] + ': ' : '') + (v.description || v.notes || 'Vurdering')));
         vc.appendChild(tag);
       });
-    } else { vc.classList.add('cell-empty'); vc.textContent = '—'; }
+    } else { vc.classList.add('cell-empty'); vc.textContent = '–'; }
   });
 
   wrap.appendChild(table);
@@ -909,7 +909,7 @@ function buildSubjectBoard(weekVurd) {
     tr.appendChild(buildGoalsCell(data.goals.map(g => g.description), data.resources.map(r => r.description)));
     tr.appendChild(buildHomeworkCell(data.homework.slice().sort(byDay)));
 
-    // Vurderinger no longer have a column — they show as a full-width strip
+    // Vurderinger no longer have a column – they show as a full-width strip
     // under the subject's row when there's one this week.
     if (data.vurd.length) {
       tr.classList.add('has-vurd');
@@ -960,13 +960,13 @@ function buildVurdRow(vurd, colspan) {
 }
 
 // Tema og læringsmål cell: goals, then (if any) a "Ressurser" subheading with
-// the resources listed below — Ressurser no longer has its own column.
+// the resources listed below – Ressurser no longer has its own column.
 function buildGoalsCell(goals, resources) {
   goals = goals.filter(Boolean);
   resources = resources.filter(Boolean);
   const td = document.createElement('td');
   td.className = 'cell-goals';
-  if (!goals.length && !resources.length) { td.classList.add('cell-empty'); td.textContent = '—'; return td; }
+  if (!goals.length && !resources.length) { td.classList.add('cell-empty'); td.textContent = '–'; return td; }
 
   if (goals.length) appendRichItems(td, goals);
   if (resources.length) {
@@ -999,7 +999,7 @@ function buildHomeworkCell(elements) {
   const td = document.createElement('td');
   td.className = 'cell-homework';
   const items = elements.filter(e => e.description);
-  if (items.length === 0) { td.classList.add('cell-empty'); td.textContent = '—'; return td; }
+  if (items.length === 0) { td.classList.add('cell-empty'); td.textContent = '–'; return td; }
   td.appendChild(buildHomeworkList(items));
   return td;
 }
@@ -1027,7 +1027,7 @@ function buildHomeworkList(elements, prefixMode) {
     span.className = 'hw-text rich-content';
     let prefix = '';
     if (prefixMode === 'subject') {
-      // Day view: "Norsk:" — but a lekse without a day applies all week, so
+      // Day view: "Norsk:" – but a lekse without a day applies all week, so
       // mark it "Norsk ukelekse:".
       const weekly = parseDays(el.day).length === 0;
       if (el.subject)   prefix = '<strong>' + escapeHtml(el.subject) + (weekly ? ' ukelekse' : '') + ':</strong> ';

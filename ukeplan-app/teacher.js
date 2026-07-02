@@ -11,7 +11,7 @@ const CLASS_KEY   = 'up_teacher_class';
 const TNAME_KEY   = 'up_teacher_name';
 const VARIANT_KEY = 'up_teacher_variant';   // adapted-plan code being edited, e.g. "8A-K7X9M"
 
-// Must mirror the CacheService put-TTL (14400 s) in ukeplan_GAS.js — the token
+// Must mirror the CacheService put-TTL (14400 s) in ukeplan_GAS.js – the token
 // is valid for exactly this long from login and is NOT renewed on use.
 const TOKEN_TTL   = 4 * 60 * 60 * 1000;
 
@@ -58,6 +58,17 @@ const GENERAL_ICON = { beskjed: '📣', timeendring: '🕑', utstyr: '🎒', akt
 
 const VURD_TOKEN_KEY = 'up_vurd_token';
 
+// Teacher-side assessments cache. The vurderingskalender dump only changes
+// when a teacher writes, so cache it briefly instead of refetching on every
+// week change. Separate keys from the student page's 1 h cache so the TTLs
+// don't interfere. Own writes clear the TTL (see vurdApi); ↻ forces fresh.
+const VURD_CACHE_KEY = 'up_teacher_vurd';
+const VURD_TS_KEY    = 'up_teacher_vurd_ts';
+const VURD_CACHE_TTL = 10 * 60 * 1000;
+
+// Writes that failed on an expired session – replayed after re-login.
+const PENDING_WRITES_KEY = 'up_pending_writes';
+
 let token         = sessionStorage.getItem(TOKEN_KEY) || null;
 let vurdToken     = sessionStorage.getItem(VURD_TOKEN_KEY) || null;
 let expiryTimer   = null;
@@ -72,7 +83,7 @@ let variantCode   = null;   // adapted-plan code being edited, or null
 // class (selectedClass), so an adapted plan inherits its class's vurderinger.
 function planKey() { return variantCode || selectedClass; }
 
-// Stored key is "<CLASS>-<SUFFIX>", but only the SUFFIX is handed to pupils —
+// Stored key is "<CLASS>-<SUFFIX>", but only the SUFFIX is handed to pupils –
 // the class comes from their class choice, so a code resolves only with the
 // right class and never reveals which class it belongs to.
 function parseVariantClass(code) {
@@ -106,13 +117,20 @@ let modalSaving     = false; // true while a save is in flight (guards double-su
 
 let teacherTab   = 'ukeplan';  // 'ukeplan' | 'vurd' | 'oversikt'
 
+let showAllSubjects  = false;  // temporary «vis alle fag» override of Mine fag
+let copyingRow       = false;  // row-copy in flight (guards double-clicks)
+let renderDeferred   = false;  // data arrived while the teacher was typing
+let renderDeferTimer = null;
+
 // Vurderinger-tab view + filters (independent of the global class pill)
 let vurdView     = 'table';    // 'table' | 'cal'
 let vfClasses    = [];         // selected class filter (empty = all classes)
 let vfSubjects   = [];         // selected subject filter (empty = all subjects)
 let vfTeachers   = [];         // selected teacher filter (empty = all teachers)
 let vfDesc       = '';         // free-text search in the description (empty = all)
-let vfStart      = '';         // ISO date – lower date bound (empty = none)
+// Lower date bound defaults to today so months of past assessments don't pile
+// up on top of the table («Tøm alle filtre» shows everything).
+let vfStart      = toISODate(new Date());
 let vfEnd        = '';         // ISO date – upper date bound (empty = none)
 let oversiktMode = 'compare';  // 'compare' (classes, one week) | 'prog' (one class, all weeks)
 let oversiktData = [];         // all-classes plan elements for the oversikt week (compare mode)
@@ -128,18 +146,22 @@ let modalInitialDesc = '';     // descInput value when the modal opened (dirty c
 const SETTINGS_KEY = 'up_settings';
 let settings = loadSettings();
 function loadSettings() {
-  const defaults = { confirmDelete: true, defaultSubject: '' };
+  const defaults = { confirmDelete: true, defaultSubject: '', mySubjects: [] };
   try { return Object.assign(defaults, JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}); }
   catch { return Object.assign({}, defaults); }
 }
 // Subject to pre-fill in the add modal: the teacher's chosen default (if valid),
-// else empty — never an arbitrary "Norsk". General types carry no subject.
+// else empty – never an arbitrary "Norsk". General types carry no subject.
 function modalDefaultSubject(type) {
   if (GENERAL_TYPES.includes(type)) return '';
   const ds = settings.defaultSubject;
   return ds && SUBJECTS.includes(ds) ? ds : '';
 }
 function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
+// The subjects the teacher teaches (profile modal). Empty = no filtering.
+function mySubjects() {
+  return Array.isArray(settings.mySubjects) ? settings.mySubjects.filter(s => SUBJECTS.includes(s)) : [];
+}
 
 // ─── Undo / redo ──────────────────────────────────────────────
 // Each entry knows how to undo and redo itself against the backend.
@@ -255,6 +277,7 @@ async function handleLogin(e) {
     updateWeekLabel();
     if (selectedClass) loadData();
     else showClassModal();
+    replayPendingWrites();
   } catch (err) {
     hideOverlay();
     errEl.textContent = translateError(err.message) || 'Innlogging feilet';
@@ -281,7 +304,39 @@ function handleExpired() {
   sessionStorage.removeItem(EXPIRES_KEY);
   token = null;
   showLogin();
-  showToast('Økten utløp — logg inn på nytt.');
+  showToast('Økten utløp – logg inn på nytt.');
+}
+
+// ─── Pending-write replay ─────────────────────────────────────
+// A write that fails on an expired token is stashed here and replayed right
+// after the next successful login, so a blur-save at the 4 h mark isn't lost.
+function stashPendingWrite(action, params) {
+  try {
+    const arr = JSON.parse(sessionStorage.getItem(PENDING_WRITES_KEY)) || [];
+    arr.push({ ts: Date.now(), action, params });
+    sessionStorage.setItem(PENDING_WRITES_KEY, JSON.stringify(arr));
+  } catch { /* best-effort */ }
+}
+
+async function replayPendingWrites() {
+  let arr = [];
+  try { arr = JSON.parse(sessionStorage.getItem(PENDING_WRITES_KEY)) || []; } catch { arr = []; }
+  sessionStorage.removeItem(PENDING_WRITES_KEY);
+  if (!arr.length) return;
+  // Replay only recent stashes – an hours-old edit could overwrite newer work.
+  const fresh = arr.filter(w => Date.now() - w.ts < 60 * 60 * 1000);
+  let ok = 0;
+  for (const w of fresh) {
+    try { await api(w.action, w.params); ok++; } catch { /* counted as lost below */ }
+  }
+  const lost = arr.length - ok;
+  if (ok) {
+    showToast('Lagret ' + ok + ' endring(er) som ikke rakk å bli lagret før du ble logget ut.'
+      + (lost ? ' ' + lost + ' kunne ikke gjenopprettes.' : ''), { duration: 7000 });
+    loadData({ background: true, skipCache: true });
+  } else if (lost) {
+    showToast(lost + ' ulagret endring(er) kunne ikke gjenopprettes. Sjekk uka du jobbet i.', { duration: 7000 });
+  }
 }
 
 function showLogin() {
@@ -305,7 +360,12 @@ async function api(action, params = {}) {
   const res  = await fetch(SCRIPT_URL, { method: 'POST', body });
   const data = await res.json();
   if (data && data.error) {
-    if (data.error === 'Unauthorized') { handleExpired(); }
+    if (data.error === 'Unauthorized') {
+      // Don't lose the edit that hit the dead session – stash it and replay
+      // it after the next login (replayPendingWrites).
+      if (action === 'create' || action === 'update' || action === 'delete') stashPendingWrite(action, params);
+      handleExpired();
+    }
     throw new Error(data.error);
   }
   return data;
@@ -350,6 +410,9 @@ async function vurdApi(action, params = {}) {
     }
     throw new Error(data.error);
   }
+  if (action === 'create' || action === 'update' || action === 'delete') {
+    localStorage.removeItem(VURD_TS_KEY);   // own write → next loadAssessments refetches
+  }
   return data;
 }
 
@@ -378,7 +441,7 @@ async function doUndo() {
     showToast('Angret: ' + entry.label, { duration: 4000, action: { label: 'Gjør om', onClick: doRedo } });
     refreshAfterChange();
   } catch (err) {
-    undoStack.push(entry);   // undo failed — keep it
+    undoStack.push(entry);   // undo failed – keep it
     setSaveError(err.message);
   }
   updateUndoUI();
@@ -523,15 +586,41 @@ function openProfileModal() {
   document.getElementById('teacherName').value = teacherName;
   document.getElementById('setConfirmDelete').checked = settings.confirmDelete !== false;
   document.getElementById('setDefaultSubject').value = SUBJECTS.includes(settings.defaultSubject) ? settings.defaultSubject : '';
+  buildMySubjectChips();
   document.getElementById('profileOverlay').classList.add('open');
   document.getElementById('profileModal').classList.add('open');
   document.body.classList.add('scroll-locked');
   setTimeout(() => document.getElementById('teacherName').focus(), 60);
 }
 function closeProfileModal() {
+  // An emptied name field falls back to the last saved name – entries should
+  // never be saved with teacher ''.
+  document.getElementById('teacherName').value = teacherName;
   document.getElementById('profileOverlay').classList.remove('open');
   document.getElementById('profileModal').classList.remove('open');
   document.body.classList.remove('scroll-locked');
+  render();   // Mine fag may have changed
+}
+
+// «Mine fag» chips in the profile modal. Empty selection = show all subjects.
+function buildMySubjectChips() {
+  const row = document.getElementById('setMySubjects');
+  if (!row) return;
+  row.innerHTML = '';
+  const current = mySubjects();
+  SUBJECTS_SORTED.forEach(s => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'vf-chip' + (current.includes(s) ? ' active' : '');
+    btn.textContent = s;
+    btn.addEventListener('click', () => {
+      const cur = mySubjects();
+      settings.mySubjects = cur.includes(s) ? cur.filter(x => x !== s) : cur.concat(s);
+      saveSettings();
+      btn.classList.toggle('active');
+    });
+    row.appendChild(btn);
+  });
 }
 
 // ─── Vurdering date rules (B2) ────────────────────────────────
@@ -555,7 +644,7 @@ function vurdDateProblem(iso) {
   return null;
 }
 // The contextual default date for a NEW vurdering: today only when it actually
-// falls inside the week the modal was opened for (modalWeekFrom) — otherwise the
+// falls inside the week the modal was opened for (modalWeekFrom) – otherwise the
 // Monday of that week, so adding from a board you're viewing never silently
 // lands on today in a different week.
 function contextualVurdDate() {
@@ -603,36 +692,100 @@ function updateDateInfo() {
 
 // ─── Data loading ─────────────────────────────────────────────
 
-async function loadData(opts = {}) {
-  const { background = false } = opts;
-  loadAssessments();
+// Per-session week cache: planKey|week → data. Weeks already visited render
+// instantly from the cache and are silently revalidated in the background, so
+// jumping back and forth between weeks never shows the blocking overlay.
+// In-memory only – every new session (tab) starts fresh.
+const weekCache   = new Map();
+const prefetching = new Set();
+function weekCacheKey(week) { return planKey() + '|' + week; }
+// Re-point the cache at the current planData after a reassignment (deletes
+// create a new array; pushes mutate the cached one in place).
+function cacheCurrentWeek() { weekCache.set(weekCacheKey(dateToWeek(weekMonday)), planData); }
 
-  if (background) showBgLoading(); else showOverlay();
+async function loadData(opts = {}) {
+  const { background = false, force = false, skipCache = false } = opts;
+  loadAssessments({ force });
+
   const week = dateToWeek(weekMonday);
+  const key  = weekCacheKey(week);
+  const cached = (!skipCache && !force) ? weekCache.get(key) : null;
+  if (cached) {
+    planData = cached;
+    render();
+    updateStatus();
+    hideOverlay();
+    fetchWeekData(key, week, { background: true });   // silent revalidation
+    return;
+  }
+  if (background) showBgLoading(); else showOverlay();
+  await fetchWeekData(key, week, { background });
+}
+
+async function fetchWeekData(key, week, opts = {}) {
+  const { background = false } = opts;
   try {
     const url = `${SCRIPT_URL}?action=week&classes=${encodeURIComponent(planKey())}&week=${encodeURIComponent(week)}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (!Array.isArray(data)) throw new Error(data.error || 'Ugyldig svar');
-    if (selectedClass && week === dateToWeek(weekMonday)) {
+    weekCache.set(key, data);
+    // Only adopt if the teacher is still on the same class/variant + week.
+    if (selectedClass && key === weekCacheKey(dateToWeek(weekMonday))) {
       planData = data;
       render();
     }
     updateStatus();
     if (background) hideBgLoading(); else hideOverlay();
+    prefetchAdjacentWeeks();
   } catch (err) {
     if (background) hideBgLoading();
     else showOverlayError('Kunne ikke laste data. Sjekk tilkoblingen og prøv igjen.');
   }
 }
 
-async function loadAssessments() {
+// Warm the cache for the previous/next week so ◀ ▶ navigation is instant on
+// the first click too. Cheap: two small week payloads, session-deduplicated.
+function prefetchAdjacentWeeks() {
+  if (!selectedClass) return;
+  [-7, 7].forEach(off => {
+    const w   = dateToWeek(addDays(weekMonday, off));
+    const key = weekCacheKey(w);
+    if (weekCache.has(key) || prefetching.has(key)) return;
+    prefetching.add(key);
+    fetch(`${SCRIPT_URL}?action=week&classes=${encodeURIComponent(planKey())}&week=${encodeURIComponent(w)}`)
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => { if (Array.isArray(data)) weekCache.set(key, data); })
+      .catch(() => { /* prefetch is best-effort */ })
+      .finally(() => prefetching.delete(key));
+  });
+}
+
+async function loadAssessments(opts = {}) {
+  const { force = false } = opts;
+  if (!force) {
+    const ts = Number(localStorage.getItem(VURD_TS_KEY)) || 0;
+    if (Date.now() - ts < VURD_CACHE_TTL) {
+      if (!vurdData.length) {
+        try { vurdData = JSON.parse(localStorage.getItem(VURD_CACHE_KEY)) || []; } catch { vurdData = []; }
+        if (vurdData.length) render();
+      }
+      return;
+    }
+  }
   try {
     const res = await fetch(`${VURD_URL}?action=public`);
     if (!res.ok) return;
     const data = await res.json();
-    if (Array.isArray(data)) { vurdData = data; render(); }
+    if (!Array.isArray(data)) return;
+    const changed = JSON.stringify(data) !== JSON.stringify(vurdData);
+    vurdData = data;
+    try {
+      localStorage.setItem(VURD_CACHE_KEY, JSON.stringify(data));
+      localStorage.setItem(VURD_TS_KEY, String(Date.now()));
+    } catch { /* storage full – the cache is best-effort */ }
+    if (changed) render();   // skip the pointless board rebuild when unchanged
   } catch { /* silent */ }
 }
 
@@ -685,7 +838,7 @@ function setupDashboardListeners() {
   document.getElementById('nextWeekBtn').addEventListener('click', () => changeWeek(1));
   document.getElementById('jumpTodayBtn').addEventListener('click', jumpToThisWeek);
   document.getElementById('weekJumpBtn').addEventListener('click', openWeekPicker);
-  document.getElementById('refreshBtn').addEventListener('click', () => loadData({ background: true }));
+  document.getElementById('refreshBtn').addEventListener('click', () => loadData({ background: true, force: true }));
   document.getElementById('classBtn').addEventListener('click', showClassModal);
   document.getElementById('classModalClose').addEventListener('click', closeClassModal);
   document.getElementById('classModalOverlay').addEventListener('click', closeClassModal);
@@ -731,8 +884,8 @@ function setupDashboardListeners() {
 
   const nameInput = document.getElementById('teacherName');
   nameInput.addEventListener('input', () => {
-    teacherName = nameInput.value.trim();
-    localStorage.setItem(TNAME_KEY, teacherName);
+    const v = nameInput.value.trim();
+    if (v) { teacherName = v; localStorage.setItem(TNAME_KEY, v); }  // never store an empty name
     updateProfileButton();
   });
 
@@ -773,6 +926,17 @@ function updateClassLabel() {
   document.getElementById('classBtnLabel').textContent = variantCode || selectedClass || 'Velg klasse';
   const b = document.getElementById('cloneFromClassBtn');
   if (b) b.hidden = !variantCode;
+  // Persistent banner while a variant is active – the pill text alone is easy
+  // to miss, and the variant survives browser restarts via localStorage.
+  const banner = document.getElementById('variantBanner');
+  if (banner) {
+    banner.hidden = !variantCode;
+    if (variantCode) {
+      banner.textContent = '✎ Du redigerer en tilpasset plan (kode ' + variantSuffix(variantCode) +
+        ', basert på ' + (parseVariantClass(variantCode) || selectedClass) +
+        '). Planinnhold her vises bare for eleven med koden.';
+    }
+  }
 }
 
 // Activate an adapted-plan code for editing (base class derived from the code).
@@ -808,7 +972,28 @@ function openVariantFromInput() {
   if (!base || !CLASSES.includes(base)) { err.textContent = 'Velg først en vanlig klasse.'; err.hidden = false; return; }
   const suffix = document.getElementById('variantCodeInput').value.trim();
   if (!/^[A-Za-z0-9]{3,}$/.test(suffix)) { err.textContent = 'Ugyldig kode (f.eks. K7X9M).'; err.hidden = false; return; }
-  applyVariant((base + '-' + suffix).toUpperCase(), base);
+  const code = (base + '-' + suffix).toUpperCase();
+  applyVariant(code, base);
+  warnIfVariantEmpty(code);
+}
+
+// A mistyped code "works" but opens an EMPTY plan – content written there is
+// a silent fork the pupil never sees. So when an existing code is opened by
+// hand, check whether it has any content at all and warn loudly if not.
+async function warnIfVariantEmpty(code) {
+  try {
+    const res = await fetch(`${SCRIPT_URL}?action=all&token=${encodeURIComponent(token)}`);
+    const data = await res.json();
+    if (!Array.isArray(data)) return;
+    if (variantCode !== code) return;              // switched away meanwhile
+    if (data.some(p => classMatches(p.classes, code))) return;
+    uiAlert(
+      'Koden ' + variantSuffix(code) + ' har ikke noe innhold fra før (ingen uker).\n\n' +
+      'Sjekk at koden er skrevet riktig før du legger inn noe – en feilskrevet kode lager en ny, tom plan som eleven ikke ser. ' +
+      'Skal du lage en helt ny plan, bruk «Lag ny tilpasset plan».',
+      { title: 'Tom tilpasset plan' }
+    );
+  } catch { /* offline etc. – the empty board itself is the fallback hint */ }
 }
 
 function showClassModal() {
@@ -862,8 +1047,35 @@ function closeClassModal() {
 
 // ─── Rendering ────────────────────────────────────────────────
 
+// Background data can arrive while the teacher is typing in a cell; rebuilding
+// the board then would destroy the focused field and silently lose the text.
+// deferIfEditing() postpones such renders until the edit – and its in-flight
+// save – is done, then renders the fresh data.
+function editingInProgress() {
+  const a = document.activeElement;
+  if (a && (a.isContentEditable || a.tagName === 'SELECT' || a.tagName === 'TEXTAREA' || a.tagName === 'INPUT') &&
+      a.closest('#board, #generalSection, #oversiktBoard')) return true;
+  return [...document.querySelectorAll('#board .rich-field, #oversiktBoard .rich-field')].some(f => f._busy);
+}
+function deferIfEditing() {
+  if (!editingInProgress()) return false;
+  renderDeferred = true;
+  if (!renderDeferTimer) {
+    renderDeferTimer = setTimeout(() => {
+      renderDeferTimer = null;
+      if (!renderDeferred) return;
+      if (editingInProgress()) { deferIfEditing(); return; }   // still busy – keep waiting
+      renderDeferred = false;
+      render();
+    }, 500);
+  }
+  return true;
+}
+
 function render() {
   if (!selectedClass) return;
+  if (deferIfEditing()) return;
+  renderDeferred = false;
   if (teacherTab === 'ukeplan') { renderGeneral(); renderBoard(); }
   else if (teacherTab === 'vurd') renderVurd();
   else if (teacherTab === 'oversikt') renderOversiktActive();
@@ -952,6 +1164,28 @@ function renderBoard() {
   const vurdBySubject = {};
   weekVurd.forEach(v => { (vurdBySubject[v.subject || 'Annet'] = vurdBySubject[v.subject || 'Annet'] || []).push(v); });
 
+  // «Mine fag»: show only the teacher's own subjects – plus any subject that
+  // has content this week, so nothing existing is ever hidden.
+  const my = mySubjects();
+  const hasRowContent = s => SUBJECT_TYPES.some(t => (map[s + '||' + t] || []).length) || (vurdBySubject[s] || []).length > 0;
+  const rows = (my.length && !showAllSubjects) ? SUBJECTS.filter(s => my.includes(s) || hasRowContent(s)) : SUBJECTS;
+  if (my.length) {
+    const note = document.createElement('div');
+    note.className = 'board-filter-note';
+    const txt = document.createElement('span');
+    txt.textContent = showAllSubjects
+      ? 'Viser alle ' + SUBJECTS.length + ' fag.'
+      : 'Viser ' + rows.length + ' av ' + SUBJECTS.length + ' fag (dine fag' + (rows.some(s => !my.includes(s)) ? ' + fag med innhold' : '') + ').';
+    note.appendChild(txt);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'link-btn';
+    btn.textContent = showAllSubjects ? 'Vis bare mine fag' : 'Vis alle fag';
+    btn.addEventListener('click', () => { showAllSubjects = !showAllSubjects; renderBoard(); });
+    note.appendChild(btn);
+    board.appendChild(note);
+  }
+
   const wrap = document.createElement('div');
   wrap.className = 'board-wrap';
   const table = document.createElement('table');
@@ -963,11 +1197,21 @@ function renderBoard() {
   });
 
   const tbody = table.createTBody();
-  SUBJECTS.forEach(subject => {
+  rows.forEach(subject => {
     const tr = tbody.insertRow();
     const tdSubject = tr.insertCell();
     tdSubject.className = 'cell-subject';
     tdSubject.textContent = subject;
+    // Copy the row to parallel classes (not in adapted plans – codes are personal).
+    if (!variantCode && SUBJECT_TYPES.some(t => (map[subject + '||' + t] || []).length)) {
+      const cp = document.createElement('button');
+      cp.type = 'button';
+      cp.className = 'row-copy-btn';
+      cp.title = 'Kopier radens innhold til andre klasser';
+      cp.textContent = '⧉';
+      cp.addEventListener('click', () => copyRowToClasses(subject));
+      tdSubject.appendChild(cp);
+    }
 
     tr.appendChild(buildEditCell(subject, 'læringsmål', map[subject + '||læringsmål'] || []));
     tr.appendChild(buildEditCell(subject, 'ressurs', map[subject + '||ressurs'] || []));
@@ -987,7 +1231,7 @@ function buildEditCell(subject, type, elements) {
   const multi  = elements.filter(isMultiWeek);
   const ed = createRichField({
     value: single.map(e => e.description).filter(Boolean).join('<br>'),
-    placeholder: '—',
+    placeholder: '–',
     className: 'edit-rich',
     onCommit: html => commitRichCell(ed, html),
   });
@@ -1025,7 +1269,7 @@ function buildElementChip(el) {
 // Lekser cell: a list of per-item rows, each with its own day. Because the
 // board edits one class at a time, this also gives a per-class day for shared
 // homework. Each row maps to one element.
-const DAY_OPTIONS = [['', '—'], ['man', 'Man'], ['tir', 'Tir'], ['ons', 'Ons'], ['tor', 'Tor'], ['fre', 'Fre']];
+const DAY_OPTIONS = [['', '–'], ['man', 'Man'], ['tir', 'Tir'], ['ons', 'Ons'], ['tor', 'Tor'], ['fre', 'Fre']];
 
 // opts.cls / opts.week bind the cell to a specific class + ISO week (used by the
 // Progresjon view, where each row is one week); the board passes neither and
@@ -1093,7 +1337,7 @@ function buildHomeworkRow(subject, el, opts = {}) {
 // Called on field blur (text change) or day-select change. A per-field _busy
 // flag serializes saves on the same row. If a second commit arrives mid-save
 // (e.g. you type, then immediately pick a day), it's marked _pending and
-// re-run once the in-flight save finishes — by then the row has an id, so the
+// re-run once the in-flight save finishes – by then the row has an id, so the
 // day is persisted via update instead of being dropped.
 async function commitHomeworkRow(row) {
   const ed     = row.querySelector('.rich-field');
@@ -1126,6 +1370,9 @@ async function commitHomeworkRow(row) {
         const el = findLoadedElement(id);
         await api('delete', { id });
         if (el) recordDelete(el, 'lekse');
+        planData = planData.filter(p => p.id !== id);
+        allPlanData = allPlanData.filter(p => p.id !== id);
+        cacheCurrentWeek();
         ed.dataset.id = ''; ed._original = ''; ed.classList.remove('unsaved'); setSaved();
       }
       catch (err) { ed.classList.add('unsaved'); setSaveError(err.message); }
@@ -1146,7 +1393,13 @@ async function commitHomeworkRow(row) {
       const params = { type: 'lekse', classes, week, day, subject, description: val, teacher: teacherName };
       const created = await api('create', params);
       ed.dataset.id = created && created.id ? created.id : '';
-      if (created && created.id) recordCreate(params, created.id, 'lekse');
+      if (created && created.id) {
+        recordCreate(params, created.id, 'lekse');
+        // Progresjon rows draw from allPlanData; the board from planData
+        // (only while the commit's week is still the one on screen).
+        if (ed.dataset.cls) allPlanData.push(created);
+        else if (week === dateToWeek(weekMonday)) planData.push(created);
+      }
     }
     ed._original = sanitizeHtml(ed.innerHTML);
     allPlanTs = 0;
@@ -1166,7 +1419,15 @@ async function deleteHomeworkRow(row) {
   if (id) {
     if (!await confirmDeletion('Slette denne leksa?')) return;
     setSaving();
-    try { const el = findLoadedElement(id); await api('delete', { id }); if (el) recordDelete(el, 'lekse'); setSaved(); }
+    try {
+      const el = findLoadedElement(id);
+      await api('delete', { id });
+      if (el) recordDelete(el, 'lekse');
+      planData = planData.filter(p => p.id !== id);
+      allPlanData = allPlanData.filter(p => p.id !== id);
+      cacheCurrentWeek();
+      setSaved();
+    }
     catch (err) { setSaveError(err.message); return; }
   }
   row.remove();
@@ -1187,7 +1448,7 @@ function buildVurdCell(subject, vurd, opts = {}) {
       tag.title = 'Klikk for å redigere';
       tag.addEventListener('click', () => openVurdEdit(v));
     } else {
-      tag.title = 'Fra det gamle systemet — kan ikke redigeres her';
+      tag.title = 'Fra det gamle systemet – kan ikke redigeres her';
     }
     td.appendChild(tag);
   });
@@ -1232,6 +1493,8 @@ async function commitRichCell(ed, html) {
   try {
     if (!val) {
       for (const id of ids) { const el = findLoadedElement(id); await api('delete', { id }); if (el) recordDelete(el, 'sletting'); }
+      planData = planData.filter(p => !ids.includes(p.id));
+      cacheCurrentWeek();
       ed.dataset.ids = '[]';
     } else if (ids.length) {
       const el = findLoadedElement(ids[0]);
@@ -1243,12 +1506,19 @@ async function commitRichCell(ed, html) {
       recordUpdate(ids[0], before, { type, classes: planKey(), week, weekTo: '', day: '', subject, description: val, teacher: teacherName }, 'endring');
       if (el) el.description = val;
       for (const extra of ids.slice(1)) await api('delete', { id: extra });
+      planData = planData.filter(p => !ids.slice(1).includes(p.id));
+      cacheCurrentWeek();
       ed.dataset.ids = JSON.stringify([ids[0]]);
     } else {
       const params = { type, classes: planKey(), week, day: '', subject, description: val, teacher: teacherName };
       const created = await api('create', params);
       ed.dataset.ids = JSON.stringify(created && created.id ? [created.id] : []);
-      if (created && created.id) recordCreate(params, created.id, 'tekst');
+      // Keep planData in step so a deferred re-render shows the new content
+      // (only while the commit's week is still the one on screen).
+      if (created && created.id) {
+        recordCreate(params, created.id, 'tekst');
+        if (week === dateToWeek(weekMonday)) planData.push(created);
+      }
     }
     allPlanTs = 0;
     ed.classList.remove('unsaved');
@@ -1271,7 +1541,7 @@ async function commitRichCell(ed, html) {
 function setupModalListeners() {
   document.getElementById('addModalClose').addEventListener('click', () => closeAddModal());
   document.getElementById('addCancel').addEventListener('click', () => closeAddModal());
-  document.getElementById('modalOverlay').addEventListener('click', () => closeAddModal({ viaOverlay: true }));
+  document.getElementById('modalOverlay').addEventListener('click', () => closeAddModal());
   document.getElementById('addSave').addEventListener('click', saveFromModal);
   document.getElementById('addDelete').addEventListener('click', deleteFromModal);
   document.getElementById('weekFrom').addEventListener('change', e => {
@@ -1318,6 +1588,19 @@ function setupModalListeners() {
       syncDayBtns();
     });
     dayWrap.appendChild(btn);
+  });
+
+  // Esc closes whichever modal is open; the add modal goes through the same
+  // discard guard as the other close paths. In-app dialogs (.ui-dialog)
+  // handle their own Esc, so stay out of the way while one is open.
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (document.querySelector('.ui-dialog')) return;
+    const open = id => document.getElementById(id).classList.contains('open');
+    if (open('addModal')) closeAddModal();
+    else if (open('vurdFilterModal')) closeVurdFilterModal();
+    else if (open('profileModal')) closeProfileModal();
+    else if (open('classModal')) closeClassModal();
   });
 }
 
@@ -1439,7 +1722,7 @@ function setDateInputBounds(preferred) {
 // Populate the from/til week dropdowns centred on the modal's start week. The
 // forward range reaches the END of the school year containing the centre week,
 // so a teacher planning on the August planning days (uke 32/33) can set lekser
-// all the way to June of the coming school year — with a sensible minimum.
+// all the way to June of the coming school year – with a sensible minimum.
 function buildModalWeekOptions() {
   const fromSel = document.getElementById('weekFrom');
   const toSel   = document.getElementById('weekTo');
@@ -1459,9 +1742,10 @@ function buildModalWeekOptions() {
   }
 }
 
+// Every close path (×, Avbryt, backdrop, Esc) asks before discarding unsaved
+// text; programmatic closes after a successful save pass { force: true }.
 function closeAddModal(opts = {}) {
-  // Guard accidental backdrop clicks when there's unsaved text (A3).
-  if (opts.viaOverlay) {
+  if (!opts.force) {
     const cur = document.getElementById('descInput').value.trim();
     if (cur && cur !== modalInitialDesc.trim()) {
       uiConfirm('Du har ikke lagret. Lukke og forkaste det du har skrevet?', {
@@ -1590,7 +1874,7 @@ async function saveFromModal() {
         recordCreateMany(creates, 'la til ' + (TYPE_LABEL[modalType] || 'element'));
       }
       setSaved();
-      closeAddModal();
+      closeAddModal({ force: true });
       if (weekFrom !== dateToWeek(weekMonday) || weekTo !== weekFrom) {
         showToast('Lagret for uke ' + getWeekNumber(modalWeekFrom) + (weekTo !== weekFrom ? '–' + getWeekNumber(modalWeekTo) : '') + '.');
       }
@@ -1644,7 +1928,7 @@ async function saveVurderingFromModal(desc) {
       if (r && r.id) recordVurdCreate(params, r.id, 'la til vurdering');
     }
     setSaved();
-    closeAddModal();
+    closeAddModal({ force: true });
     loadAssessments();
   } catch (err) {
     setSaveError(err.message);
@@ -1655,14 +1939,14 @@ async function deleteFromModal() {
   if (editingVurd && editingVurd.id) {
     if (!await uiConfirm('Slette denne vurderingen?', { title: 'Slette vurdering', okText: 'Slett', danger: true })) return;
     setSaving();
-    try { const v = editingVurd; await vurdApi('delete', { id: v.id }); recordVurdDelete(v, 'slettet vurdering'); setSaved(); closeAddModal(); loadAssessments(); }
+    try { const v = editingVurd; await vurdApi('delete', { id: v.id }); recordVurdDelete(v, 'slettet vurdering'); setSaved(); closeAddModal({ force: true }); loadAssessments(); }
     catch (err) { setSaveError(err.message); }
     return;
   }
   if (editingElement && editingElement.id) {
     if (!await uiConfirm('Slette dette elementet' + (isMultiWeek(editingElement) ? ' (gjelder ' + weekRangeShort(editingElement) + ')' : '') + '?', { title: 'Slette element', okText: 'Slett', danger: true })) return;
     setSaving();
-    try { const el = editingElement; await api('delete', { id: el.id }); recordDelete(el, 'slettet element'); setSaved(); closeAddModal(); refreshAfterChange(); }
+    try { const el = editingElement; await api('delete', { id: el.id }); recordDelete(el, 'slettet element'); setSaved(); closeAddModal({ force: true }); refreshAfterChange(); }
     catch (err) { setSaveError(err.message); }
   }
 }
@@ -1678,6 +1962,51 @@ function setCloneButtonsDisabled(disabled) {
   });
 }
 
+// Checkbox dialog for «Kopier forrige uke»: pick which subjects come along
+// (pre-checked from Mine fag, so one teacher's clone doesn't duplicate the
+// colleagues' fresh entries) and whether beskjeder/praktisk info follow.
+function cloneChoiceDialog({ weekNo, where, subjects, hasGeneral, warnExisting }) {
+  const my = mySubjects();
+  return buildUiDialog({
+    title: 'Kopier forrige uke',
+    render: ctx => {
+      const p = document.createElement('p');
+      p.className = 'ui-dialog-message';
+      p.textContent = 'Velg hva som kopieres til uke ' + weekNo + ' for ' + where + ':';
+      ctx.body.appendChild(p);
+      const mkCheck = (labelText, checked) => {
+        const lab = document.createElement('label');
+        lab.className = 'ui-dialog-check';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = checked;
+        lab.appendChild(cb);
+        lab.appendChild(document.createTextNode(' ' + labelText));
+        ctx.body.appendChild(lab);
+        return cb;
+      };
+      const boxes = subjects.map(s => ({ subject: s, cb: mkCheck(s, !my.length || my.includes(s)) }));
+      const generalCb = hasGeneral ? mkCheck('Beskjeder og praktisk info', !my.length) : null;
+      if (warnExisting) {
+        const w = document.createElement('p');
+        w.className = 'ui-dialog-message ui-dialog-warn';
+        w.textContent = '⚠ Denne uka har allerede innhold – kopiering kan gi dobbeltoppføringer.';
+        ctx.body.appendChild(w);
+      }
+      return { boxes, generalCb };
+    },
+    buttons: [
+      { label: 'Avbryt', className: 'btn-ghost', value: null },
+      { label: 'Kopier', className: 'btn-primary', primary: true, onClick: (ctx, f) => {
+        const chosen = f.boxes.filter(b => b.cb.checked).map(b => b.subject);
+        const general = !!(f.generalCb && f.generalCb.checked);
+        if (!chosen.length && !general) { ctx.setError('Velg minst ett fag (eller beskjeder).'); return undefined; }
+        return { subjects: chosen, general };
+      } },
+    ],
+  });
+}
+
 async function cloneFromPreviousWeek() {
   if (cloning) return;
   cloning = true;
@@ -1685,23 +2014,125 @@ async function cloneFromPreviousWeek() {
   try {
     const toWeek   = dateToWeek(weekMonday);
     const fromWeek = dateToWeek(addDays(weekMonday, -7));
+
+    // Fetch last week's content so the dialog can list what's copyable.
+    showBgLoading();
+    let prev = [];
+    try {
+      const res = await fetch(`${SCRIPT_URL}?action=week&classes=${encodeURIComponent(planKey())}&week=${encodeURIComponent(fromWeek)}`);
+      const data = await res.json();
+      if (Array.isArray(data)) prev = data;
+    } catch {
+      showToast('Kunne ikke hente forrige uke. Sjekk tilkoblingen og prøv igjen.');
+      return;
+    } finally { hideBgLoading(); }
+    // Multi-week elements that already cover this week aren't cloned (the
+    // backend skips them – they'd show twice), so don't list them either.
+    prev = prev.filter(p => !(p.week <= toWeek && (p.weekTo || p.week) >= toWeek));
+
+    const subjects = [...new Set(prev.filter(p => SUBJECT_TYPES.includes(p.type) && p.subject).map(p => p.subject))]
+      .sort((a, b) => SUBJECTS.indexOf(a) - SUBJECTS.indexOf(b));
+    const hasGeneral = prev.some(p => GENERAL_TYPES.includes(p.type));
+    if (!subjects.length && !hasGeneral) { showToast('Fant ikke noe innhold i forrige uke å kopiere.'); return; }
+
     const hasContent = planData.some(p => SUBJECT_TYPES.includes(p.type) || GENERAL_TYPES.includes(p.type));
-    const where = variantCode ? 'den tilpassede planen' : selectedClass;
-    const msg = hasContent
-      ? `Denne uka (${toWeek}) har allerede innhold. Kopier fra forrige uke likevel? (Det kan gi dobbeltoppføringer.)`
-      : `Kopiere alt fra forrige uke til uke ${getWeekNumber(weekMonday)} for ${where}?`;
-    if (!await uiConfirm(msg, { title: 'Kopier forrige uke', okText: 'Kopier' })) return;
+    const choice = await cloneChoiceDialog({
+      weekNo: getWeekNumber(weekMonday),
+      where: variantCode ? 'den tilpassede planen' : selectedClass,
+      subjects, hasGeneral, warnExisting: hasContent,
+    });
+    if (!choice) return;
 
     setSaving();
-    const result = await api('clone', { fromWeek, toWeek, classes: planKey() });
+    const result = await api('clone', {
+      fromWeek, toWeek, classes: planKey(),
+      subjects: choice.subjects.join(','), general: choice.general ? '1' : '0',
+    });
     setSaved();
+    if (result.entries && result.entries.length) {
+      recordCreateMany(result.entries.map(en => ({ id: en.id, params: elementCreateParams(en) })), 'kopierte forrige uke');
+    }
     showToast(`Kopierte ${result.count || 0} element(er) fra forrige uke.`);
-    loadData({ background: true });
+    loadData({ background: true, skipCache: true });
   } catch (err) {
     setSaveError(err.message);
   } finally {
     cloning = false;
     setCloneButtonsDisabled(false);
+  }
+}
+
+// Copy one subject-row's plan elements (tema/ressurser/lekser, this week) to
+// other classes – for teachers running parallel classes. Vurderinger are
+// already multi-class in the modal and are not copied here.
+async function copyRowToClasses(subject) {
+  if (copyingRow) return;
+  const els = planData.filter(p => SUBJECT_TYPES.includes(p.type) && p.subject === subject);
+  if (!els.length) { showToast('Ingenting å kopiere i ' + subject + ' denne uka.'); return; }
+
+  let chosen = [];
+  const targets = await buildUiDialog({
+    title: 'Kopier ' + subject + ' til andre klasser',
+    render: ctx => {
+      const p = document.createElement('p');
+      p.className = 'ui-dialog-message';
+      p.textContent = 'Kopierer radens ' + els.length + ' element(er) for uke ' + getWeekNumber(weekMonday) +
+        ' fra ' + selectedClass + '. Innhold som finnes i målklassene fra før, beholdes.';
+      ctx.body.appendChild(p);
+      const grid = document.createElement('div');
+      grid.className = 'class-modal-grid';
+      CLASS_GRADES.forEach(group => {
+        const wrap = document.createElement('div');
+        wrap.className = 'class-modal-group';
+        const lbl = document.createElement('span');
+        lbl.className = 'class-grade-label';
+        lbl.textContent = group.label;
+        wrap.appendChild(lbl);
+        group.classes.forEach(cls => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'class-modal-btn';
+          btn.textContent = cls;
+          if (cls === selectedClass) { btn.disabled = true; btn.classList.add('locked'); }
+          else btn.addEventListener('click', () => {
+            chosen = chosen.includes(cls) ? chosen.filter(c => c !== cls) : chosen.concat(cls);
+            btn.classList.toggle('active');
+            ctx.setError('');
+          });
+          wrap.appendChild(btn);
+        });
+        grid.appendChild(wrap);
+      });
+      ctx.body.appendChild(grid);
+    },
+    buttons: [
+      { label: 'Avbryt', className: 'btn-ghost', value: null },
+      { label: 'Kopier', className: 'btn-primary', primary: true, onClick: ctx => {
+        if (!chosen.length) { ctx.setError('Velg minst én klasse.'); return undefined; }
+        return chosen.slice();
+      } },
+    ],
+  });
+  if (!targets || !targets.length) return;
+
+  copyingRow = true;
+  setSaving();
+  try {
+    const creates = [];
+    for (const cls of targets) {
+      for (const el of els) {
+        const params = Object.assign(elementCreateParams(el), { classes: cls });
+        const r = await api('create', params);
+        creates.push({ params, id: r && r.id });
+      }
+    }
+    recordCreateMany(creates, 'kopierte ' + subject + ' til ' + targets.join(', '));
+    setSaved();
+    showToast('Kopierte ' + els.length + ' element(er) til ' + targets.join(', ') + '.');
+  } catch (err) {
+    setSaveError(err.message);
+  } finally {
+    copyingRow = false;
   }
 }
 
@@ -1722,8 +2153,11 @@ async function cloneFromBaseClass() {
     setSaving();
     const result = await api('clone', { fromWeek: week, toWeek: week, classes: selectedClass, toClasses: variantCode });
     setSaved();
+    if (result.entries && result.entries.length) {
+      recordCreateMany(result.entries.map(en => ({ id: en.id, params: elementCreateParams(en) })), 'hentet fra klassen');
+    }
     showToast(`Hentet ${result.count || 0} element(er) fra ${selectedClass}.`);
-    loadData({ background: true });
+    loadData({ background: true, skipCache: true });
   } catch (err) {
     setSaveError(err.message);
   } finally {
@@ -1777,7 +2211,7 @@ function refreshOversikt() {
 function refreshAfterChange() {
   allPlanTs = 0; // invalidate progresjon cache
   if (teacherTab === 'oversikt') refreshOversikt();
-  else loadData({ background: true });
+  else loadData({ background: true, skipCache: true });
 }
 
 // ─── Vurderinger tab (filterable table + calendar) ────────────
@@ -2034,7 +2468,7 @@ function renderVurdTable() {
   wrap.appendChild(div);
 }
 
-// Calendar view — month cards with a dot per assessment; clicking a day shows
+// Calendar view – month cards with a dot per assessment; clicking a day shows
 // that day's assessments (editable) in a detail box at the top.
 function renderVurdCalendar() {
   const root = document.getElementById('vurdCalWrap');
@@ -2281,6 +2715,7 @@ async function loadOversikt() {
 }
 
 function renderOversikt() {
+  if (deferIfEditing()) return;
   const board = document.getElementById('oversiktBoard');
   if (!board) return;
   board.innerHTML = '';
@@ -2325,7 +2760,7 @@ function renderOversikt() {
 // modal on click. showDay prefixes the weekday for lekser.
 function buildCompareCell(elements, showDay) {
   const td = document.createElement('td');
-  if (!elements.length) { td.className = 'cell-empty'; td.textContent = '—'; return td; }
+  if (!elements.length) { td.className = 'cell-empty'; td.textContent = '–'; return td; }
   elements.forEach(el => {
     const d = document.createElement('div');
     d.className = 'rich-content ov-editable';
@@ -2340,14 +2775,14 @@ function buildCompareCell(elements, showDay) {
 function buildCompareVurdCell(vurd) {
   const td = document.createElement('td');
   td.className = 'cell-vurd';
-  if (!vurd.length) { td.classList.add('cell-empty'); td.textContent = '—'; return td; }
+  if (!vurd.length) { td.classList.add('cell-empty'); td.textContent = '–'; return td; }
   vurd.forEach(v => {
     const vd = dayOf(isoToDate(v.date));
     const s = document.createElement('div');
     s.className = 'ov-editable' + (v.id ? '' : ' legacy');
     s.textContent = (vd && DAY_LABEL[vd] ? DAY_LABEL[vd] + ': ' : '') + (v.description || v.notes || 'Vurdering');
     if (v.id) { s.title = 'Klikk for å redigere'; s.addEventListener('click', () => openVurdEdit(v)); }
-    else { s.title = 'Fra det gamle systemet — kan ikke redigeres her'; }
+    else { s.title = 'Fra det gamle systemet – kan ikke redigeres her'; }
     td.appendChild(s);
   });
   return td;
@@ -2377,7 +2812,7 @@ function buildProgEditCell(cls, subject, type, wk, elements) {
   const multi  = elements.filter(isMultiWeek);
   const ed = createRichField({
     value: single.map(e => e.description).filter(Boolean).join('<br>'),
-    placeholder: '—',
+    placeholder: '–',
     className: 'edit-rich',
     onCommit: html => commitProgCell(ed, html),
   });
@@ -2389,7 +2824,7 @@ function buildProgEditCell(cls, subject, type, wk, elements) {
 }
 
 async function commitProgCell(ed, html) {
-  if (ed._busy) { ed._pendingHtml = html; return; }   // serialize — see commitRichCell
+  if (ed._busy) { ed._pendingHtml = html; return; }   // serialize – see commitRichCell
   const ids = JSON.parse(ed.dataset.ids || '[]');
   const cls = ed.dataset.cls, subject = ed.dataset.subject, type = ed.dataset.type, week = ed.dataset.week;
   const val = html.trim();
@@ -2406,6 +2841,7 @@ async function commitProgCell(ed, html) {
   try {
     if (!val) {
       for (const id of ids) { const el = findLoadedElement(id); await api('delete', { id }); if (el) recordDelete(el, 'sletting'); }
+      allPlanData = allPlanData.filter(p => !ids.includes(p.id));
       ed.dataset.ids = '[]';
     } else if (ids.length) {
       const el = findLoadedElement(ids[0]);
@@ -2414,12 +2850,13 @@ async function commitProgCell(ed, html) {
       recordUpdate(ids[0], before, { type, classes: cls, week, weekTo: '', day: '', subject, description: val, teacher: teacherName }, 'endring');
       if (el) el.description = val;
       for (const extra of ids.slice(1)) await api('delete', { id: extra });
+      allPlanData = allPlanData.filter(p => !ids.slice(1).includes(p.id));
       ed.dataset.ids = JSON.stringify([ids[0]]);
     } else {
       const params = { type, classes: cls, week, day: '', subject, description: val, teacher: teacherName };
       const c = await api('create', params);
       ed.dataset.ids = JSON.stringify(c && c.id ? [c.id] : []);
-      if (c && c.id) recordCreate(params, c.id, 'tekst');
+      if (c && c.id) { recordCreate(params, c.id, 'tekst'); allPlanData.push(c); }
     }
     allPlanTs = 0; // invalidate so a later reload picks up the change
     ed.classList.remove('unsaved');
@@ -2437,6 +2874,7 @@ async function commitProgCell(ed, html) {
 }
 
 function renderOversiktProg() {
+  if (deferIfEditing()) return;
   const board = document.getElementById('oversiktBoard');
   if (!board) return;
   board.innerHTML = '';

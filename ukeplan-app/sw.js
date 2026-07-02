@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE = 'ukeplan-shell-v33';
+const CACHE = 'ukeplan-shell-v35';
 const ASSETS = [
   './',
   'index.html',
@@ -35,7 +35,7 @@ self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
 
-  // Apps Script API: never intercept — let localStorage handle data caching.
+  // Apps Script API: never intercept – let localStorage handle data caching.
   if (url.hostname.includes('script.google.com')) return;
 
   // Same-origin GETs only: network-first so code/style changes show up on the

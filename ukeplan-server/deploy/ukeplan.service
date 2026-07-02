@@ -1,0 +1,27 @@
+# systemd unit for the ukeplan API.
+# Install: sudo cp ukeplan.service /etc/systemd/system/
+#          sudo systemctl daemon-reload && sudo systemctl enable --now ukeplan
+# Logs:    journalctl -u ukeplan -f
+
+[Unit]
+Description=Ukeplan API
+After=network.target
+
+[Service]
+User=ukeplan
+WorkingDirectory=/srv/ukeplan-api
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=2
+Environment=PORT=3000
+Environment=UKEPLAN_DB=/srv/ukeplan-data/ukeplan.db
+
+# Hardening (optional but free)
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/srv/ukeplan-data
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
