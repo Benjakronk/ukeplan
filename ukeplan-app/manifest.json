@@ -1,6 +1,6 @@
 {
-  "name": "Ukeplan – Runni ungdomsskole",
-  "short_name": "Ukeplan",
+  "name": "Ukeportalen – Runni ungdomsskole",
+  "short_name": "Ukeportalen",
   "description": "Ukeplaner for elever og lærere ved Runni ungdomsskole.",
   "start_url": "./",
   "scope": "./",

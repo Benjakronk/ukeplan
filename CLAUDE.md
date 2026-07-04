@@ -4,6 +4,12 @@ This file guides Claude Code when working in the `ukeplan` repository.
 
 ## Project overview
 
+**The tool is branded «Ukeportalen»** – that name is used in all user-facing
+places (page titles, login screen, header, PWA manifest). The word "ukeplan"
+remains only as the generic Norwegian term (the weekly plan itself, the
+Ukeplan tab) and as the internal name (folders, repo, `up_*` storage keys,
+element ids, sw cache prefix) – do NOT rename internals.
+
 A static frontend web app (Norwegian: "ukeplan") for Runni ungdomsskole.
 Students browse a weekly plan for their class (subject rows: learning goals,
 homework, assessments). Teachers manage entries on an authenticated page with
