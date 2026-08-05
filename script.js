@@ -3,7 +3,7 @@
 // ─── Configuration ────────────────────────────────────────────
 
 // NEW ukeplan backend (homework, learning goals, messages, …).
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxP4BS2wc1RWcjjqEtrSfhpydaeGgTvk5GwjCpZ342wJLQmXap7aMwmBPI2L-DCXXcH/exec';
+const SCRIPT_URL = 'https://api.ukeportalen.no';
 
 // EXISTING vurderingskalender backend – assessments are read-only
 // here and merged into the "Vurdering" column.

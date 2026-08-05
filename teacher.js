@@ -2,7 +2,7 @@
 
 // ─── Configuration ────────────────────────────────────────────
 
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxP4BS2wc1RWcjjqEtrSfhpydaeGgTvk5GwjCpZ342wJLQmXap7aMwmBPI2L-DCXXcH/exec';
+const SCRIPT_URL = 'https://api.ukeportalen.no';
 const VURD_URL   = 'https://script.google.com/macros/s/AKfycbwsXqoLZW8RlIAwvGN1yQXgpLnB3aCbVtjrmt4X5v302Fpbd9XFsSiobBOOTC4z1q5n/exec';
 
 const TOKEN_KEY   = 'up_token';
