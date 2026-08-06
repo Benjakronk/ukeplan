@@ -641,3 +641,36 @@ body.scroll-locked { overflow: hidden; }
     content: attr(data-label);
   }
 }
+
+/* ══ Chunk 2: board + chrome restyle ═══════════════════════════ */
+
+/* V3 – display serif for the wordmark, section titles and subject names. */
+.site-title, .login-title, .pane-title, .week-label, .month-title,
+.day-detail-title, .vurd-detail-title, .class-modal-title, .panel-title,
+.ui-dialog-title, .cell-subject {
+  font-family: var(--font-display);
+  letter-spacing: -.01em;
+}
+.site-title .wm, .footer-app .wm { color: var(--primary); }
+
+/* V3 – column headers + small labels as tracked mono "data" labels. */
+.plan-table th, .vurd-table th, .th-filter-btn, .cell-subheading {
+  font-family: var(--font-mono);
+  letter-spacing: .05em;
+}
+
+/* V4 – anchor the Fag column: its own fill + an accent tick, stronger on hover. */
+.plan-table .cell-subject {
+  background: var(--surface-2);
+  position: relative;
+  font-weight: 600;
+}
+.plan-table .cell-subject::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--primary); opacity: .55; transition: opacity var(--transition);
+}
+.plan-table.editable tbody tr:hover { background: var(--hover-soft); }
+.plan-table.editable tbody tr:hover .cell-subject::before { opacity: 1; }
+
+/* V5 – beskjed callouts share one left accent stripe (a single family). */
+.banner-chip { border-left-width: 3px; }
