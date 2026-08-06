@@ -373,3 +373,10 @@
 .admin-row-name { font-weight: 700; }
 .admin-row-user { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
 .admin-row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ── Self-service "Bytt passord" (profile modal) ───────────────── */
+.pw-change summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-muted); }
+.pw-change summary:hover { color: var(--text); }
+.pw-change label { display: block; margin-top: 8px; }
+.pw-change .input { width: 100%; margin-top: 4px; }
+.pw-change button { margin-top: 10px; }

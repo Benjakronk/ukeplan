@@ -648,6 +648,25 @@ async function adminToggleActive(t) {
   } catch (err) { showToast(translateError(err.message)); }
 }
 
+async function changeOwnPassword() {
+  const cur = document.getElementById('pwCurrent');
+  const nw  = document.getElementById('pwNew');
+  const msg = document.getElementById('pwChangeMsg');
+  msg.style.color = ''; msg.textContent = '';
+  const currentPassword = cur.value, newPassword = nw.value;
+  if (!currentPassword || !newPassword) { msg.textContent = 'Fyll ut begge feltene.'; return; }
+  if (newPassword.length < 6) { msg.textContent = 'Nytt passord må ha minst 6 tegn.'; return; }
+  try {
+    const r = await api('changepw', { currentPassword, newPassword });
+    if (r.error) throw new Error(r.error);
+    cur.value = ''; nw.value = '';
+    msg.style.color = 'var(--success)'; msg.textContent = 'Passordet er endret ✓';
+    setTimeout(() => { const d = document.querySelector('.pw-change'); if (d) d.open = false; msg.textContent = ''; }, 2500);
+  } catch (err) {
+    msg.style.color = 'var(--danger)'; msg.textContent = translateError(err.message);
+  }
+}
+
 function openProfileModal() {
   document.getElementById('teacherName').value = teacherName;
   document.getElementById('setConfirmDelete').checked = settings.confirmDelete !== false;
@@ -965,6 +984,7 @@ function setupDashboardListeners() {
   document.getElementById('adminPanelBtn').addEventListener('click', () => { closeProfileModal(); openAdminModal(); });
   document.getElementById('adminClose').addEventListener('click', closeAdminModal);
   document.getElementById('adminOverlay').addEventListener('click', closeAdminModal);
+  document.getElementById('pwChangeBtn').addEventListener('click', changeOwnPassword);
   document.getElementById('setConfirmDelete').addEventListener('change', e => {
     settings.confirmDelete = e.target.checked;
     saveSettings();

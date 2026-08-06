@@ -366,6 +366,18 @@
       </label>
     </div>
 
+    <div class="form-row">
+      <details class="pw-change">
+        <summary>Bytt passord</summary>
+        <label class="login-label" for="pwCurrent">Nåværende passord</label>
+        <input type="password" id="pwCurrent" class="input" autocomplete="current-password">
+        <label class="login-label" for="pwNew">Nytt passord (minst 6 tegn)</label>
+        <input type="password" id="pwNew" class="input" autocomplete="new-password">
+        <button type="button" id="pwChangeBtn" class="btn btn-ghost btn-tiny">Bytt passord</button>
+        <p id="pwChangeMsg" class="form-hint" role="status" aria-live="polite"></p>
+      </details>
+    </div>
+
     <div class="add-modal-actions">
       <button id="adminPanelBtn" class="btn btn-ghost" type="button" hidden>&#128736; Adminpanel</button>
       <span class="add-modal-spacer"></span>
