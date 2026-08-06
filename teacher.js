@@ -540,11 +540,20 @@ function updateProfileButton() {
   const el = document.getElementById('profileBtnName');
   if (el) el.textContent = teacherName || 'Lærer';
 }
+// Reflect the current theme preference on the segmented control.
+function syncThemeSeg() {
+  const pref = window.UPTheme ? UPTheme.get() : 'auto';
+  document.querySelectorAll('#themeSeg .theme-seg-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.themePref === pref);
+  });
+}
+
 function openProfileModal() {
   document.getElementById('teacherName').value = teacherName;
   document.getElementById('setConfirmDelete').checked = settings.confirmDelete !== false;
   document.getElementById('setDefaultSubject').value = SUBJECTS.includes(settings.defaultSubject) ? settings.defaultSubject : '';
   buildMySubjectChips();
+  syncThemeSeg();
   document.getElementById('profileOverlay').classList.add('open');
   document.getElementById('profileModal').classList.add('open');
   document.body.classList.add('scroll-locked');
@@ -855,6 +864,12 @@ function setupDashboardListeners() {
   document.getElementById('setConfirmDelete').addEventListener('change', e => {
     settings.confirmDelete = e.target.checked;
     saveSettings();
+  });
+  document.getElementById('themeSeg').addEventListener('click', e => {
+    const btn = e.target.closest('.theme-seg-btn');
+    if (!btn || !window.UPTheme) return;
+    UPTheme.set(btn.dataset.themePref);
+    syncThemeSeg();
   });
   const dsSel = document.getElementById('setDefaultSubject');
   const noneOpt = document.createElement('option');
@@ -2529,10 +2544,16 @@ function buildVurdMonthCard(monthDate, byDate) {
         // Every in-month day is clickable so teachers can add for empty days too.
         const snap = new Date(cursor);
         const snapItems = items.slice();
+        const cell = td;
         td.tabIndex = 0;
         td.setAttribute('role', 'button');
-        td.addEventListener('click', () => showVurdDayDetail(snap, snapItems));
-        td.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showVurdDayDetail(snap, snapItems); } });
+        const openDay = () => {
+          document.querySelectorAll('#vurdCalWrap .cal-table td.selected').forEach(c => c.classList.remove('selected'));
+          cell.classList.add('selected');
+          showVurdDayDetail(snap, snapItems);
+        };
+        td.addEventListener('click', openDay);
+        td.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDay(); } });
       } else {
         td.className = 'day other-month';
         td.textContent = cursor.getDate();

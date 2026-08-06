@@ -1,29 +1,159 @@
-/* ── Design tokens ─────────────────────────────────────────── */
+/* ── Design tokens ─────────────────────────────────────────────
+   Ukeportalen "rolig / institusjonell" identity: pine-teal accent on a
+   warm-cool paper ground. Every colour is a token so a theme swap is a
+   value change, never a hunt-and-replace.
+
+   Theming: light + dark are each defined twice on purpose –
+   @media (prefers-color-scheme) makes "Auto" follow the device, and
+   :root[data-theme="light"|"dark"] lets the profile/​header toggle override
+   it in either direction. Style components through the tokens, never with
+   raw colours, so both themes stay in sync. */
 :root {
-  --bg:           #f1f5f9;
-  --surface:      #ffffff;
-  --primary:      #2563eb;
-  --primary-light:#dbeafe;
-  --primary-dark: #1d4ed8;
-  --text:         #1e293b;
-  --text-muted:   #64748b;
-  --border:       #e2e8f0;
-  --today-bg:     #fef9c3;
-  --today-border: #eab308;
-  --dot:          #2563eb;
-  --vurd:         #dc2626;
-  --goal:         #0891b2;
-  --danger:       #dc2626;
-  --off-bg:       #f1f5f9;
-  --off-text:     #94a3b8;
-  --plan-bg:      #ede9fe;
-  --plan-text:    #7c3aed;
-  --radius-card:  10px;
-  --radius-btn:   6px;
-  --shadow-card:  0 1px 3px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.05);
-  --font:         -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --transition:   0.22s ease;
+  --bg:            #eef2f0;
+  --surface:       #ffffff;
+  --surface-2:     #e9efec;   /* subtle fills: table headers, summaries, panels */
+  --raise:         #ffffff;
+  --primary:       #1e5c55;   /* pine teal */
+  --primary-light: #dcebe6;
+  --primary-dark:  #17463f;   /* darker → hover in light mode */
+  --on-accent:     #ffffff;   /* text on a primary/danger/vurd fill */
+  --text:          #16211f;
+  --text-muted:    #4c5c57;
+  --border:        #d7e0db;
+  --today-bg:      #f7eecd;
+  --today-border:  #dcc489;
+  --dot:           #1e5c55;
+  --vurd:          #b0472a;   /* assessments – warm rust, harmonises with teal */
+  --vurd-soft:     #f4e5de;
+  --goal:          #2c7a6f;
+  --danger:        #cf3a2a;
+  --danger-dark:   #a82f22;
+  --off-bg:        #e9efec;
+  --off-text:      #8a9a94;
+  --plan-bg:       #e8e6f2;   /* adapted-plan / planning day */
+  --plan-text:     #6b5b8a;
+  --plan-border:   #d3cbe6;
+  --success:       #3b7a57;
+  --success-bg:    #e0efe6;
+  --success-border:#b7d6c4;
+  --warn-bg:       #f6ecd6;
+  --warn-border:   #e2c98f;
+  --warn-text:     #8a5a1a;
+  --info-bg:       #e4efec;
+  --info-border:   #bcd4cd;
+  --marker-bg:     #dfeee4;   /* school "marker" day (green) */
+  --inverse-surface:#16211f;  /* toast + rich toolbar chip */
+  --inverse-text:  #f2f5f3;
+  --accent-on-dark:#8fd3c6;   /* link/accent sitting on the dark chip */
+  --scrim:         rgba(16, 33, 31, .52);
+  --radius-card:   12px;
+  --radius-btn:    8px;
+  --shadow-card:   0 1px 2px rgba(16,33,31,.05), 0 8px 24px rgba(16,33,31,.07);
+  --font:          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-display:  "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --font-mono:     ui-monospace, "Cascadia Code", "SFMono-Regular", Menlo, Consolas, monospace;
+  --transition:    0.2s ease;
 }
+
+/* Dark palette – "Auto" (follows the OS). */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:            #0f1514;
+    --surface:       #161e1c;
+    --surface-2:     #1d2724;
+    --raise:         #1a2422;
+    --primary:       #64b6a6;
+    --primary-light: #1d332e;
+    --primary-dark:  #7fc7b8;   /* lighter → hover in dark mode */
+    --on-accent:     #0f1514;   /* dark text on the lightened accent */
+    --text:          #e9efec;
+    --text-muted:    #a3b3ad;
+    --border:        #2a3733;
+    --today-bg:      #4a4022;
+    --today-border:  #a08a3a;
+    --dot:           #64b6a6;
+    --vurd:          #e0895f;
+    --vurd-soft:     #33231b;
+    --goal:          #64b6a6;
+    --danger:        #e5705f;
+    --danger-dark:   #f08a7a;
+    --off-bg:        #3a464c;
+    --off-text:      #93a39d;
+    --plan-bg:       #453a66;
+    --plan-text:     #c3b6de;
+    --plan-border:   #5a4f8a;
+    --success:       #6bbd8a;
+    --success-bg:    #18261f;
+    --success-border:#2a3d35;
+    --warn-bg:       #2b2517;
+    --warn-border:   #5c5027;
+    --warn-text:     #e0c48a;
+    --info-bg:       #18261f;
+    --info-border:   #2a3d35;
+    --marker-bg:     #2e4d3b;
+    --inverse-surface:#263330;
+    --inverse-text:  #e9efec;
+    --accent-on-dark:#8fd3c6;
+    --scrim:         rgba(0, 0, 0, .6);
+    --shadow-card:   0 1px 2px rgba(0,0,0,.35), 0 10px 30px rgba(0,0,0,.45);
+  }
+}
+
+/* Manual override – wins over the media query in both directions. */
+:root[data-theme="light"] {
+  --bg:#eef2f0; --surface:#ffffff; --surface-2:#e9efec; --raise:#ffffff;
+  --primary:#1e5c55; --primary-light:#dcebe6; --primary-dark:#17463f; --on-accent:#ffffff;
+  --text:#16211f; --text-muted:#4c5c57; --border:#d7e0db;
+  --today-bg:#f7eecd; --today-border:#dcc489; --dot:#1e5c55;
+  --vurd:#b0472a; --vurd-soft:#f4e5de; --goal:#2c7a6f;
+  --danger:#cf3a2a; --danger-dark:#a82f22; --off-bg:#e9efec; --off-text:#8a9a94;
+  --plan-bg:#e8e6f2; --plan-text:#6b5b8a; --plan-border:#d3cbe6;
+  --success:#3b7a57; --success-bg:#e0efe6; --success-border:#b7d6c4;
+  --warn-bg:#f6ecd6; --warn-border:#e2c98f; --warn-text:#8a5a1a;
+  --info-bg:#e4efec; --info-border:#bcd4cd; --marker-bg:#dfeee4;
+  --inverse-surface:#16211f; --inverse-text:#f2f5f3; --accent-on-dark:#8fd3c6;
+  --scrim:rgba(16,33,31,.52);
+  --shadow-card:0 1px 2px rgba(16,33,31,.05), 0 8px 24px rgba(16,33,31,.07);
+}
+:root[data-theme="dark"] {
+  --bg:#0f1514; --surface:#161e1c; --surface-2:#1d2724; --raise:#1a2422;
+  --primary:#64b6a6; --primary-light:#1d332e; --primary-dark:#7fc7b8; --on-accent:#0f1514;
+  --text:#e9efec; --text-muted:#a3b3ad; --border:#2a3733;
+  --today-bg:#4a4022; --today-border:#a08a3a; --dot:#64b6a6;
+  --vurd:#e0895f; --vurd-soft:#33231b; --goal:#64b6a6;
+  --danger:#e5705f; --danger-dark:#f08a7a; --off-bg:#3a464c; --off-text:#93a39d;
+  --plan-bg:#453a66; --plan-text:#c3b6de; --plan-border:#5a4f8a;
+  --success:#6bbd8a; --success-bg:#18261f; --success-border:#2a3d35;
+  --warn-bg:#2b2517; --warn-border:#5c5027; --warn-text:#e0c48a;
+  --info-bg:#18261f; --info-border:#2a3d35; --marker-bg:#2e4d3b;
+  --inverse-surface:#263330; --inverse-text:#e9efec; --accent-on-dark:#8fd3c6;
+  --scrim:rgba(0,0,0,.6);
+  --shadow-card:0 1px 2px rgba(0,0,0,.35), 0 10px 30px rgba(0,0,0,.45);
+}
+/* Native form controls (inputs, selects, date pickers, checkboxes, scrollbars)
+   follow the effective theme – including the manual data-theme override, not
+   just the OS – and use the pine accent for checkboxes/radios. */
+:root { color-scheme: light; accent-color: var(--primary); }
+@media (prefers-color-scheme: dark) { :root { color-scheme: dark; } }
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"]  { color-scheme: dark; }
+
+/* Text inputs / selects styled to the palette so they match (not just the UA
+   dark). Nearly every field in the app carries .input. */
+.input {
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-btn);
+  font-family: var(--font);
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+.input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
+.input::placeholder { color: var(--off-text); }
+
+/* Subtle icon-button hover wash – theme-aware so it shows on dark too. */
+:root { --hover-soft: rgba(16,33,31,.06); }
+@media (prefers-color-scheme: dark) { :root { --hover-soft: rgba(255,255,255,.07); } }
+:root[data-theme="light"] { --hover-soft: rgba(16,33,31,.06); }
+:root[data-theme="dark"]  { --hover-soft: rgba(255,255,255,.07); }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -49,7 +179,7 @@ body.scroll-locked { overflow: hidden; }
 /* ── Loading overlay ───────────────────────────────────────── */
 .overlay {
   position: fixed; inset: 0; z-index: 200;
-  background: rgba(15, 23, 42, 0.65);
+  background: var(--scrim);
   display: flex; align-items: center; justify-content: center;
   opacity: 0; pointer-events: none;
   transition: opacity var(--transition);
@@ -73,7 +203,7 @@ body.scroll-locked { overflow: hidden; }
   cursor: pointer; white-space: nowrap;
   transition: background var(--transition), border-color var(--transition), color var(--transition);
 }
-.btn-primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+.btn-primary { background: var(--primary); color: var(--on-accent); border-color: var(--primary); }
 .btn-ghost   { background: var(--surface); color: var(--text-muted); border-color: var(--border); }
 .btn-tiny    { padding: 6px 10px; font-size: 13px; }
 @media (hover: hover) {
@@ -92,11 +222,11 @@ body.scroll-locked { overflow: hidden; }
 
 .rich-toolbar {
   position: absolute; z-index: 250; display: none; gap: 2px;
-  background: #1e293b; border-radius: 6px; padding: 3px; box-shadow: 0 4px 14px rgba(0,0,0,.25);
+  background: var(--inverse-surface); border-radius: 6px; padding: 3px; box-shadow: 0 4px 14px rgba(0,0,0,.25);
 }
 .rich-btn {
   min-width: 28px; height: 28px; padding: 0 6px;
-  background: transparent; color: #fff; border: none; border-radius: 4px;
+  background: transparent; color: var(--inverse-text); border: none; border-radius: 4px;
   font-size: 14px; line-height: 1; cursor: pointer;
 }
 .rich-btn:hover { background: rgba(255,255,255,.15); }
@@ -126,7 +256,7 @@ body.scroll-locked { overflow: hidden; }
   font-size: 16px; font-weight: 700; cursor: pointer;
   transition: background var(--transition);
 }
-.class-pill:hover { background: #c7dbfd; }
+.class-pill:hover { background: color-mix(in oklab, var(--primary-light) 78%, var(--primary)); }
 .class-pill-change { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--primary); opacity: .8; }
 
 .week-nav { display: flex; align-items: center; gap: 6px; margin: 0 auto; }
@@ -179,14 +309,14 @@ body.scroll-locked { overflow: hidden; }
 .strip-day.school-off .strip-day-tag { color: var(--off-text); }
 .strip-day.school-planning { background: var(--plan-bg); }
 .strip-day.school-planning .strip-day-tag { color: var(--plan-text); }
-.strip-day.school-marker { background: #dcfce7; }
+.strip-day.school-marker { background: var(--marker-bg); }
 
 /* ── Banner (messages) ─────────────────────────────────────── */
 .banner { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
 .banner-chip {
   display: flex; align-items: flex-start; gap: 10px;
   padding: 10px 14px; border-radius: var(--radius-btn);
-  background: #fffbeb; border: 1px solid #fde68a;
+  background: var(--warn-bg); border: 1px solid var(--warn-border);
   font-size: 14px;
 }
 .banner-icon { flex-shrink: 0; font-size: 16px; line-height: 1.3; }
@@ -194,9 +324,9 @@ body.scroll-locked { overflow: hidden; }
 .banner-list { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 0; }
 .banner-line { line-height: 1.4; }
 .banner-line em { font-style: normal; font-weight: 600; color: var(--text-muted); }
-.banner-timeendring { background: #eff6ff; border-color: #bfdbfe; }
-.banner-utstyr      { background: #f0fdf4; border-color: #bbf7d0; }
-.banner-aktivitet   { background: #faf5ff; border-color: #e9d5ff; }
+.banner-timeendring { background: var(--info-bg); border-color: var(--info-border); }
+.banner-utstyr      { background: var(--success-bg); border-color: var(--success-border); }
+.banner-aktivitet   { background: var(--plan-bg); border-color: var(--plan-border); }
 .banner-annet       { background: var(--surface); border-color: var(--border); }
 
 /* ── Subject board ─────────────────────────────────────────── */
@@ -207,7 +337,7 @@ body.scroll-locked { overflow: hidden; }
 .plan-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .plan-table th {
   text-align: left; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em;
-  color: var(--text-muted); padding: 12px 14px; background: #f8fafc; border-bottom: 1px solid var(--border);
+  color: var(--text-muted); padding: 12px 14px; background: var(--surface-2); border-bottom: 1px solid var(--border);
 }
 .plan-table td { padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: top; font-size: 14px; overflow-wrap: anywhere; }
 .plan-table tr:last-child td { border-bottom: none; }
@@ -250,7 +380,7 @@ body.scroll-locked { overflow: hidden; }
 
 /* ── Detail panel ──────────────────────────────────────────── */
 .panel-overlay {
-  position: fixed; inset: 0; z-index: 150; background: rgba(15,23,42,.4);
+  position: fixed; inset: 0; z-index: 150; background: var(--scrim);
   opacity: 0; pointer-events: none; transition: opacity var(--transition);
 }
 .panel-overlay.open { opacity: 1; pointer-events: all; }
@@ -281,13 +411,13 @@ body.scroll-locked { overflow: hidden; }
 .school-day-card { border-radius: var(--radius-btn); padding: 12px 14px; }
 .school-day-off      { background: var(--off-bg); }
 .school-day-planning { background: var(--plan-bg); }
-.school-day-marker   { background: #dcfce7; }
+.school-day-marker   { background: var(--marker-bg); }
 .school-day-label { font-weight: 700; font-size: 14px; }
 .school-day-summary { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
 
 /* ── Class modal ───────────────────────────────────────────── */
 .class-modal-overlay {
-  position: fixed; inset: 0; z-index: 170; background: rgba(15,23,42,.5);
+  position: fixed; inset: 0; z-index: 170; background: var(--scrim);
   opacity: 0; pointer-events: none; transition: opacity var(--transition);
 }
 .class-modal-overlay.open { opacity: 1; pointer-events: all; }
@@ -316,7 +446,7 @@ body.scroll-locked { overflow: hidden; }
   transition: background var(--transition), border-color var(--transition), color var(--transition);
 }
 .class-modal-btn:hover { border-color: var(--primary); }
-.class-modal-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.class-modal-btn.active { background: var(--primary); color: var(--on-accent); border-color: var(--primary); }
 .class-modal-btn.locked, .class-modal-btn:disabled { opacity: .5; cursor: not-allowed; }
 .class-modal-btn.locked:hover { border-color: var(--border); }
 
@@ -327,6 +457,7 @@ body.scroll-locked { overflow: hidden; }
 .variant-input {
   width: 100%; margin-top: 8px; padding: 9px 11px;
   font-family: var(--font); font-size: 14px; text-transform: uppercase;
+  background: var(--surface); color: var(--text);
   border: 1px solid var(--border); border-radius: var(--radius-btn); outline: none;
 }
 .variant-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
@@ -338,19 +469,39 @@ body.scroll-locked { overflow: hidden; }
 .last-updated { font-size: 12px; color: var(--text-muted); }
 .copyright { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
 
+/* Theme controls: segmented (teacher profile) + pill toggle (student footer) */
+.theme-seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-btn); overflow: hidden; }
+.theme-seg-btn {
+  background: var(--surface); border: none; padding: 7px 16px;
+  font-family: var(--font); font-size: 13px; font-weight: 600; color: var(--text-muted); cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.theme-seg-btn + .theme-seg-btn { border-left: 1px solid var(--border); }
+.theme-seg-btn:hover { color: var(--text); }
+.theme-seg-btn.active { background: var(--primary); color: var(--on-accent); }
+
+.theme-toggle {
+  display: inline-flex; align-items: center; gap: 7px; margin-top: 12px;
+  padding: 5px 13px; background: var(--surface); border: 1px solid var(--border); border-radius: 999px;
+  font-family: var(--font); font-size: 12px; font-weight: 600; color: var(--text-muted); cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+}
+.theme-toggle:hover { border-color: var(--primary); color: var(--text); }
+.theme-toggle-icon { font-size: 14px; line-height: 1; }
+
 /* ── Toast ─────────────────────────────────────────────────── */
 .toast {
   position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px);
-  z-index: 210; background: #1e293b; color: #fff;
+  z-index: 210; background: var(--inverse-surface); color: var(--inverse-text);
   padding: 12px 18px; border-radius: var(--radius-btn); box-shadow: 0 6px 20px rgba(0,0,0,.2);
   display: flex; align-items: center; gap: 14px; font-size: 14px;
   opacity: 0; pointer-events: none; transition: opacity var(--transition), transform var(--transition);
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: all; }
-.toast-action { background: transparent; border: none; color: #93c5fd; font-weight: 600; cursor: pointer; }
+.toast-action { background: transparent; border: none; color: var(--accent-on-dark); font-weight: 600; cursor: pointer; }
 
 /* ── In-app dialogs (alert / confirm / prompt / link) ──────── */
-.ui-dialog-overlay { position: fixed; inset: 0; z-index: 300; background: rgba(15,23,42,.5); }
+.ui-dialog-overlay { position: fixed; inset: 0; z-index: 300; background: var(--scrim); }
 .ui-dialog {
   position: fixed; z-index: 301; top: 50%; left: 50%; transform: translate(-50%, -50%);
   width: 420px; max-width: 92vw; max-height: 88vh; overflow-y: auto;
@@ -371,10 +522,10 @@ body.scroll-locked { overflow: hidden; }
 .ui-dialog-error { font-size: 13px; color: var(--danger); margin-top: 8px; }
 .ui-dialog-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); cursor: pointer; }
 .ui-dialog-check input { width: 15px; height: 15px; }
-.ui-dialog-warn { color: #b45309; font-weight: 600; }
+.ui-dialog-warn { color: var(--warn-text); font-weight: 600; }
 .ui-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
-.ui-dialog .btn-danger { background: var(--danger); color: #fff; border-color: var(--danger); }
-@media (hover: hover) { .ui-dialog .btn-danger:hover { background: #b91c1c; border-color: #b91c1c; } }
+.ui-dialog .btn-danger { background: var(--danger); color: var(--on-accent); border-color: var(--danger); }
+@media (hover: hover) { .ui-dialog .btn-danger:hover { background: var(--danger-dark); border-color: var(--danger-dark); } }
 
 /* ── Tabs ──────────────────────────────────────────────────── */
 .tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 2px solid var(--border); margin-bottom: 12px; }
@@ -393,7 +544,7 @@ body.scroll-locked { overflow: hidden; }
   font-family: var(--font); font-size: 13px; font-weight: 600; color: var(--text-muted); cursor: pointer;
 }
 .vt-btn + .vt-btn { border-left: 1px solid var(--border); }
-.vt-btn.active { background: var(--primary); color: #fff; }
+.vt-btn.active { background: var(--primary); color: var(--on-accent); }
 
 /* ── Pane head (shared with overview/progression) ─────────── */
 .pane-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
@@ -436,15 +587,20 @@ body.scroll-locked { overflow: hidden; }
 .cal-table td { position: relative; height: 44px; text-align: center; vertical-align: top; padding: 4px 2px; border: 1px solid var(--border); }
 .cal-table td.week-num { border: none; color: var(--text-muted); font-size: 11px; font-weight: 600; vertical-align: middle; }
 .cal-table td.day { background: var(--surface); }
-.cal-table td.weekend { background: #f8fafc; }
+.cal-table td.weekend { background: var(--surface-2); }
 .cal-table td.other-month { color: var(--off-text); border-color: transparent; background: transparent; }
-.cal-table td.today { background: var(--today-bg); border-color: var(--today-border); }
+/* Inset ring (not border-color) so all four sides show – border-collapse hands
+   a cell's top/left borders to its neighbours, so border-color only paints
+   right/bottom. */
+.cal-table td.today { background: var(--today-bg); box-shadow: inset 0 0 0 2px var(--today-border); }
 .cal-table td.school-off { background: var(--off-bg); }
 .cal-table td.school-planning { background: var(--plan-bg); }
-.cal-table td.school-marker { background: #dcfce7; }
+.cal-table td.school-marker { background: var(--marker-bg); }
 .cal-badge { position: absolute; top: 2px; right: 3px; font-size: 9px; font-weight: 700; color: var(--plan-text); }
 .cal-table td[role="button"] { cursor: pointer; }
 .cal-table td[role="button"]:hover { box-shadow: inset 0 0 0 2px var(--primary); }
+.cal-table td.selected { box-shadow: inset 0 0 0 2px var(--primary); }
+.cal-table td.selected .day-num { color: var(--primary); font-weight: 700; }
 .day-num { font-size: 13px; font-weight: 600; }
 .dots { display: flex; justify-content: center; gap: 2px; margin-top: 3px; }
 .dots .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--vurd); }
@@ -486,3 +642,36 @@ body.scroll-locked { overflow: hidden; }
     content: attr(data-label);
   }
 }
+
+/* ══ Chunk 2: board + chrome restyle ═══════════════════════════ */
+
+/* V3 – display serif for the wordmark, section titles and subject names. */
+.site-title, .login-title, .pane-title, .week-label, .month-title,
+.day-detail-title, .vurd-detail-title, .class-modal-title, .panel-title,
+.ui-dialog-title, .cell-subject {
+  font-family: var(--font-display);
+  letter-spacing: -.01em;
+}
+.site-title .wm, .footer-app .wm { color: var(--primary); }
+
+/* V3 – column headers + small labels as tracked mono "data" labels. */
+.plan-table th, .vurd-table th, .th-filter-btn, .cell-subheading {
+  font-family: var(--font-mono);
+  letter-spacing: .05em;
+}
+
+/* V4 – anchor the Fag column: its own fill + an accent tick, stronger on hover. */
+.plan-table .cell-subject {
+  background: var(--surface-2);
+  position: relative;
+  font-weight: 600;
+}
+.plan-table .cell-subject::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--primary); opacity: .55; transition: opacity var(--transition);
+}
+.plan-table.editable tbody tr:hover { background: var(--hover-soft); }
+.plan-table.editable tbody tr:hover .cell-subject::before { opacity: 1; }
+
+/* V5 – beskjed callouts share one left accent stripe (a single family). */
+.banner-chip { border-left-width: 3px; }
