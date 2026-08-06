@@ -3,7 +3,6 @@
 // ─── Configuration ────────────────────────────────────────────
 
 const SCRIPT_URL = 'https://api.ukeportalen.no';
-const VURD_URL   = 'https://script.google.com/macros/s/AKfycbwsXqoLZW8RlIAwvGN1yQXgpLnB3aCbVtjrmt4X5v302Fpbd9XFsSiobBOOTC4z1q5n/exec';
 
 const TOKEN_KEY   = 'up_token';
 const EXPIRES_KEY = 'up_token_exp';         // ms timestamp when the session token dies
@@ -45,8 +44,8 @@ const DAYS = ['man','tir','ons','tor','fre'];
 const DAY_LABEL = { man: 'Man', tir: 'Tir', ons: 'Ons', tor: 'Tor', fre: 'Fre' };
 
 // Types managed as subject cells vs. class-wide banner elements.
-// 'vurdering' is special: it lives in the vurderingskalender backend, not the
-// ukeplan sheet, and is date-specific rather than week-level.
+// 'vurdering' is special: it is date-specific rather than week-level and uses
+// its own actions (vurderinger/vurdcreate/…) and table on the same backend.
 const SUBJECT_TYPES = ['læringsmål', 'ressurs', 'lekse'];
 const GENERAL_TYPES = ['beskjed', 'timeendring', 'utstyr', 'aktivitet', 'annet'];
 const MODAL_TYPES   = ['lekse', 'læringsmål', 'ressurs', 'vurdering', 'beskjed', 'timeendring', 'utstyr', 'aktivitet', 'annet'];
@@ -56,12 +55,10 @@ const TYPE_LABEL = {
 };
 const GENERAL_ICON = { beskjed: '📣', timeendring: '🕑', utstyr: '🎒', aktivitet: '🚌', annet: '📌' };
 
-const VURD_TOKEN_KEY = 'up_vurd_token';
-
-// Teacher-side assessments cache. The vurderingskalender dump only changes
-// when a teacher writes, so cache it briefly instead of refetching on every
-// week change. Separate keys from the student page's 1 h cache so the TTLs
-// don't interfere. Own writes clear the TTL (see vurdApi); ↻ forces fresh.
+// Teacher-side assessments cache. The assessments list only changes when a
+// teacher writes, so cache it briefly instead of refetching on every week
+// change. Separate keys from the student page's 1 h cache so the TTLs don't
+// interfere. Own writes clear the TTL (see vurdApi); ↻ forces fresh.
 const VURD_CACHE_KEY = 'up_teacher_vurd';
 const VURD_TS_KEY    = 'up_teacher_vurd_ts';
 const VURD_CACHE_TTL = 10 * 60 * 1000;
@@ -70,7 +67,6 @@ const VURD_CACHE_TTL = 10 * 60 * 1000;
 const PENDING_WRITES_KEY = 'up_pending_writes';
 
 let token         = sessionStorage.getItem(TOKEN_KEY) || null;
-let vurdToken     = sessionStorage.getItem(VURD_TOKEN_KEY) || null;
 let expiryTimer   = null;
 let expiryWarnTimer = null;  // fires ~5 min before the token dies (E1)
 let cloning       = false;   // true while a clone request is in flight (guards double-clicks)
@@ -267,9 +263,6 @@ async function handleLogin(e) {
     localStorage.setItem(TNAME_KEY, name);
     document.getElementById('teacherName').value = name;
     updateProfileButton();
-    // Best-effort: log into the vurderingskalender backend with the same
-    // password so assessments can be edited here. Silent if it differs.
-    vurdLogin(pw).catch(() => {});
     document.getElementById('passwordInput').value = '';
     hideOverlay();
     showDashboard();
@@ -290,9 +283,7 @@ function handleLogout() {
   if (expiryWarnTimer) { clearTimeout(expiryWarnTimer); expiryWarnTimer = null; }
   sessionStorage.removeItem(TOKEN_KEY);
   sessionStorage.removeItem(EXPIRES_KEY);
-  sessionStorage.removeItem(VURD_TOKEN_KEY);
   token = null;
-  vurdToken = null;
   showLogin();
 }
 
@@ -363,7 +354,7 @@ async function api(action, params = {}) {
     if (data.error === 'Unauthorized') {
       // Don't lose the edit that hit the dead session – stash it and replay
       // it after the next login (replayPendingWrites).
-      if (action === 'create' || action === 'update' || action === 'delete') stashPendingWrite(action, params);
+      if (['create','update','delete','vurdcreate','vurdupdate','vurddelete'].includes(action)) stashPendingWrite(action, params);
       handleExpired();
     }
     throw new Error(data.error);
@@ -371,48 +362,15 @@ async function api(action, params = {}) {
   return data;
 }
 
-// ─── Vurderingskalender backend (assessments) ─────────────────
-
-async function vurdLogin(password) {
-  const body = new URLSearchParams({ action: 'login', password });
-  const res  = await fetch(VURD_URL, { method: 'POST', body });
-  const data = await res.json();
-  if (data && data.token) {
-    vurdToken = data.token;
-    sessionStorage.setItem(VURD_TOKEN_KEY, vurdToken);
-    return true;
-  }
-  return false;
-}
-
-// Ensures we hold a vurderingskalender token; prompts for its password if the
-// ukeplan password differed (so the silent login failed).
-async function ensureVurdToken() {
-  if (vurdToken) return true;
-  const pw = await uiPrompt('Skriv det samme passordet på nytt for å lagre vurderinger. Vurderingene ligger i vurderingskalenderen, som bruker samme passord som her.', {
-    title: 'Bekreft passord', label: 'Skriv passordet på nytt', password: true, okText: 'Bekreft',
-  });
-  if (!pw) return false;
-  const ok = await vurdLogin(pw);
-  if (!ok) showToast('Passordet stemte ikke. Prøv på nytt.');
-  return ok;
-}
+// ─── Assessments (vurderinger) ────────────────────────────────
+// Assessments now live in our own backend, under their own actions
+// (vurdcreate/vurdupdate/vurddelete) and the SAME teacher token as everything
+// else. So writes go through api() and inherit its Unauthorized stash/replay
+// handling – no separate login or token.
 
 async function vurdApi(action, params = {}) {
-  if (!vurdToken && !(await ensureVurdToken())) throw new Error('Ikke innlogget for vurderinger');
-  const body = new URLSearchParams(Object.assign({ action, token: vurdToken }, params));
-  const res  = await fetch(VURD_URL, { method: 'POST', body });
-  const data = await res.json();
-  if (data && data.error) {
-    if (data.error === 'Unauthorized') {
-      vurdToken = null;
-      sessionStorage.removeItem(VURD_TOKEN_KEY);
-    }
-    throw new Error(data.error);
-  }
-  if (action === 'create' || action === 'update' || action === 'delete') {
-    localStorage.removeItem(VURD_TS_KEY);   // own write → next loadAssessments refetches
-  }
+  const data = await api('vurd' + action, params);   // vurdcreate | vurdupdate | vurddelete
+  localStorage.removeItem(VURD_TS_KEY);              // own write → next loadAssessments refetches
   return data;
 }
 
@@ -775,7 +733,7 @@ async function loadAssessments(opts = {}) {
     }
   }
   try {
-    const res = await fetch(`${VURD_URL}?action=public`);
+    const res = await fetch(`${SCRIPT_URL}?action=vurderinger`);
     if (!res.ok) return;
     const data = await res.json();
     if (!Array.isArray(data)) return;

@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE = 'ukeplan-shell-v37';
+const CACHE = 'ukeplan-shell-v38';
 const ASSETS = [
   './',
   'index.html',
@@ -35,11 +35,10 @@ self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
 
-  // Apps Script API: never intercept – let localStorage handle data caching.
-  if (url.hostname.includes('script.google.com')) return;
-
   // Same-origin GETs only: network-first so code/style changes show up on the
-  // next load; fall back to the cached copy only when offline.
+  // next load; fall back to the cached copy only when offline. The data API
+  // (api.ukeportalen.no) is cross-origin, so it is skipped here – its data is
+  // cached in localStorage, never by the service worker.
   if (url.origin !== self.location.origin) return;
 
   // `cache: 'no-cache'` forces the browser to revalidate against the server

@@ -2,12 +2,9 @@
 
 // ─── Configuration ────────────────────────────────────────────
 
-// NEW ukeplan backend (homework, learning goals, messages, …).
+// ukeplan backend – plan elements AND assessments (read-only here, merged into
+// the "Vurdering" column). Assessments come from ?action=vurderinger.
 const SCRIPT_URL = 'https://api.ukeportalen.no';
-
-// EXISTING vurderingskalender backend – assessments are read-only
-// here and merged into the "Vurdering" column.
-const VURD_URL = 'https://script.google.com/macros/s/AKfycbwsXqoLZW8RlIAwvGN1yQXgpLnB3aCbVtjrmt4X5v302Fpbd9XFsSiobBOOTC4z1q5n/exec';
 
 const CLASS_KEY      = 'up_class';          // chosen class (single)
 const ELECTIVE_KEY   = 'up_electives';      // chosen elective subjects (array; null = not chosen yet)
@@ -339,7 +336,7 @@ async function loadAssessments(opts = {}) {
     }
   }
   try {
-    const res = await fetch(`${VURD_URL}?action=public`);
+    const res = await fetch(`${SCRIPT_URL}?action=vurderinger`);
     if (!res.ok) return;
     const data = await res.json();
     if (!Array.isArray(data)) return;
