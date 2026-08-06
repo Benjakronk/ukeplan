@@ -20,6 +20,13 @@
 .login-btn { margin-top: 16px; justify-content: center; }
 .login-error { margin-top: 12px; color: var(--danger); font-size: 14px; text-align: center; }
 
+/* Two-mode login card: log in (default) vs enrol (form has .enrol) */
+#loginForm .enrol-only { display: none; }
+#loginForm.enrol .enrol-only { display: block; }
+#loginForm.enrol .login-only { display: none; }
+.login-toggle { margin-top: 14px; font-size: 13px; color: var(--text-muted); text-align: center; line-height: 1.5; }
+.login-toggle .link-btn { font-size: 13px; }
+
 /* ── Teacher header ────────────────────────────────────────── */
 .teacher-header { text-align: left; }
 .teacher-header-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
@@ -355,3 +362,14 @@
 .board-hint { font-size: 12px; color: var(--text-muted); margin: 0 0 10px; }
 .only-narrow { display: none; }
 @media (max-width: 640px) { .only-narrow { display: inline; color: var(--warn-text); font-weight: 600; } }
+
+/* ── Admin panel (teacher accounts) ────────────────────────────── */
+.admin-list { display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow-y: auto; margin-top: 4px; }
+.admin-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-btn); background: var(--surface);
+}
+.admin-row.inactive { opacity: .6; }
+.admin-row-name { font-weight: 700; }
+.admin-row-user { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
+.admin-row-actions { display: flex; gap: 6px; flex-wrap: wrap; }

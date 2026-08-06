@@ -4,15 +4,13 @@
 
 const SCRIPT_URL = 'https://api.ukeportalen.no';
 
-const TOKEN_KEY   = 'up_token';
-const EXPIRES_KEY = 'up_token_exp';         // ms timestamp when the session token dies
+// Auth is a per-teacher account with an httpOnly session cookie (set by the API).
+// The frontend never holds the token; it just sends `credentials: 'include'` and
+// asks `?action=me` on load. These localStorage keys are a cache of the profile.
 const CLASS_KEY   = 'up_teacher_class';
 const TNAME_KEY   = 'up_teacher_name';
+const UNAME_KEY   = 'up_teacher_username';   // last username, prefilled on the login screen
 const VARIANT_KEY = 'up_teacher_variant';   // adapted-plan code being edited, e.g. "8A-K7X9M"
-
-// Must mirror the CacheService put-TTL (14400 s) in ukeplan_GAS.js – the token
-// is valid for exactly this long from login and is NOT renewed on use.
-const TOKEN_TTL   = 4 * 60 * 60 * 1000;
 
 const SCHOOL_CAL_URL    = 'https://sspkalender.prokom.no/api/iCalTidspunkt/?Kunde=nesakskoleruta&Id=0&Categories=438,439';
 const SCHOOL_CAL_KEY    = 'up_school_cal';
@@ -66,9 +64,8 @@ const VURD_CACHE_TTL = 10 * 60 * 1000;
 // Writes that failed on an expired session – replayed after re-login.
 const PENDING_WRITES_KEY = 'up_pending_writes';
 
-let token         = sessionStorage.getItem(TOKEN_KEY) || null;
-let expiryTimer   = null;
-let expiryWarnTimer = null;  // fires ~5 min before the token dies (E1)
+let loggedIn      = false;   // set once ?action=me / login / enroll confirms a session
+let isAdmin       = false;   // current teacher is an administrator
 let cloning       = false;   // true while a clone request is in flight (guards double-clicks)
 let editingVurd   = null; // the vurdering object being edited in the modal, or null
 let selectedClass = localStorage.getItem(CLASS_KEY) || null;
@@ -153,7 +150,7 @@ function modalDefaultSubject(type) {
   const ds = settings.defaultSubject;
   return ds && SUBJECTS.includes(ds) ? ds : '';
 }
-function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
+function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); saveProfileToServer(); }
 // The subjects the teacher teaches (profile modal). Empty = no filtering.
 function mySubjects() {
   return Array.isArray(settings.mySubjects) ? settings.mySubjects.filter(s => SUBJECTS.includes(s)) : [];
@@ -185,122 +182,151 @@ function init() {
   document.getElementById('teacherName').value = teacherName;
   updateProfileButton();
 
-  // A session that already expired (e.g. tab reopened hours later) → straight to login.
-  if (token && isSessionExpired()) {
-    sessionStorage.removeItem(TOKEN_KEY);
-    sessionStorage.removeItem(EXPIRES_KEY);
-    token = null;
-  }
-
-  if (token) {
-    scheduleExpiry();
-    showDashboard();
-    updateClassLabel();
-    updateWeekLabel();
-    if (selectedClass) loadData();
-    else { hideOverlay(); showClassModal(); }
-  } else {
-    showLogin();
-  }
+  bootstrapSession();
 }
 
-// ─── Authentication ───────────────────────────────────────────
-
-function setupAuthListeners() {
-  document.getElementById('loginForm').addEventListener('submit', handleLogin);
-  document.getElementById('logoutBtn').addEventListener('click', handleLogout);
-  // Re-check when the tab is shown/focused, in case the single timer was
-  // throttled while the tab was in the background.
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) scheduleExpiry(); });
-  window.addEventListener('focus', scheduleExpiry);
-}
-
-// ─── Session expiry ───────────────────────────────────────────
-
-function isSessionExpired() {
-  const exp = Number(sessionStorage.getItem(EXPIRES_KEY)) || 0;
-  return exp > 0 && Date.now() >= exp;
-}
-
-// Arm (or re-arm) a timer that logs the teacher out the moment the token dies.
-// Logs out right away if the deadline has already passed.
-function scheduleExpiry() {
-  if (expiryTimer) { clearTimeout(expiryTimer); expiryTimer = null; }
-  if (expiryWarnTimer) { clearTimeout(expiryWarnTimer); expiryWarnTimer = null; }
-  if (!token) return;
-  let exp = Number(sessionStorage.getItem(EXPIRES_KEY)) || 0;
-  if (!exp) { exp = Date.now() + TOKEN_TTL; sessionStorage.setItem(EXPIRES_KEY, String(exp)); }
-  const remaining = exp - Date.now();
-  if (remaining <= 0) { handleExpired(); return; }
-  expiryTimer = setTimeout(handleExpired, remaining);   // 4h is well within setTimeout's range
-  // Heads-up a few minutes before logout so unsaved work can be finished.
-  const WARN_LEAD = 5 * 60 * 1000;
-  if (remaining > WARN_LEAD) {
-    expiryWarnTimer = setTimeout(() => {
-      showToast('Du blir logget ut om ca. 5 minutter. Fullfør og klikk ut av feltet du jobber i, så det blir lagret.', { duration: 9000 });
-    }, remaining - WARN_LEAD);
-  }
-}
-
-async function handleLogin(e) {
-  e.preventDefault();
-  const name = document.getElementById('loginName').value.trim();
-  const pw = document.getElementById('passwordInput').value;
-  const errEl = document.getElementById('loginError');
-  errEl.hidden = true;
-  if (!name) { errEl.textContent = 'Skriv inn navnet ditt'; errEl.hidden = false; return; }
+// Ask the server whether the session cookie is valid; enter the dashboard if so,
+// otherwise show the login/enrol screen.
+async function bootstrapSession() {
   showOverlay();
   try {
-    const body = new URLSearchParams({ action: 'login', password: pw });
-    const res  = await fetch(SCRIPT_URL, { method: 'POST', body });
+    const res = await fetch(`${SCRIPT_URL}?action=me`, { credentials: 'include' });
     const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    token = data.token;
-    sessionStorage.setItem(TOKEN_KEY, token);
-    sessionStorage.setItem(EXPIRES_KEY, String(Date.now() + TOKEN_TTL));
-    scheduleExpiry();
-    teacherName = name;
-    localStorage.setItem(TNAME_KEY, name);
-    document.getElementById('teacherName').value = name;
-    updateProfileButton();
-    document.getElementById('passwordInput').value = '';
-    hideOverlay();
-    showDashboard();
-    updateClassLabel();
-    updateWeekLabel();
-    if (selectedClass) loadData();
-    else showClassModal();
-    replayPendingWrites();
-  } catch (err) {
-    hideOverlay();
-    errEl.textContent = translateError(err.message) || 'Innlogging feilet';
-    errEl.hidden = false;
-  }
-}
-
-function handleLogout() {
-  if (expiryTimer) { clearTimeout(expiryTimer); expiryTimer = null; }
-  if (expiryWarnTimer) { clearTimeout(expiryWarnTimer); expiryWarnTimer = null; }
-  sessionStorage.removeItem(TOKEN_KEY);
-  sessionStorage.removeItem(EXPIRES_KEY);
-  token = null;
+    if (data && !data.error) { enterDashboard(data); return; }
+  } catch { /* offline / network – fall through to login */ }
+  hideOverlay();
   showLogin();
 }
 
-function handleExpired() {
-  if (!token) return;   // already handled (timer + a racing Unauthorized)
-  if (expiryTimer) { clearTimeout(expiryTimer); expiryTimer = null; }
-  if (expiryWarnTimer) { clearTimeout(expiryWarnTimer); expiryWarnTimer = null; }
-  sessionStorage.removeItem(TOKEN_KEY);
-  sessionStorage.removeItem(EXPIRES_KEY);
-  token = null;
+// ─── Authentication (per-teacher accounts + cookie session) ───
+
+function setupAuthListeners() {
+  document.getElementById('loginForm').addEventListener('submit', handleAuthSubmit);
+  document.getElementById('logoutBtn').addEventListener('click', handleLogout);
+  document.getElementById('toEnrol').addEventListener('click', () => setAuthMode('enrol'));
+  document.getElementById('toLogin').addEventListener('click', () => setAuthMode('login'));
+}
+
+function setAuthMode(mode) {
+  const form = document.getElementById('loginForm');
+  const enrol = mode === 'enrol';
+  form.classList.toggle('enrol', enrol);
+  document.getElementById('loginSub').textContent = enrol ? 'Opprett konto med koden fra skolen' : 'Logg inn for lærere';
+  document.getElementById('loginSubmit').textContent = enrol ? 'Opprett konto' : 'Logg inn';
+  document.getElementById('loginError').hidden = true;
+  const focusId = enrol ? 'enrolCode' : 'usernameInput';
+  setTimeout(() => { const el = document.getElementById(focusId); if (el) el.focus(); }, 30);
+}
+
+function showAuthError(msg) {
+  const el = document.getElementById('loginError');
+  el.textContent = msg; el.hidden = false;
+}
+
+async function handleAuthSubmit(e) {
+  e.preventDefault();
+  const enrol = document.getElementById('loginForm').classList.contains('enrol');
+  document.getElementById('loginError').hidden = true;
+  const username = document.getElementById('usernameInput').value.trim();
+  const password = document.getElementById('passwordInput').value;
+  const params = { action: enrol ? 'enroll' : 'login', username, password };
+  if (enrol) {
+    params.enrolCode = document.getElementById('enrolCode').value;
+    params.name = document.getElementById('enrolName').value.trim();
+    if (!params.enrolCode || !params.name) { showAuthError('Fyll ut alle feltene.'); return; }
+  }
+  if (!username || !password) { showAuthError('Brukernavn og passord kreves.'); return; }
+  showOverlay();
+  try {
+    const res  = await fetch(SCRIPT_URL, { method: 'POST', credentials: 'include', body: new URLSearchParams(params) });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    localStorage.setItem(UNAME_KEY, username);
+    document.getElementById('passwordInput').value = '';
+    document.getElementById('enrolCode').value = '';
+    enterDashboard(data);
+    replayPendingWrites();
+  } catch (err) {
+    hideOverlay();
+    showAuthError(translateError(err.message) || 'Innlogging feilet');
+  }
+}
+
+// Hydrate the profile from the server response and open the dashboard.
+function enterDashboard(profile) {
+  applyProfile(profile);
+  loggedIn = true;
+  hideOverlay();
+  showDashboard();
+  updateClassLabel();
+  updateWeekLabel();
+  if (selectedClass) loadData();
+  else { hideOverlay(); showClassModal(); }
+}
+
+async function handleLogout() {
+  try { await fetch(SCRIPT_URL, { method: 'POST', credentials: 'include', body: new URLSearchParams({ action: 'logout' }) }); }
+  catch { /* best effort – cookie clears server-side anyway */ }
+  loggedIn = false; isAdmin = false;
+  showLogin();
+}
+
+// A request came back Unauthorized (session lost/expired server-side).
+function onSessionLost() {
+  if (!loggedIn) return;
+  loggedIn = false; isAdmin = false;
   showLogin();
   showToast('Økten utløp – logg inn på nytt.');
 }
 
+// ─── Server-synced profile ────────────────────────────────────
+// The account's name + preferences are the source of truth; localStorage stays
+// a write-through cache (instant reads + pre-paint theme).
+function applyProfile(profile) {
+  isAdmin = !!profile.isAdmin;
+  if (profile.name) { teacherName = profile.name; localStorage.setItem(TNAME_KEY, teacherName); }
+  const p = profile.preferences || {};
+  settings = {
+    confirmDelete:  p.confirmDelete !== false,                                  // default true
+    defaultSubject: typeof p.defaultSubject === 'string' ? p.defaultSubject : '',
+    mySubjects:     Array.isArray(p.mySubjects) ? p.mySubjects : [],
+  };
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));                 // cache only (no server echo)
+  if (p.theme && window.UPTheme) UPTheme.set(p.theme);
+  if (p.lastClass && CLASSES.includes(p.lastClass) && !variantCode) {
+    selectedClass = p.lastClass; localStorage.setItem(CLASS_KEY, selectedClass);
+  }
+  document.getElementById('teacherName').value = teacherName;
+  updateProfileButton();
+  updateAdminButton();
+}
+
+// Debounced push of name + preferences to the server (called by saveSettings,
+// the name/theme/class change handlers).
+let profileSaveTimer = null;
+function saveProfileToServer() {
+  if (!loggedIn) return;
+  clearTimeout(profileSaveTimer);
+  profileSaveTimer = setTimeout(() => {
+    const preferences = {
+      confirmDelete:  settings.confirmDelete !== false,
+      defaultSubject: settings.defaultSubject || '',
+      mySubjects:     Array.isArray(settings.mySubjects) ? settings.mySubjects : [],
+      theme:          window.UPTheme ? UPTheme.get() : 'auto',
+      lastClass:      (!variantCode && selectedClass) || '',
+    };
+    api('profile', { name: teacherName, preferences: JSON.stringify(preferences) }).catch(() => {});
+  }, 600);
+}
+
+function updateAdminButton() {
+  const btn = document.getElementById('adminPanelBtn');
+  if (btn) btn.hidden = !isAdmin;
+}
+
 // ─── Pending-write replay ─────────────────────────────────────
-// A write that fails on an expired token is stashed here and replayed right
-// after the next successful login, so a blur-save at the 4 h mark isn't lost.
+// A write that fails on a lost session is stashed here and replayed right after
+// the next successful login (a safety net – rare now that sessions persist).
 function stashPendingWrite(action, params) {
   try {
     const arr = JSON.parse(sessionStorage.getItem(PENDING_WRITES_KEY)) || [];
@@ -333,10 +359,12 @@ async function replayPendingWrites() {
 function showLogin() {
   document.getElementById('dashboard').hidden = true;
   document.getElementById('loginScreen').classList.add('active');
-  document.getElementById('loginName').value = teacherName || '';
+  setAuthMode('login');
+  const uname = localStorage.getItem(UNAME_KEY) || '';
+  document.getElementById('usernameInput').value = uname;
+  document.getElementById('passwordInput').value = '';
   hideOverlay();
-  const focusId = teacherName ? 'passwordInput' : 'loginName';
-  setTimeout(() => document.getElementById(focusId).focus(), 60);
+  setTimeout(() => document.getElementById(uname ? 'passwordInput' : 'usernameInput').focus(), 60);
 }
 
 function showDashboard() {
@@ -347,15 +375,15 @@ function showDashboard() {
 // ─── Authenticated API helper ─────────────────────────────────
 
 async function api(action, params = {}) {
-  const body = new URLSearchParams(Object.assign({ action, token }, params));
-  const res  = await fetch(SCRIPT_URL, { method: 'POST', body });
+  const res  = await fetch(SCRIPT_URL, { method: 'POST', credentials: 'include',
+    body: new URLSearchParams(Object.assign({ action }, params)) });
   const data = await res.json();
   if (data && data.error) {
     if (data.error === 'Unauthorized') {
       // Don't lose the edit that hit the dead session – stash it and replay
       // it after the next login (replayPendingWrites).
       if (['create','update','delete','vurdcreate','vurdupdate','vurddelete'].includes(action)) stashPendingWrite(action, params);
-      handleExpired();
+      onSessionLost();
     }
     throw new Error(data.error);
   }
@@ -546,6 +574,78 @@ function syncThemeSeg() {
   document.querySelectorAll('#themeSeg .theme-seg-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.themePref === pref);
   });
+}
+
+// ─── Admin panel (administrators only) ────────────────────────
+function openAdminModal() {
+  document.getElementById('adminOverlay').classList.add('open');
+  document.getElementById('adminModal').classList.add('open');
+  document.body.classList.add('scroll-locked');
+  loadAdminTeachers();
+}
+function closeAdminModal() {
+  document.getElementById('adminOverlay').classList.remove('open');
+  document.getElementById('adminModal').classList.remove('open');
+  document.body.classList.remove('scroll-locked');
+}
+async function loadAdminTeachers() {
+  const list = document.getElementById('adminList');
+  list.innerHTML = '<p class="muted">Laster…</p>';
+  try {
+    const res = await fetch(`${SCRIPT_URL}?action=admin_teachers`, { credentials: 'include' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    renderAdminTeachers(data);
+  } catch (err) {
+    list.innerHTML = '';
+    const p = document.createElement('p'); p.className = 'login-error'; p.textContent = translateError(err.message);
+    list.appendChild(p);
+  }
+}
+function renderAdminTeachers(teachers) {
+  const list = document.getElementById('adminList');
+  list.innerHTML = '';
+  if (!teachers.length) { list.innerHTML = '<p class="muted">Ingen lærere ennå.</p>'; return; }
+  teachers.forEach(t => {
+    const row = document.createElement('div');
+    row.className = 'admin-row' + (t.active ? '' : ' inactive');
+    const info = document.createElement('div');
+    const nm = document.createElement('div'); nm.className = 'admin-row-name';
+    nm.textContent = t.name + (t.isAdmin ? ' · admin' : '');
+    const un = document.createElement('div'); un.className = 'admin-row-user';
+    un.textContent = '@' + t.username + (t.active ? '' : ' · deaktivert');
+    info.appendChild(nm); info.appendChild(un);
+    const actions = document.createElement('div'); actions.className = 'admin-row-actions';
+    const resetBtn = document.createElement('button'); resetBtn.className = 'btn btn-ghost btn-tiny';
+    resetBtn.textContent = 'Nullstill passord';
+    resetBtn.addEventListener('click', () => adminResetPassword(t));
+    const toggleBtn = document.createElement('button'); toggleBtn.className = 'btn btn-ghost btn-tiny';
+    toggleBtn.textContent = t.active ? 'Deaktiver' : 'Aktiver';
+    toggleBtn.addEventListener('click', () => adminToggleActive(t));
+    actions.appendChild(resetBtn); actions.appendChild(toggleBtn);
+    row.appendChild(info); row.appendChild(actions);
+    list.appendChild(row);
+  });
+}
+async function adminResetPassword(t) {
+  const pw = await uiPrompt('Nytt midlertidig passord for ' + t.name + ' (@' + t.username + '). Minst 6 tegn. Gi det til læreren – de kan endre passordet selv senere.',
+    { title: 'Nullstill passord', label: 'Nytt passord', password: true, okText: 'Nullstill' });
+  if (!pw) return;
+  if (pw.length < 6) { showToast('Passordet må ha minst 6 tegn.'); return; }
+  try {
+    const r = await api('admin_reset', { id: t.id, password: pw });
+    if (r.error) throw new Error(r.error);
+    showToast('Passordet ble nullstilt for ' + t.name + '.');
+  } catch (err) { showToast(translateError(err.message)); }
+}
+async function adminToggleActive(t) {
+  const activate = !t.active;
+  if (!activate && !(await uiConfirm('Deaktivere ' + t.name + '? De blir logget ut og kan ikke logge inn før kontoen aktiveres igjen.'))) return;
+  try {
+    const r = await api('admin_setactive', { id: t.id, active: activate ? '1' : '0' });
+    if (r.error) throw new Error(r.error);
+    loadAdminTeachers();
+  } catch (err) { showToast(translateError(err.message)); }
 }
 
 function openProfileModal() {
@@ -852,7 +952,7 @@ function setupDashboardListeners() {
   const nameInput = document.getElementById('teacherName');
   nameInput.addEventListener('input', () => {
     const v = nameInput.value.trim();
-    if (v) { teacherName = v; localStorage.setItem(TNAME_KEY, v); }  // never store an empty name
+    if (v) { teacherName = v; localStorage.setItem(TNAME_KEY, v); saveProfileToServer(); }  // never store an empty name
     updateProfileButton();
   });
 
@@ -861,6 +961,10 @@ function setupDashboardListeners() {
   document.getElementById('profileClose').addEventListener('click', closeProfileModal);
   document.getElementById('profileOverlay').addEventListener('click', closeProfileModal);
   document.getElementById('profileDone').addEventListener('click', closeProfileModal);
+  document.getElementById('logoutBtn2').addEventListener('click', () => { closeProfileModal(); handleLogout(); });
+  document.getElementById('adminPanelBtn').addEventListener('click', () => { closeProfileModal(); openAdminModal(); });
+  document.getElementById('adminClose').addEventListener('click', closeAdminModal);
+  document.getElementById('adminOverlay').addEventListener('click', closeAdminModal);
   document.getElementById('setConfirmDelete').addEventListener('change', e => {
     settings.confirmDelete = e.target.checked;
     saveSettings();
@@ -870,6 +974,7 @@ function setupDashboardListeners() {
     if (!btn || !window.UPTheme) return;
     UPTheme.set(btn.dataset.themePref);
     syncThemeSeg();
+    saveProfileToServer();
   });
   const dsSel = document.getElementById('setDefaultSubject');
   const noneOpt = document.createElement('option');
@@ -882,7 +987,7 @@ function setupDashboardListeners() {
   document.getElementById('undoBtn').addEventListener('click', doUndo);
   document.getElementById('redoBtn').addEventListener('click', doRedo);
   document.addEventListener('keydown', e => {
-    if (!token) return;
+    if (!loggedIn) return;
     const t = e.target;
     if (t && (t.isContentEditable || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
     if (!(e.ctrlKey || e.metaKey)) return;
@@ -955,7 +1060,7 @@ function openVariantFromInput() {
 // hand, check whether it has any content at all and warn loudly if not.
 async function warnIfVariantEmpty(code) {
   try {
-    const res = await fetch(`${SCRIPT_URL}?action=all&token=${encodeURIComponent(token)}`);
+    const res = await fetch(`${SCRIPT_URL}?action=all`, { credentials: 'include' });
     const data = await res.json();
     if (!Array.isArray(data)) return;
     if (variantCode !== code) return;              // switched away meanwhile
@@ -1006,6 +1111,7 @@ function pickClass(cls) {
   variantCode = null;                 // a normal class exits any adapted-plan editing
   localStorage.setItem(CLASS_KEY, cls);
   localStorage.removeItem(VARIANT_KEY);
+  saveProfileToServer();              // remember the class across devices (preferences.lastClass)
   planData = [];
   updateClassLabel();
   closeClassModal();
@@ -1574,6 +1680,7 @@ function setupModalListeners() {
     const open = id => document.getElementById(id).classList.contains('open');
     if (open('addModal')) closeAddModal();
     else if (open('vurdFilterModal')) closeVurdFilterModal();
+    else if (open('adminModal')) closeAdminModal();
     else if (open('profileModal')) closeProfileModal();
     else if (open('classModal')) closeClassModal();
   });
