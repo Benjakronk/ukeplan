@@ -588,7 +588,10 @@ body.scroll-locked { overflow: hidden; }
 .cal-table td.day { background: var(--surface); }
 .cal-table td.weekend { background: var(--surface-2); }
 .cal-table td.other-month { color: var(--off-text); border-color: transparent; background: transparent; }
-.cal-table td.today { background: var(--today-bg); border-color: var(--today-border); }
+/* Inset ring (not border-color) so all four sides show – border-collapse hands
+   a cell's top/left borders to its neighbours, so border-color only paints
+   right/bottom. */
+.cal-table td.today { background: var(--today-bg); box-shadow: inset 0 0 0 2px var(--today-border); }
 .cal-table td.school-off { background: var(--off-bg); }
 .cal-table td.school-planning { background: var(--plan-bg); }
 .cal-table td.school-marker { background: var(--marker-bg); }
