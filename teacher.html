@@ -31,17 +31,34 @@
     </div>
   </div>
 
-  <!-- Login screen -->
+  <!-- Login / enrolment screen -->
   <div id="loginScreen" class="login-screen">
     <form id="loginForm" class="login-card" autocomplete="off">
-      <h1 class="login-title">Ukeportalen – Lærere</h1>
-      <p class="login-sub">Runni ungdomsskole</p>
-      <label class="login-label" for="loginName">Navn</label>
-      <input type="text" id="loginName" class="input login-input" autocomplete="name" required>
+      <h1 class="login-title">Uke<span class="wm">portalen</span></h1>
+      <p id="loginSub" class="login-sub">Logg inn for lærere</p>
+
+      <div class="login-field enrol-only">
+        <label class="login-label" for="enrolCode">Kode fra skolen</label>
+        <input type="password" id="enrolCode" class="input login-input" autocomplete="off">
+      </div>
+      <div class="login-field enrol-only">
+        <label class="login-label" for="enrolName">Navnet ditt</label>
+        <input type="text" id="enrolName" class="input login-input" autocomplete="name">
+      </div>
+
+      <label class="login-label" for="usernameInput">Brukernavn</label>
+      <input type="text" id="usernameInput" class="input login-input" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+
       <label class="login-label" for="passwordInput">Passord</label>
       <input type="password" id="passwordInput" class="input login-input" autocomplete="current-password" required>
-      <button type="submit" class="btn btn-primary login-btn">Logg inn</button>
+
+      <button type="submit" id="loginSubmit" class="btn btn-primary login-btn">Logg inn</button>
       <p id="loginError" class="login-error" hidden></p>
+
+      <p class="login-toggle">
+        <span class="login-only">Har du fått en kode fra skolen? <button type="button" id="toEnrol" class="link-btn">Opprett konto</button></span>
+        <span class="enrol-only">Har du allerede konto? <button type="button" id="toLogin" class="link-btn">Logg inn</button></span>
+      </p>
     </form>
   </div>
 
@@ -350,9 +367,22 @@
     </div>
 
     <div class="add-modal-actions">
+      <button id="adminPanelBtn" class="btn btn-ghost" type="button" hidden>&#128736; Adminpanel</button>
       <span class="add-modal-spacer"></span>
+      <button id="logoutBtn2" class="btn btn-ghost" type="button">Logg ut</button>
       <button id="profileDone" class="btn btn-primary" type="button">Ferdig</button>
     </div>
+  </div>
+
+  <!-- Admin panel (administrators only) -->
+  <div id="adminOverlay" class="class-modal-overlay"></div>
+  <div id="adminModal" class="class-modal admin-modal" role="dialog" aria-modal="true" aria-labelledby="adminTitle">
+    <div class="class-modal-header">
+      <h2 id="adminTitle" class="class-modal-title">Adminpanel – lærere</h2>
+      <button id="adminClose" class="panel-close" aria-label="Lukk">&times;</button>
+    </div>
+    <p class="class-modal-hint">Nullstill passord eller deaktiver kontoer. Nye lærere oppretter konto selv med skolekoden.</p>
+    <div id="adminList" class="admin-list"></div>
   </div>
 
   <!-- Toast -->
