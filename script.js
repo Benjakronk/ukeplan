@@ -133,6 +133,21 @@ function setupListeners() {
     if (currentTab === 'fag') loadAllPlan({ skipCache: true });
     else loadWeek({ skipCache: true });
   });
+
+  // Theme toggle (footer): cycles Auto → Lyst → Mørkt, saved per device.
+  const themeBtn = document.getElementById('themeToggle');
+  if (themeBtn && window.UPTheme) {
+    const ICON  = { auto: '🖥️', light: '☀', dark: '☾' };
+    const LABEL = { auto: 'Tema: Auto', light: 'Tema: Lyst', dark: 'Tema: Mørkt' };
+    const syncThemeBtn = () => {
+      const p = UPTheme.get();
+      themeBtn.querySelector('.theme-toggle-icon').textContent = ICON[p];
+      themeBtn.querySelector('.theme-toggle-label').textContent = LABEL[p];
+    };
+    themeBtn.addEventListener('click', () => { UPTheme.cycle(); syncThemeBtn(); });
+    syncThemeBtn();
+  }
+
   document.getElementById('classBtn').addEventListener('click', showClassModal);
   document.getElementById('classModalClose').addEventListener('click', () => closeClassModal());
   document.getElementById('classModalOverlay').addEventListener('click', () => closeClassModal());

@@ -4,11 +4,22 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Ukeportalen – Lærere | Runni ungdomsskole</title>
+  <script>
+    // Apply the saved theme override before first paint (avoids a flash). "auto"
+    // (or unset) leaves data-theme off so the prefers-color-scheme query decides.
+    (function () {
+      try {
+        var t = localStorage.getItem('up_theme');
+        if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    })();
+  </script>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="teacher.css">
   <link rel="manifest" href="manifest.json">
   <link rel="icon" type="image/svg+xml" href="icon.svg">
-  <meta name="theme-color" content="#2563eb">
+  <meta name="theme-color" content="#eef2f0" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f1514" media="(prefers-color-scheme: dark)">
 </head>
 <body>
 
@@ -315,6 +326,16 @@
       <label class="form-label" for="setDefaultSubject">Standard fag i «Legg til»</label>
       <select id="setDefaultSubject" class="input"></select>
       <p class="form-hint">Fylles inn automatisk i fag-feltet når du legger til noe nytt. La stå på «(velg hver gang)» hvis du vil velge fag selv hver gang.</p>
+    </div>
+
+    <div class="form-row">
+      <label class="form-label">Tema</label>
+      <div id="themeSeg" class="theme-seg" role="group" aria-label="Fargetema">
+        <button type="button" class="theme-seg-btn" data-theme-pref="auto">Auto</button>
+        <button type="button" class="theme-seg-btn" data-theme-pref="light">Lyst</button>
+        <button type="button" class="theme-seg-btn" data-theme-pref="dark">Mørkt</button>
+      </div>
+      <p class="form-hint">«Auto» følger fargetemaet på enheten din. Valget lagres på denne enheten.</p>
     </div>
 
     <div class="form-row">

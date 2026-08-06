@@ -4,10 +4,21 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Ukeportalen: Runni ungdomsskole</title>
+  <script>
+    // Apply the saved theme override before first paint (avoids a flash). "auto"
+    // (or unset) leaves data-theme off so the prefers-color-scheme query decides.
+    (function () {
+      try {
+        var t = localStorage.getItem('up_theme');
+        if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    })();
+  </script>
   <link rel="stylesheet" href="styles.css">
   <link rel="manifest" href="manifest.json">
   <link rel="icon" type="image/svg+xml" href="icon.svg">
-  <meta name="theme-color" content="#2563eb">
+  <meta name="theme-color" content="#eef2f0" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f1514" media="(prefers-color-scheme: dark)">
 </head>
 <body>
 
@@ -112,6 +123,10 @@
       <p class="footer-app">Ukeportalen · Runni ungdomsskole</p>
       <p id="lastUpdated" class="last-updated"></p>
       <p class="copyright">Copyright Benjamin Ensrud 2026</p>
+      <button id="themeToggle" class="theme-toggle" type="button" aria-label="Bytt fargetema">
+        <span class="theme-toggle-icon" aria-hidden="true"></span>
+        <span class="theme-toggle-label"></span>
+      </button>
     </footer>
   </div>
 

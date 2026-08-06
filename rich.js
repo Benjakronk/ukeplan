@@ -398,3 +398,34 @@ function createRichField(opts) {
   });
   return ed;
 }
+
+// ─── Theme preference (shared: student + teacher) ──────────────
+// pref ∈ {'auto','light','dark'}. 'auto' follows the OS (prefers-color-scheme);
+// 'light'/'dark' set data-theme on <html> to override. The pre-paint script in
+// each page's <head> applies a saved override early; this is the runtime API.
+(function () {
+  const THEME_KEY = 'up_theme';
+  function get() {
+    try { const t = localStorage.getItem(THEME_KEY); return (t === 'light' || t === 'dark') ? t : 'auto'; }
+    catch (e) { return 'auto'; }
+  }
+  function set(pref) {
+    const root = document.documentElement;
+    if (pref === 'light' || pref === 'dark') root.setAttribute('data-theme', pref);
+    else { root.removeAttribute('data-theme'); pref = 'auto'; }
+    try { if (pref === 'auto') localStorage.removeItem(THEME_KEY); else localStorage.setItem(THEME_KEY, pref); }
+    catch (e) { /* private mode – runtime still works via data-theme */ }
+    document.dispatchEvent(new CustomEvent('up-themechange', { detail: { pref } }));
+    return pref;
+  }
+  function effective() {
+    const p = get();
+    if (p !== 'auto') return p;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  function cycle() {
+    const order = ['auto', 'light', 'dark'];
+    return set(order[(order.indexOf(get()) + 1) % order.length]);
+  }
+  window.UPTheme = { get, set, effective, cycle };
+})();
