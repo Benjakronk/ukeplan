@@ -1378,6 +1378,7 @@ async function commitHomeworkRow(row) {
     allPlanTs = 0;
     ed.classList.remove('unsaved');
     setSaved();
+    flashSaved(ed);
   } catch (err) {
     ed.classList.add('unsaved');
     setSaveError(err.message);
@@ -1496,6 +1497,7 @@ async function commitRichCell(ed, html) {
     allPlanTs = 0;
     ed.classList.remove('unsaved');
     setSaved();
+    flashSaved(ed);
   } catch (err) {
     ed.classList.add('unsaved');
     setSaveError(err.message);
@@ -2840,6 +2842,7 @@ async function commitProgCell(ed, html) {
     allPlanTs = 0; // invalidate so a later reload picks up the change
     ed.classList.remove('unsaved');
     setSaved();
+    flashSaved(ed);
   } catch (err) {
     ed.classList.add('unsaved');
     setSaveError(err.message);
@@ -3015,6 +3018,15 @@ function setSaved()   {
   const el = document.getElementById('saveStatus');
   el.textContent = 'Lagret ✓'; el.className = 'save-status saved';
   clearTimeout(saveTimer); saveTimer = setTimeout(() => { el.textContent = ''; }, 2500);
+}
+// A brief green ring on the cell that just saved – local confirmation right
+// where the eye is (mirrors the red .unsaved outline for failures).
+function flashSaved(el) {
+  if (!el) return;
+  el.classList.remove('just-saved');
+  void el.offsetWidth;   // restart the animation if it fires again quickly
+  el.classList.add('just-saved');
+  el.addEventListener('animationend', () => el.classList.remove('just-saved'), { once: true });
 }
 // Turn technical / English backend or network errors into friendly Norwegian.
 // The backend already returns Norwegian for most cases, so those pass through.

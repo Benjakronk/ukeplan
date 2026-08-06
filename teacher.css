@@ -61,6 +61,14 @@
 /* A cell whose last save failed – flag it so the teacher notices */
 .rich-field.unsaved, .edit-rich.unsaved { box-shadow: 0 0 0 2px var(--danger); border-radius: 6px; }
 
+/* U4: brief green ring on the cell that just saved – local confirmation. */
+@keyframes savedFlash {
+  0%   { box-shadow: 0 0 0 2px var(--success); }
+  100% { box-shadow: 0 0 0 2px transparent; }
+}
+.just-saved { animation: savedFlash .9s ease-out; border-radius: 6px; }
+@media (prefers-reduced-motion: reduce) { .just-saved { animation: none; } }
+
 /* ── General (messages) section ────────────────────────────── */
 .general-section { margin-bottom: 16px; }
 .general-head { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--text-muted); margin-bottom: 8px; }
