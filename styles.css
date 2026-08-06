@@ -129,7 +129,25 @@
   --scrim:rgba(0,0,0,.6);
   --shadow-card:0 1px 2px rgba(0,0,0,.35), 0 10px 30px rgba(0,0,0,.45);
 }
-:root { color-scheme: light dark; }
+/* Native form controls (inputs, selects, date pickers, checkboxes, scrollbars)
+   follow the effective theme – including the manual data-theme override, not
+   just the OS – and use the pine accent for checkboxes/radios. */
+:root { color-scheme: light; accent-color: var(--primary); }
+@media (prefers-color-scheme: dark) { :root { color-scheme: dark; } }
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"]  { color-scheme: dark; }
+
+/* Text inputs / selects styled to the palette so they match (not just the UA
+   dark). Nearly every field in the app carries .input. */
+.input {
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-btn);
+  font-family: var(--font);
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+.input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
+.input::placeholder { color: var(--off-text); }
+
 /* Subtle icon-button hover wash – theme-aware so it shows on dark too. */
 :root { --hover-soft: rgba(16,33,31,.06); }
 @media (prefers-color-scheme: dark) { :root { --hover-soft: rgba(255,255,255,.07); } }
@@ -438,6 +456,7 @@ body.scroll-locked { overflow: hidden; }
 .variant-input {
   width: 100%; margin-top: 8px; padding: 9px 11px;
   font-family: var(--font); font-size: 14px; text-transform: uppercase;
+  background: var(--surface); color: var(--text);
   border: 1px solid var(--border); border-radius: var(--radius-btn); outline: none;
 }
 .variant-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
