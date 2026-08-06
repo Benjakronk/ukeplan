@@ -189,6 +189,7 @@
   color: var(--text-muted); padding: 10px 12px; background: var(--surface-2); border-bottom: 1px solid var(--border);
 }
 .vurd-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 14px; vertical-align: top; }
+.vurd-table tbody tr:hover td { background: var(--hover-soft); }
 .vurd-table tr:last-child td { border-bottom: none; }
 .link-btn { background: transparent; border: none; color: var(--primary); font-weight: 600; cursor: pointer; font-family: var(--font); font-size: 13px; }
 .link-btn:hover { text-decoration: underline; }
