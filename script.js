@@ -132,6 +132,9 @@ function setupListeners() {
   document.getElementById('refreshBtn').addEventListener('click', () => {
     if (currentTab === 'fag') loadAllPlan({ skipCache: true });
     else loadWeek({ skipCache: true });
+    // Assessments are cached separately (up to 1 h); refresh them too so a newly
+    // added vurdering shows up without waiting for the cache to expire.
+    loadAssessments({ skipCache: true });
   });
 
   // Theme toggle (footer): cycles Auto → Lyst → Mørkt, saved per device.
@@ -1218,10 +1221,16 @@ function buildMonthCard(monthDate, byDate) {
         if (items.length || sch) {
           const snap = new Date(cursor);
           const snapItems = items.slice();
+          const cell = td;
           td.tabIndex = 0;
           td.setAttribute('role', 'button');
-          td.addEventListener('click', () => showVurdDetail(snap, snapItems));
-          td.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showVurdDetail(snap, snapItems); } });
+          const openDay = () => {
+            document.querySelectorAll('#calendar .cal-table td.selected').forEach(c => c.classList.remove('selected'));
+            cell.classList.add('selected');
+            showVurdDetail(snap, snapItems);
+          };
+          td.addEventListener('click', openDay);
+          td.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDay(); } });
         }
       } else {
         td.className = 'day other-month';

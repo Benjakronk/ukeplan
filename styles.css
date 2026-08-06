@@ -68,19 +68,19 @@
     --text:          #e9efec;
     --text-muted:    #a3b3ad;
     --border:        #2a3733;
-    --today-bg:      #2b2717;
-    --today-border:  #5c5127;
+    --today-bg:      #3c3417;
+    --today-border:  #8a7526;
     --dot:           #64b6a6;
     --vurd:          #e0895f;
     --vurd-soft:     #33231b;
     --goal:          #64b6a6;
     --danger:        #e5705f;
     --danger-dark:   #f08a7a;
-    --off-bg:        #1d2724;
-    --off-text:      #7e8f89;
-    --plan-bg:       #262138;
-    --plan-text:     #b9a9d6;
-    --plan-border:   #3a3352;
+    --off-bg:        #2b3338;
+    --off-text:      #93a39d;
+    --plan-bg:       #33294e;
+    --plan-text:     #c3b6de;
+    --plan-border:   #47407a;
     --success:       #6bbd8a;
     --success-bg:    #18261f;
     --success-border:#2a3d35;
@@ -118,10 +118,10 @@
   --bg:#0f1514; --surface:#161e1c; --surface-2:#1d2724; --raise:#1a2422;
   --primary:#64b6a6; --primary-light:#1d332e; --primary-dark:#7fc7b8; --on-accent:#0f1514;
   --text:#e9efec; --text-muted:#a3b3ad; --border:#2a3733;
-  --today-bg:#2b2717; --today-border:#5c5127; --dot:#64b6a6;
+  --today-bg:#3c3417; --today-border:#8a7526; --dot:#64b6a6;
   --vurd:#e0895f; --vurd-soft:#33231b; --goal:#64b6a6;
-  --danger:#e5705f; --danger-dark:#f08a7a; --off-bg:#1d2724; --off-text:#7e8f89;
-  --plan-bg:#262138; --plan-text:#b9a9d6; --plan-border:#3a3352;
+  --danger:#e5705f; --danger-dark:#f08a7a; --off-bg:#2b3338; --off-text:#93a39d;
+  --plan-bg:#33294e; --plan-text:#c3b6de; --plan-border:#47407a;
   --success:#6bbd8a; --success-bg:#18261f; --success-border:#2a3d35;
   --warn-bg:#2b2517; --warn-border:#5c5027; --warn-text:#e0c48a;
   --info-bg:#18261f; --info-border:#2a3d35; --marker-bg:#17251f;
@@ -595,6 +595,8 @@ body.scroll-locked { overflow: hidden; }
 .cal-badge { position: absolute; top: 2px; right: 3px; font-size: 9px; font-weight: 700; color: var(--plan-text); }
 .cal-table td[role="button"] { cursor: pointer; }
 .cal-table td[role="button"]:hover { box-shadow: inset 0 0 0 2px var(--primary); }
+.cal-table td.selected { box-shadow: inset 0 0 0 2px var(--primary); }
+.cal-table td.selected .day-num { color: var(--primary); font-weight: 700; }
 .day-num { font-size: 13px; font-weight: 600; }
 .dots { display: flex; justify-content: center; gap: 2px; margin-top: 3px; }
 .dots .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--vurd); }

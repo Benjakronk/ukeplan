@@ -2544,10 +2544,16 @@ function buildVurdMonthCard(monthDate, byDate) {
         // Every in-month day is clickable so teachers can add for empty days too.
         const snap = new Date(cursor);
         const snapItems = items.slice();
+        const cell = td;
         td.tabIndex = 0;
         td.setAttribute('role', 'button');
-        td.addEventListener('click', () => showVurdDayDetail(snap, snapItems));
-        td.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showVurdDayDetail(snap, snapItems); } });
+        const openDay = () => {
+          document.querySelectorAll('#vurdCalWrap .cal-table td.selected').forEach(c => c.classList.remove('selected'));
+          cell.classList.add('selected');
+          showVurdDayDetail(snap, snapItems);
+        };
+        td.addEventListener('click', openDay);
+        td.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDay(); } });
       } else {
         td.className = 'day other-month';
         td.textContent = cursor.getDate();
