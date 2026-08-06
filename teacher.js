@@ -139,9 +139,20 @@ let modalInitialDesc = '';     // descInput value when the modal opened (dirty c
 const SETTINGS_KEY = 'up_settings';
 let settings = loadSettings();
 function loadSettings() {
-  const defaults = { confirmDelete: true, defaultSubject: '', mySubjects: [] };
+  const defaults = { confirmDelete: true, defaultSubject: '', mySubjects: [], subjectOrder: [], showAll: false, defaultLekseDay: '' };
   try { return Object.assign(defaults, JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}); }
   catch { return Object.assign({}, defaults); }
+}
+// The teacher's preferred board order (persisted). Subjects not listed fall back
+// to SUBJECTS order after the ordered ones.
+function subjectOrder() {
+  return Array.isArray(settings.subjectOrder) ? settings.subjectOrder.filter(s => SUBJECTS.includes(s)) : [];
+}
+// Order a set of subjects by the saved preference, then by curriculum order.
+function orderedSubjects(list) {
+  const pref = subjectOrder();
+  const idx = s => { const i = pref.indexOf(s); return i < 0 ? pref.length + SUBJECTS.indexOf(s) : i; };
+  return list.slice().sort((a, b) => idx(a) - idx(b));
 }
 // Subject to pre-fill in the add modal: the teacher's chosen default (if valid),
 // else empty – never an arbitrary "Norsk". General types carry no subject.
@@ -287,10 +298,14 @@ function applyProfile(profile) {
   if (profile.name) { teacherName = profile.name; localStorage.setItem(TNAME_KEY, teacherName); }
   const p = profile.preferences || {};
   settings = {
-    confirmDelete:  p.confirmDelete !== false,                                  // default true
-    defaultSubject: typeof p.defaultSubject === 'string' ? p.defaultSubject : '',
-    mySubjects:     Array.isArray(p.mySubjects) ? p.mySubjects : [],
+    confirmDelete:   p.confirmDelete !== false,                                  // default true
+    defaultSubject:  typeof p.defaultSubject === 'string' ? p.defaultSubject : '',
+    mySubjects:      Array.isArray(p.mySubjects) ? p.mySubjects : [],
+    subjectOrder:    Array.isArray(p.subjectOrder) ? p.subjectOrder : [],
+    showAll:         p.showAll === true,
+    defaultLekseDay: DAYS.includes(p.defaultLekseDay) ? p.defaultLekseDay : '',
   };
+  showAllSubjects = settings.showAll;                                           // hydrate the board toggle
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));                 // cache only (no server echo)
   if (p.theme && window.UPTheme) UPTheme.set(p.theme);
   if (p.lastClass && CLASSES.includes(p.lastClass) && !variantCode) {
@@ -309,11 +324,14 @@ function saveProfileToServer() {
   clearTimeout(profileSaveTimer);
   profileSaveTimer = setTimeout(() => {
     const preferences = {
-      confirmDelete:  settings.confirmDelete !== false,
-      defaultSubject: settings.defaultSubject || '',
-      mySubjects:     Array.isArray(settings.mySubjects) ? settings.mySubjects : [],
-      theme:          window.UPTheme ? UPTheme.get() : 'auto',
-      lastClass:      (!variantCode && selectedClass) || '',
+      confirmDelete:   settings.confirmDelete !== false,
+      defaultSubject:  settings.defaultSubject || '',
+      mySubjects:      Array.isArray(settings.mySubjects) ? settings.mySubjects : [],
+      subjectOrder:    Array.isArray(settings.subjectOrder) ? settings.subjectOrder : [],
+      showAll:         settings.showAll === true,
+      defaultLekseDay: settings.defaultLekseDay || '',
+      theme:           window.UPTheme ? UPTheme.get() : 'auto',
+      lastClass:       (!variantCode && selectedClass) || '',
     };
     api('profile', { name: teacherName, preferences: JSON.stringify(preferences) }).catch(() => {});
   }, 600);
@@ -671,6 +689,7 @@ function openProfileModal() {
   document.getElementById('teacherName').value = teacherName;
   document.getElementById('setConfirmDelete').checked = settings.confirmDelete !== false;
   document.getElementById('setDefaultSubject').value = SUBJECTS.includes(settings.defaultSubject) ? settings.defaultSubject : '';
+  document.getElementById('setDefaultLekseDay').value = DAYS.includes(settings.defaultLekseDay) ? settings.defaultLekseDay : '';
   buildMySubjectChips();
   syncThemeSeg();
   document.getElementById('profileOverlay').classList.add('open');
@@ -693,20 +712,67 @@ function buildMySubjectChips() {
   const row = document.getElementById('setMySubjects');
   if (!row) return;
   row.innerHTML = '';
-  const current = mySubjects();
-  SUBJECTS_SORTED.forEach(s => {
+  const nb = (a, b) => a.localeCompare(b, 'no');
+
+  const summary = document.createElement('p');
+  summary.className = 'mysubj-summary';
+  const updateSummary = () => {
+    const cur = mySubjects();
+    summary.textContent = cur.length ? 'Dine fag: ' + cur.join(', ') : 'Ingen fag valgt – da vises alle fag.';
+  };
+  row.appendChild(summary);
+
+  const search = document.createElement('input');
+  search.type = 'search'; search.className = 'input mysubj-search';
+  search.placeholder = 'Søk etter fag…'; search.autocomplete = 'off';
+  row.appendChild(search);
+
+  const makeChip = s => {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'vf-chip' + (current.includes(s) ? ' active' : '');
+    btn.className = 'vf-chip' + (mySubjects().includes(s) ? ' active' : '');
+    btn.dataset.subject = s;
     btn.textContent = s;
     btn.addEventListener('click', () => {
       const cur = mySubjects();
       settings.mySubjects = cur.includes(s) ? cur.filter(x => x !== s) : cur.concat(s);
       saveSettings();
       btn.classList.toggle('active');
+      updateSummary();
     });
-    row.appendChild(btn);
+    return btn;
+  };
+
+  // Kjernefag shown; valgfag behind an expander (progressive disclosure).
+  const core = document.createElement('div');
+  core.className = 'vf-chip-row mysubj-group';
+  CORE_SUBJECTS.slice().sort(nb).forEach(s => core.appendChild(makeChip(s)));
+  row.appendChild(core);
+
+  const det = document.createElement('details');
+  det.className = 'mysubj-electives';
+  const sum = document.createElement('summary');
+  sum.textContent = 'Valgfag og tilvalgsfag';
+  det.appendChild(sum);
+  const elw = document.createElement('div');
+  elw.className = 'vf-chip-row mysubj-group';
+  ELECTIVE_SUBJECTS.slice().sort(nb).forEach(s => elw.appendChild(makeChip(s)));
+  det.appendChild(elw);
+  if (ELECTIVE_SUBJECTS.some(s => mySubjects().includes(s))) det.open = true;
+  row.appendChild(det);
+
+  search.addEventListener('input', () => {
+    const q = search.value.trim().toLowerCase();
+    let elecHit = false;
+    row.querySelectorAll('.vf-chip').forEach(ch => {
+      const match = !q || ch.dataset.subject.toLowerCase().includes(q);
+      ch.style.display = match ? '' : 'none';
+      if (match && q && ELECTIVE_SUBJECTS.includes(ch.dataset.subject)) elecHit = true;
+    });
+    if (elecHit) det.open = true;
   });
+
+  updateSummary();
 }
 
 // ─── Vurdering date rules (B2) ────────────────────────────────
@@ -1003,6 +1069,12 @@ function setupDashboardListeners() {
   SUBJECTS_SORTED.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; dsSel.appendChild(o); });
   dsSel.addEventListener('change', e => { settings.defaultSubject = e.target.value; saveSettings(); });
 
+  const dlSel = document.getElementById('setDefaultLekseDay');
+  const dlNone = document.createElement('option'); dlNone.value = ''; dlNone.textContent = '(ingen)';
+  dlSel.appendChild(dlNone);
+  DAYS.forEach(d => { const o = document.createElement('option'); o.value = d; o.textContent = DAY_LABEL[d]; dlSel.appendChild(o); });
+  dlSel.addEventListener('change', e => { settings.defaultLekseDay = e.target.value; saveSettings(); });
+
   // Undo / redo (buttons + keyboard). Native Ctrl+Z is left to text fields.
   document.getElementById('undoBtn').addEventListener('click', doUndo);
   document.getElementById('redoBtn').addEventListener('click', doRedo);
@@ -1243,6 +1315,50 @@ function buildGeneralLine(el) {
 }
 
 // Subject board: all subjects as rows; Læringsmål + Lekser editable.
+// ─── Board: drag-to-reorder subject rows ──────────────────────
+let dragSubject = null;
+let boardVisibleRows = [];
+function attachRowDrag(handle, subject) {
+  handle.addEventListener('dragstart', e => {
+    dragSubject = subject;
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', subject); } catch { /* some browsers require a payload */ }
+    const tr = handle.closest('tr'); if (tr) tr.classList.add('dragging');
+  });
+  handle.addEventListener('dragend', () => {
+    dragSubject = null;
+    document.querySelectorAll('#board tr.dragging, #board tr.drop-target').forEach(r => r.classList.remove('dragging', 'drop-target'));
+  });
+  handle.addEventListener('keydown', e => {
+    if (e.key === 'ArrowUp')        { e.preventDefault(); moveSubject(subject, -1); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); moveSubject(subject, +1); }
+  });
+}
+function persistSubjectOrder(order) { settings.subjectOrder = order; saveSettings(); renderBoard(); }
+function reorderSubject(moved, target) {
+  const order = orderedSubjects(SUBJECTS.slice());     // full canonical order of all subjects
+  order.splice(order.indexOf(moved), 1);
+  order.splice(order.indexOf(target), 0, moved);       // drop just before the target row
+  persistSubjectOrder(order);
+}
+function moveSubject(subject, delta) {                 // keyboard reorder within visible rows
+  const vi = boardVisibleRows.indexOf(subject);
+  const ni = vi + delta;
+  if (vi < 0 || ni < 0 || ni >= boardVisibleRows.length) return;
+  const target = boardVisibleRows[ni];
+  const order = orderedSubjects(SUBJECTS.slice());
+  order.splice(order.indexOf(subject), 1);
+  let ti = order.indexOf(target);
+  if (delta > 0) ti += 1;                              // moving down: land after the target
+  order.splice(ti, 0, subject);
+  persistSubjectOrder(order);
+  setTimeout(() => {
+    document.querySelectorAll('#board tbody tr').forEach(r => {
+      if (r.dataset.subject === subject) { const h = r.querySelector('.drag-handle'); if (h) h.focus(); }
+    });
+  }, 0);
+}
+
 function renderBoard() {
   const board = document.getElementById('board');
   board.innerHTML = '';
@@ -1267,7 +1383,8 @@ function renderBoard() {
   // has content this week, so nothing existing is ever hidden.
   const my = mySubjects();
   const hasRowContent = s => SUBJECT_TYPES.some(t => (map[s + '||' + t] || []).length) || (vurdBySubject[s] || []).length > 0;
-  const rows = (my.length && !showAllSubjects) ? SUBJECTS.filter(s => my.includes(s) || hasRowContent(s)) : SUBJECTS;
+  const rows = orderedSubjects((my.length && !showAllSubjects) ? SUBJECTS.filter(s => my.includes(s) || hasRowContent(s)) : SUBJECTS.slice());
+  boardVisibleRows = rows;
   if (my.length) {
     const note = document.createElement('div');
     note.className = 'board-filter-note';
@@ -1280,7 +1397,7 @@ function renderBoard() {
     btn.type = 'button';
     btn.className = 'link-btn';
     btn.textContent = showAllSubjects ? 'Vis bare mine fag' : 'Vis alle fag';
-    btn.addEventListener('click', () => { showAllSubjects = !showAllSubjects; renderBoard(); });
+    btn.addEventListener('click', () => { showAllSubjects = !showAllSubjects; settings.showAll = showAllSubjects; saveSettings(); renderBoard(); });
     note.appendChild(btn);
     board.appendChild(note);
   }
@@ -1296,11 +1413,44 @@ function renderBoard() {
   });
 
   const tbody = table.createTBody();
+  // Drag-to-reorder: delegate dragover/drop to the body (rows carry data-subject).
+  const reorderable = !variantCode;
+  if (reorderable) {
+    tbody.addEventListener('dragover', e => {
+      if (!dragSubject) return;
+      e.preventDefault();
+      const tr = e.target.closest('tr');
+      tbody.querySelectorAll('tr.drop-target').forEach(r => r.classList.remove('drop-target'));
+      if (tr && tr.dataset.subject && tr.dataset.subject !== dragSubject) tr.classList.add('drop-target');
+    });
+    tbody.addEventListener('drop', e => {
+      if (!dragSubject) return;
+      e.preventDefault();
+      const tr = e.target.closest('tr');
+      if (tr && tr.dataset.subject && tr.dataset.subject !== dragSubject) reorderSubject(dragSubject, tr.dataset.subject);
+    });
+  }
   rows.forEach(subject => {
     const tr = tbody.insertRow();
+    tr.dataset.subject = subject;
     const tdSubject = tr.insertCell();
     tdSubject.className = 'cell-subject';
-    tdSubject.textContent = subject;
+    if (reorderable) {
+      const grip = document.createElement('span');
+      grip.className = 'drag-handle';
+      grip.textContent = '⠿';
+      grip.setAttribute('draggable', 'true');
+      grip.setAttribute('role', 'button');
+      grip.setAttribute('tabindex', '0');
+      grip.setAttribute('aria-label', 'Endre rekkefølge på ' + subject);
+      grip.title = 'Dra for å endre rekkefølge (eller bruk piltastene)';
+      attachRowDrag(grip, subject);
+      tdSubject.appendChild(grip);
+    }
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'cell-subject-name';
+    nameSpan.textContent = subject;
+    tdSubject.appendChild(nameSpan);
     // Copy the row to parallel classes (not in adapted plans – codes are personal).
     if (!variantCode && SUBJECT_TYPES.some(t => (map[subject + '||' + t] || []).length)) {
       const cp = document.createElement('button');
@@ -1405,7 +1555,8 @@ function buildHomeworkRow(subject, el, opts = {}) {
   const daySel = document.createElement('select');
   daySel.className = 'hw-day';
   DAY_OPTIONS.forEach(([v, l]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; daySel.appendChild(o); });
-  daySel.value = (el && parseDays(el.day)[0]) || '';
+  // Existing lekse keeps its day; a NEW row uses the teacher's default lekse-dag.
+  daySel.value = el ? (parseDays(el.day)[0] || '') : (settings.defaultLekseDay || '');
 
   const ed = createRichField({
     value: (el && el.description) || '',

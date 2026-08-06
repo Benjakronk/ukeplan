@@ -380,3 +380,24 @@
 .pw-change label { display: block; margin-top: 8px; }
 .pw-change .input { width: 100%; margin-top: 4px; }
 .pw-change button { margin-top: 10px; }
+
+/* ── Board: drag-to-reorder subject rows ───────────────────────── */
+.drag-handle {
+  display: inline-block; cursor: grab; color: var(--off-text);
+  font-size: 13px; line-height: 1; margin-right: 6px; padding: 0 1px;
+  user-select: none; vertical-align: baseline;
+  transition: color var(--transition);
+}
+.drag-handle:hover { color: var(--primary); }
+.drag-handle:active { cursor: grabbing; }
+.drag-handle:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 3px; }
+.plan-table.editable tr.dragging { opacity: .5; }
+.plan-table.editable tr.drop-target td { box-shadow: inset 0 2px 0 var(--primary); }
+@media (max-width: 640px) { .drag-handle { display: none; } }
+
+/* ── Mine fag picker (grouped + search) ────────────────────────── */
+.mysubj-summary { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+.mysubj-search { width: 100%; margin-bottom: 10px; }
+.mysubj-electives { margin-top: 8px; }
+.mysubj-electives summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; }
+.mysubj-electives summary:hover { color: var(--text); }
