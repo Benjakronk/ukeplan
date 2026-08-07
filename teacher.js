@@ -110,7 +110,6 @@ let modalSaving     = false; // true while a save is in flight (guards double-su
 
 let teacherTab   = 'ukeplan';  // 'ukeplan' | 'vurd' | 'oversikt'
 
-let showAllSubjects  = false;  // temporary «vis alle fag» override of Mine fag
 let copyingRow       = false;  // row-copy in flight (guards double-clicks)
 let renderDeferred   = false;  // data arrived while the teacher was typing
 let renderDeferTimer = null;
@@ -139,9 +138,27 @@ let modalInitialDesc = '';     // descInput value when the modal opened (dirty c
 const SETTINGS_KEY = 'up_settings';
 let settings = loadSettings();
 function loadSettings() {
-  const defaults = { confirmDelete: true, defaultSubject: '', mySubjects: [], subjectOrder: [], showAll: false, defaultLekseDay: '' };
-  try { return Object.assign(defaults, JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}); }
-  catch { return Object.assign({}, defaults); }
+  const defaults = { confirmDelete: true, defaultSubject: '', mySubjects: [], subjectOrder: [],
+                     viewMode: 'mine', viewSubjects: [], lekseDays: { default: [], bySubject: {} } };
+  let s;
+  try { s = Object.assign(defaults, JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}); }
+  catch { s = Object.assign({}, defaults); }
+  return migrateSettings(s);
+}
+// Bring older cached/loaded settings up to the current shape (scalar lekse-day,
+// boolean showAll → the newer structures). Safe to run on any settings object.
+function migrateSettings(s) {
+  if (typeof s.defaultLekseDay === 'string') {   // old scalar → { default:[it], bySubject:{} }
+    if (!s.lekseDays) s.lekseDays = { default: s.defaultLekseDay ? [s.defaultLekseDay] : [], bySubject: {} };
+    delete s.defaultLekseDay;
+  }
+  if (!s.lekseDays || typeof s.lekseDays !== 'object') s.lekseDays = { default: [], bySubject: {} };
+  if (!Array.isArray(s.lekseDays.default)) s.lekseDays.default = [];
+  if (!s.lekseDays.bySubject || typeof s.lekseDays.bySubject !== 'object') s.lekseDays.bySubject = {};
+  if (!['mine', 'valgte', 'alle'].includes(s.viewMode)) s.viewMode = (s.showAll === true) ? 'alle' : 'mine';
+  delete s.showAll;
+  if (!Array.isArray(s.viewSubjects)) s.viewSubjects = [];
+  return s;
 }
 // The teacher's preferred board order (persisted). Subjects not listed fall back
 // to SUBJECTS order after the ordered ones.
@@ -165,6 +182,17 @@ function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(sett
 // The subjects the teacher teaches (profile modal). Empty = no filtering.
 function mySubjects() {
   return Array.isArray(settings.mySubjects) ? settings.mySubjects.filter(s => SUBJECTS.includes(s)) : [];
+}
+// The custom subset shown in the «Valgte fag» board-visibility mode.
+function viewSubjects() {
+  return Array.isArray(settings.viewSubjects) ? settings.viewSubjects.filter(s => SUBJECTS.includes(s)) : [];
+}
+// Resolved standard lekse-days for a subject: per-subject override, else global.
+function lekseDaysFor(subject) {
+  const ld = settings.lekseDays || { default: [], bySubject: {} };
+  const per = ld.bySubject && ld.bySubject[subject];
+  const days = (Array.isArray(per) && per.length) ? per : (Array.isArray(ld.default) ? ld.default : []);
+  return days.filter(d => DAYS.includes(d));
 }
 
 // ─── Undo / redo ──────────────────────────────────────────────
@@ -297,15 +325,17 @@ function applyProfile(profile) {
   isAdmin = !!profile.isAdmin;
   if (profile.name) { teacherName = profile.name; localStorage.setItem(TNAME_KEY, teacherName); }
   const p = profile.preferences || {};
-  settings = {
+  settings = migrateSettings({
     confirmDelete:   p.confirmDelete !== false,                                  // default true
     defaultSubject:  typeof p.defaultSubject === 'string' ? p.defaultSubject : '',
     mySubjects:      Array.isArray(p.mySubjects) ? p.mySubjects : [],
     subjectOrder:    Array.isArray(p.subjectOrder) ? p.subjectOrder : [],
-    showAll:         p.showAll === true,
-    defaultLekseDay: DAYS.includes(p.defaultLekseDay) ? p.defaultLekseDay : '',
-  };
-  showAllSubjects = settings.showAll;                                           // hydrate the board toggle
+    viewMode:        p.viewMode,
+    viewSubjects:    p.viewSubjects,
+    lekseDays:       p.lekseDays,
+    showAll:         p.showAll,               // legacy → viewMode
+    defaultLekseDay: p.defaultLekseDay,       // legacy → lekseDays.default
+  });
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));                 // cache only (no server echo)
   if (p.theme && window.UPTheme) UPTheme.set(p.theme);
   if (p.lastClass && CLASSES.includes(p.lastClass) && !variantCode) {
@@ -328,8 +358,9 @@ function saveProfileToServer() {
       defaultSubject:  settings.defaultSubject || '',
       mySubjects:      Array.isArray(settings.mySubjects) ? settings.mySubjects : [],
       subjectOrder:    Array.isArray(settings.subjectOrder) ? settings.subjectOrder : [],
-      showAll:         settings.showAll === true,
-      defaultLekseDay: settings.defaultLekseDay || '',
+      viewMode:        settings.viewMode || 'mine',
+      viewSubjects:    Array.isArray(settings.viewSubjects) ? settings.viewSubjects : [],
+      lekseDays:       settings.lekseDays || { default: [], bySubject: {} },
       theme:           window.UPTheme ? UPTheme.get() : 'auto',
       lastClass:       (!variantCode && selectedClass) || '',
     };
@@ -669,15 +700,17 @@ async function adminToggleActive(t) {
 async function changeOwnPassword() {
   const cur = document.getElementById('pwCurrent');
   const nw  = document.getElementById('pwNew');
+  const nw2 = document.getElementById('pwNew2');
   const msg = document.getElementById('pwChangeMsg');
   msg.style.color = ''; msg.textContent = '';
-  const currentPassword = cur.value, newPassword = nw.value;
-  if (!currentPassword || !newPassword) { msg.textContent = 'Fyll ut begge feltene.'; return; }
+  const currentPassword = cur.value, newPassword = nw.value, confirm = nw2.value;
+  if (!currentPassword || !newPassword || !confirm) { msg.textContent = 'Fyll ut alle feltene.'; return; }
   if (newPassword.length < 6) { msg.textContent = 'Nytt passord må ha minst 6 tegn.'; return; }
+  if (newPassword !== confirm) { msg.textContent = 'Passordene er ikke like.'; return; }
   try {
     const r = await api('changepw', { currentPassword, newPassword });
     if (r.error) throw new Error(r.error);
-    cur.value = ''; nw.value = '';
+    cur.value = ''; nw.value = ''; nw2.value = '';
     msg.style.color = 'var(--success)'; msg.textContent = 'Passordet er endret ✓';
     setTimeout(() => { const d = document.querySelector('.pw-change'); if (d) d.open = false; msg.textContent = ''; }, 2500);
   } catch (err) {
@@ -685,12 +718,60 @@ async function changeOwnPassword() {
   }
 }
 
+// Standard lekse-days config: a global row + one row per Mine-fag subject.
+function buildLekseDaySettings() {
+  const box = document.getElementById('setLekseDays');
+  if (!box) return;
+  box.innerHTML = '';
+  const ld = settings.lekseDays || (settings.lekseDays = { default: [], bySubject: {} });
+
+  const makeDayRow = (labelText, getDays, setDays) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'lekseday-row';
+    const lbl = document.createElement('span');
+    lbl.className = 'lekseday-label';
+    lbl.textContent = labelText;
+    wrap.appendChild(lbl);
+    const btns = document.createElement('div');
+    btns.className = 'lekseday-days';
+    DAYS.forEach(d => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'day-btn' + (getDays().includes(d) ? ' active' : '');
+      b.textContent = DAY_LABEL[d];
+      b.addEventListener('click', () => {
+        const cur = getDays();
+        setDays(cur.includes(d) ? cur.filter(x => x !== d) : cur.concat(d));
+        b.classList.toggle('active');
+        saveSettings();
+      });
+      btns.appendChild(b);
+    });
+    wrap.appendChild(btns);
+    return wrap;
+  };
+
+  box.appendChild(makeDayRow('Standard', () => ld.default, v => { ld.default = v; }));
+
+  const my = orderedSubjects(mySubjects());
+  if (my.length) {
+    const head = document.createElement('p');
+    head.className = 'lekseday-head';
+    head.textContent = 'Egne dager per fag';
+    box.appendChild(head);
+    my.forEach(s => box.appendChild(makeDayRow(s,
+      () => (ld.bySubject[s] || []),
+      v => { if (v.length) ld.bySubject[s] = v; else delete ld.bySubject[s]; })));
+  }
+}
+
 function openProfileModal() {
   document.getElementById('teacherName').value = teacherName;
   document.getElementById('setConfirmDelete').checked = settings.confirmDelete !== false;
+  fillSubjectSelect(document.getElementById('setDefaultSubject'), '(velg hver gang)');
   document.getElementById('setDefaultSubject').value = SUBJECTS.includes(settings.defaultSubject) ? settings.defaultSubject : '';
-  document.getElementById('setDefaultLekseDay').value = DAYS.includes(settings.defaultLekseDay) ? settings.defaultLekseDay : '';
   buildMySubjectChips();
+  buildLekseDaySettings();
   syncThemeSeg();
   document.getElementById('profileOverlay').classList.add('open');
   document.getElementById('profileModal').classList.add('open');
@@ -707,47 +788,56 @@ function closeProfileModal() {
   render();   // Mine fag may have changed
 }
 
-// «Mine fag» chips in the profile modal. Empty selection = show all subjects.
-function buildMySubjectChips() {
-  const row = document.getElementById('setMySubjects');
-  if (!row) return;
-  row.innerHTML = '';
+// Reusable grouped subject chip picker: a "Valgt"-summary, a search box, core
+// subjects as chips + valgfag behind an expander. getSelected() → string[];
+// onToggle(subject) mutates + persists and returns the new selected state
+// (may be async, e.g. a deselect confirmation); opts.onChange fires after a change.
+function buildSubjectChipPicker(container, getSelected, onToggle, opts = {}) {
+  container.innerHTML = '';
   const nb = (a, b) => a.localeCompare(b, 'no');
 
   const summary = document.createElement('p');
   summary.className = 'mysubj-summary';
   const updateSummary = () => {
-    const cur = mySubjects();
-    summary.textContent = cur.length ? 'Dine fag: ' + cur.join(', ') : 'Ingen fag valgt – da vises alle fag.';
+    const cur = getSelected();
+    summary.textContent = cur.length
+      ? (opts.summaryLabel || 'Valgt') + ': ' + cur.join(', ')
+      : (opts.emptyLabel || 'Ingen valgt.');
   };
-  row.appendChild(summary);
+  container.appendChild(summary);
 
   const search = document.createElement('input');
-  search.type = 'search'; search.className = 'input mysubj-search';
-  search.placeholder = 'Søk etter fag…'; search.autocomplete = 'off';
-  row.appendChild(search);
+  search.type = 'text'; search.className = 'input mysubj-search';
+  search.placeholder = 'Søk etter fag…';
+  // Stop the browser autofilling a saved name into this text field.
+  search.setAttribute('name', 'fagsok');
+  search.setAttribute('autocomplete', 'off');
+  search.setAttribute('autocapitalize', 'off');
+  search.setAttribute('autocorrect', 'off');
+  search.setAttribute('spellcheck', 'false');
+  search.setAttribute('data-lpignore', 'true');
+  search.setAttribute('data-1p-ignore', '');
+  container.appendChild(search);
 
   const makeChip = s => {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'vf-chip' + (mySubjects().includes(s) ? ' active' : '');
+    btn.className = 'vf-chip' + (getSelected().includes(s) ? ' active' : '');
     btn.dataset.subject = s;
     btn.textContent = s;
-    btn.addEventListener('click', () => {
-      const cur = mySubjects();
-      settings.mySubjects = cur.includes(s) ? cur.filter(x => x !== s) : cur.concat(s);
-      saveSettings();
-      btn.classList.toggle('active');
+    btn.addEventListener('click', async () => {
+      const nowActive = await onToggle(s);
+      btn.classList.toggle('active', !!nowActive);
       updateSummary();
+      if (opts.onChange) opts.onChange();
     });
     return btn;
   };
 
-  // Kjernefag shown; valgfag behind an expander (progressive disclosure).
   const core = document.createElement('div');
   core.className = 'vf-chip-row mysubj-group';
   CORE_SUBJECTS.slice().sort(nb).forEach(s => core.appendChild(makeChip(s)));
-  row.appendChild(core);
+  container.appendChild(core);
 
   const det = document.createElement('details');
   det.className = 'mysubj-electives';
@@ -758,13 +848,13 @@ function buildMySubjectChips() {
   elw.className = 'vf-chip-row mysubj-group';
   ELECTIVE_SUBJECTS.slice().sort(nb).forEach(s => elw.appendChild(makeChip(s)));
   det.appendChild(elw);
-  if (ELECTIVE_SUBJECTS.some(s => mySubjects().includes(s))) det.open = true;
-  row.appendChild(det);
+  if (ELECTIVE_SUBJECTS.some(s => getSelected().includes(s))) det.open = true;
+  container.appendChild(det);
 
   search.addEventListener('input', () => {
     const q = search.value.trim().toLowerCase();
     let elecHit = false;
-    row.querySelectorAll('.vf-chip').forEach(ch => {
+    container.querySelectorAll('.vf-chip').forEach(ch => {
       const match = !q || ch.dataset.subject.toLowerCase().includes(q);
       ch.style.display = match ? '' : 'none';
       if (match && q && ELECTIVE_SUBJECTS.includes(ch.dataset.subject)) elecHit = true;
@@ -773,6 +863,79 @@ function buildMySubjectChips() {
   });
 
   updateSummary();
+}
+
+// Toggle a Mine-fag subject. Deselecting one that has per-subject settings asks
+// for confirmation first (so a stray click can't quietly drop its lekse-days).
+async function toggleMySubject(s) {
+  const cur = mySubjects();
+  if (cur.includes(s)) {
+    const per = settings.lekseDays && settings.lekseDays.bySubject && settings.lekseDays.bySubject[s];
+    if (per && per.length && !(await uiConfirm(s + ' har egne lekse-dager. Vil du fjerne faget og disse innstillingene?'))) {
+      return true;   // keep selected
+    }
+    settings.mySubjects = cur.filter(x => x !== s);
+    if (settings.lekseDays && settings.lekseDays.bySubject) delete settings.lekseDays.bySubject[s];
+    settings.viewSubjects = viewSubjects().filter(x => x !== s);
+    saveSettings();
+    return false;
+  }
+  settings.mySubjects = cur.concat(s);
+  saveSettings();
+  return true;
+}
+function toggleViewSubject(s) {
+  const cur = viewSubjects();
+  settings.viewSubjects = cur.includes(s) ? cur.filter(x => x !== s) : cur.concat(s);
+  saveSettings();
+  return settings.viewSubjects.includes(s);
+}
+
+// «Mine fag» chips in the profile modal. Empty selection = show all subjects.
+function buildMySubjectChips() {
+  const row = document.getElementById('setMySubjects');
+  if (!row) return;
+  buildSubjectChipPicker(row, mySubjects, toggleMySubject, {
+    summaryLabel: 'Dine fag',
+    emptyLabel: 'Ingen fag valgt – da vises alle fag.',
+    onChange: () => { buildLekseDaySettings(); },   // per-subject lekse rows depend on Mine fag
+  });
+}
+
+// «Velg fag» modal for the board's «Valgte fag» visibility mode.
+function openViewSubjectsModal() {
+  buildSubjectChipPicker(document.getElementById('viewSubjectsList'), viewSubjects, toggleViewSubject, {
+    summaryLabel: 'Valgt', emptyLabel: 'Ingen valgt – bare fag med innhold vises.',
+  });
+  document.getElementById('viewSubjectsOverlay').classList.add('open');
+  document.getElementById('viewSubjectsModal').classList.add('open');
+  document.body.classList.add('scroll-locked');
+}
+function closeViewSubjectsModal() {
+  document.getElementById('viewSubjectsOverlay').classList.remove('open');
+  document.getElementById('viewSubjectsModal').classList.remove('open');
+  document.body.classList.remove('scroll-locked');
+  render();   // reflect the new subset on the board
+}
+
+// Fill a <select> with subjects grouped «Mine fag» (ordered) then «Andre fag».
+function fillSubjectSelect(sel, noneLabel) {
+  const val = sel.value;
+  sel.innerHTML = '';
+  if (noneLabel !== null) {
+    const none = document.createElement('option'); none.value = ''; none.textContent = noneLabel; sel.appendChild(none);
+  }
+  const mine = orderedSubjects(mySubjects());
+  const others = SUBJECTS.filter(s => !mine.includes(s)).sort((a, b) => a.localeCompare(b, 'no'));
+  const addGroup = (label, list) => {
+    if (!list.length) return;
+    const g = document.createElement('optgroup'); g.label = label;
+    list.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; g.appendChild(o); });
+    sel.appendChild(g);
+  };
+  if (mine.length) { addGroup('Mine fag', mine); addGroup('Andre fag', others); }
+  else { others.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; sel.appendChild(o); }); }
+  sel.value = val;   // preserve the current selection if still present
 }
 
 // ─── Vurdering date rules (B2) ────────────────────────────────
@@ -1050,6 +1213,9 @@ function setupDashboardListeners() {
   document.getElementById('adminPanelBtn').addEventListener('click', () => { closeProfileModal(); openAdminModal(); });
   document.getElementById('adminClose').addEventListener('click', closeAdminModal);
   document.getElementById('adminOverlay').addEventListener('click', closeAdminModal);
+  document.getElementById('viewSubjectsClose').addEventListener('click', closeViewSubjectsModal);
+  document.getElementById('viewSubjectsOverlay').addEventListener('click', closeViewSubjectsModal);
+  document.getElementById('viewSubjectsDone').addEventListener('click', closeViewSubjectsModal);
   document.getElementById('pwChangeBtn').addEventListener('click', changeOwnPassword);
   document.getElementById('setConfirmDelete').addEventListener('change', e => {
     settings.confirmDelete = e.target.checked;
@@ -1063,17 +1229,8 @@ function setupDashboardListeners() {
     saveProfileToServer();
   });
   const dsSel = document.getElementById('setDefaultSubject');
-  const noneOpt = document.createElement('option');
-  noneOpt.value = ''; noneOpt.textContent = '(velg hver gang)';
-  dsSel.appendChild(noneOpt);
-  SUBJECTS_SORTED.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; dsSel.appendChild(o); });
+  fillSubjectSelect(dsSel, '(velg hver gang)');
   dsSel.addEventListener('change', e => { settings.defaultSubject = e.target.value; saveSettings(); });
-
-  const dlSel = document.getElementById('setDefaultLekseDay');
-  const dlNone = document.createElement('option'); dlNone.value = ''; dlNone.textContent = '(ingen)';
-  dlSel.appendChild(dlNone);
-  DAYS.forEach(d => { const o = document.createElement('option'); o.value = d; o.textContent = DAY_LABEL[d]; dlSel.appendChild(o); });
-  dlSel.addEventListener('change', e => { settings.defaultLekseDay = e.target.value; saveSettings(); });
 
   // Undo / redo (buttons + keyboard). Native Ctrl+Z is left to text fields.
   document.getElementById('undoBtn').addEventListener('click', doUndo);
@@ -1379,26 +1536,45 @@ function renderBoard() {
   const vurdBySubject = {};
   weekVurd.forEach(v => { (vurdBySubject[v.subject || 'Annet'] = vurdBySubject[v.subject || 'Annet'] || []).push(v); });
 
-  // «Mine fag»: show only the teacher's own subjects – plus any subject that
-  // has content this week, so nothing existing is ever hidden.
+  // Board visibility – three modes. Content is never hidden: any subject with
+  // content this week always shows, whatever the mode.
   const my = mySubjects();
+  const chosen = viewSubjects();
+  const mode = settings.viewMode || 'mine';
   const hasRowContent = s => SUBJECT_TYPES.some(t => (map[s + '||' + t] || []).length) || (vurdBySubject[s] || []).length > 0;
-  const rows = orderedSubjects((my.length && !showAllSubjects) ? SUBJECTS.filter(s => my.includes(s) || hasRowContent(s)) : SUBJECTS.slice());
+  let base;
+  if (mode === 'alle')         base = SUBJECTS.slice();
+  else if (mode === 'valgte')  base = SUBJECTS.filter(s => chosen.includes(s) || hasRowContent(s));
+  else                         base = my.length ? SUBJECTS.filter(s => my.includes(s) || hasRowContent(s)) : SUBJECTS.slice();
+  const rows = orderedSubjects(base);
   boardVisibleRows = rows;
-  if (my.length) {
+
+  if (my.length || chosen.length || mode !== 'mine') {
     const note = document.createElement('div');
     note.className = 'board-filter-note';
-    const txt = document.createElement('span');
-    txt.textContent = showAllSubjects
-      ? 'Viser alle ' + SUBJECTS.length + ' fag.'
-      : 'Viser ' + rows.length + ' av ' + SUBJECTS.length + ' fag (dine fag' + (rows.some(s => !my.includes(s)) ? ' + fag med innhold' : '') + ').';
-    note.appendChild(txt);
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'link-btn';
-    btn.textContent = showAllSubjects ? 'Vis bare mine fag' : 'Vis alle fag';
-    btn.addEventListener('click', () => { showAllSubjects = !showAllSubjects; settings.showAll = showAllSubjects; saveSettings(); renderBoard(); });
-    note.appendChild(btn);
+    const seg = document.createElement('div');
+    seg.className = 'view-seg';
+    [['mine', 'Mine fag'], ['valgte', 'Valgte fag'], ['alle', 'Alle fag']].forEach(([m, label]) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'view-seg-btn' + (mode === m ? ' active' : '');
+      b.textContent = label;
+      b.addEventListener('click', () => { settings.viewMode = m; saveSettings(); renderBoard(); });
+      seg.appendChild(b);
+    });
+    note.appendChild(seg);
+    if (mode === 'valgte') {
+      const pick = document.createElement('button');
+      pick.type = 'button'; pick.className = 'link-btn';
+      pick.textContent = chosen.length ? 'Velg fag (' + chosen.length + ')' : 'Velg fag';
+      pick.addEventListener('click', openViewSubjectsModal);
+      note.appendChild(pick);
+    } else {
+      const count = document.createElement('span');
+      count.className = 'board-filter-count';
+      count.textContent = 'Viser ' + rows.length + ' av ' + SUBJECTS.length + ' fag';
+      note.appendChild(count);
+    }
     board.appendChild(note);
   }
 
@@ -1539,9 +1715,16 @@ function buildHomeworkEditCell(subject, elements, opts = {}) {
   add.className = 'hw-edit-add';
   add.textContent = '+ lekse';
   add.addEventListener('click', () => {
-    const row = buildHomeworkRow(subject, null, opts);
-    list.appendChild(row);
-    const f = row.querySelector('.rich-field'); if (f) f.focus();
+    // Add one blank lekse row per configured standard day (or a single dayless row).
+    const days = lekseDaysFor(subject);
+    const list2 = days.length ? days : [''];
+    let first = null;
+    list2.forEach(d => {
+      const row = buildHomeworkRow(subject, null, Object.assign({}, opts, { day: d }));
+      list.appendChild(row);
+      if (!first) first = row;
+    });
+    const f = first && first.querySelector('.rich-field'); if (f) f.focus();
   });
   td.appendChild(add);
   complex.forEach(el => td.appendChild(buildElementChip(el)));
@@ -1555,8 +1738,8 @@ function buildHomeworkRow(subject, el, opts = {}) {
   const daySel = document.createElement('select');
   daySel.className = 'hw-day';
   DAY_OPTIONS.forEach(([v, l]) => { const o = document.createElement('option'); o.value = v; o.textContent = l; daySel.appendChild(o); });
-  // Existing lekse keeps its day; a NEW row uses the teacher's default lekse-dag.
-  daySel.value = el ? (parseDays(el.day)[0] || '') : (settings.defaultLekseDay || '');
+  // Existing lekse keeps its day; a NEW row uses the day passed in by "+ lekse".
+  daySel.value = el ? (parseDays(el.day)[0] || '') : (opts.day || '');
 
   const ed = createRichField({
     value: (el && el.description) || '',
@@ -1809,10 +1992,8 @@ function setupModalListeners() {
   });
   document.getElementById('dateInput').addEventListener('change', () => { updateDateInfo(); refreshConflicts(); });
 
-  // Subject select options ("(uten fag)" allowed for general types)
-  const sel = document.getElementById('subjectSelect');
-  const none = document.createElement('option'); none.value = ''; none.textContent = '(uten fag)'; sel.appendChild(none);
-  SUBJECTS_SORTED.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; sel.appendChild(o); });
+  // Subject select – grouped «Mine fag» / «Andre fag» (rebuilt on open too).
+  fillSubjectSelect(document.getElementById('subjectSelect'), '(uten fag)');
 
   // Type buttons
   const typeWrap = document.getElementById('typeBtns');
@@ -1851,6 +2032,7 @@ function setupModalListeners() {
     const open = id => document.getElementById(id).classList.contains('open');
     if (open('addModal')) closeAddModal();
     else if (open('vurdFilterModal')) closeVurdFilterModal();
+    else if (open('viewSubjectsModal')) closeViewSubjectsModal();
     else if (open('adminModal')) closeAdminModal();
     else if (open('profileModal')) closeProfileModal();
     else if (open('classModal')) closeClassModal();
@@ -1877,6 +2059,7 @@ function openAddModal(preset = {}) {
   document.getElementById('descInput').value = '';
   modalInitialDesc = '';
   document.getElementById('vurdTeacherInput').value = preset.teacher || teacherName;
+  fillSubjectSelect(document.getElementById('subjectSelect'), '(uten fag)');   // reflect current Mine fag
   document.getElementById('subjectSelect').value = preset.subject || modalDefaultSubject(modalType);
   buildModalWeekOptions();
   setDateInputBounds(preset.date);
