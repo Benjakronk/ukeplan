@@ -401,3 +401,24 @@
 .mysubj-electives { margin-top: 8px; }
 .mysubj-electives summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; }
 .mysubj-electives summary:hover { color: var(--text); }
+
+/* ── Board visibility: segmented control + count ───────────── */
+.view-seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-btn); overflow: hidden; }
+.view-seg-btn {
+  background: var(--surface); border: none; padding: 5px 12px;
+  font-family: var(--font); font-size: 12px; font-weight: 600; color: var(--text-muted); cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.view-seg-btn + .view-seg-btn { border-left: 1px solid var(--border); }
+.view-seg-btn:hover { color: var(--text); }
+.view-seg-btn.active { background: var(--primary); color: var(--on-accent); }
+.board-filter-count { font-size: 12px; color: var(--text-muted); }
+
+/* ── Standard lekse-days (profile modal) ───────────────────── */
+#profileModal { width: 600px; max-width: 92vw; }
+#setLekseDays { display: flex; flex-direction: column; gap: 8px; }
+.lekseday-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.lekseday-label { flex: 0 0 auto; min-width: 88px; font-size: 13px; color: var(--text); }
+.lekseday-days { display: flex; flex-wrap: wrap; gap: 5px; }
+.lekseday-days .day-btn { padding: 3px 9px; font-size: 12px; }
+.lekseday-head { margin: 8px 0 2px; font-size: 12px; font-weight: 600; color: var(--text-muted); }

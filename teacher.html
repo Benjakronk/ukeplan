@@ -349,9 +349,9 @@
     </div>
 
     <div class="form-row">
-      <label class="form-label" for="setDefaultLekseDay">Standard dag for nye lekser</label>
-      <select id="setDefaultLekseDay" class="input"></select>
-      <p class="form-hint">Forhåndsvelges når du legger til en ny lekse på brettet. «(ingen)» = hele uka.</p>
+      <label class="form-label">Standard dager for lekser</label>
+      <div id="setLekseDays"></div>
+      <p class="form-hint">Når du legger til en ny lekse lages én rad per valgt dag. Sett egne dager per fag, ellers brukes standarddagene. Ingen dag valgt = hele uka.</p>
     </div>
 
     <div class="form-row">
@@ -379,6 +379,8 @@
         <input type="password" id="pwCurrent" class="input" autocomplete="current-password">
         <label class="login-label" for="pwNew">Nytt passord (minst 6 tegn)</label>
         <input type="password" id="pwNew" class="input" autocomplete="new-password">
+        <label class="login-label" for="pwNew2">Gjenta nytt passord</label>
+        <input type="password" id="pwNew2" class="input" autocomplete="new-password">
         <button type="button" id="pwChangeBtn" class="btn btn-ghost btn-tiny">Bytt passord</button>
         <p id="pwChangeMsg" class="form-hint" role="status" aria-live="polite"></p>
       </details>
@@ -401,6 +403,20 @@
     </div>
     <p class="class-modal-hint">Nullstill passord eller deaktiver kontoer. Nye lærere oppretter konto selv med skolekoden.</p>
     <div id="adminList" class="admin-list"></div>
+  </div>
+
+  <!-- «Velg fag» for the board's «Valgte fag» visibility mode -->
+  <div id="viewSubjectsOverlay" class="class-modal-overlay"></div>
+  <div id="viewSubjectsModal" class="class-modal" role="dialog" aria-modal="true" aria-labelledby="viewSubjectsTitle">
+    <div class="class-modal-header">
+      <h2 id="viewSubjectsTitle" class="class-modal-title">Velg fag å vise</h2>
+      <button id="viewSubjectsClose" class="panel-close" aria-label="Lukk">&times;</button>
+    </div>
+    <p class="class-modal-hint">Hak av fagene du vil se på brettet i «Valgte fag»-visningen. Fag med innhold vises alltid.</p>
+    <div id="viewSubjectsList"></div>
+    <div class="class-modal-actions">
+      <button id="viewSubjectsDone" class="btn btn-primary" type="button">Ferdig</button>
+    </div>
   </div>
 
   <!-- Toast -->
