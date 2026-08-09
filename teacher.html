@@ -119,12 +119,15 @@
       <p id="variantBanner" class="variant-banner no-print" hidden></p>
 
       <div class="tabs" role="tablist" aria-label="Visning">
-        <button id="tTabUkeplan" class="tab active" type="button" role="tab" aria-selected="true">Ukeplan</button>
+        <button id="tTabHjem" class="tab active" type="button" role="tab" aria-selected="true">Hjem</button>
+        <button id="tTabUkeplan" class="tab" type="button" role="tab" aria-selected="false">Ukeplan</button>
         <button id="tTabVurd" class="tab" type="button" role="tab" aria-selected="false">Vurderinger</button>
         <button id="tTabOversikt" class="tab" type="button" role="tab" aria-selected="false">Oversikt</button>
       </div>
 
-      <div id="paneUkeplan" class="tab-pane">
+      <div id="paneHjem" class="tab-pane"></div>
+
+      <div id="paneUkeplan" class="tab-pane" hidden>
         <div id="generalSection" class="general-section"></div>
         <p class="board-hint no-print">
           Alt du skriver lagres automatisk når du klikker ut av feltet.<span class="only-narrow"> Redigering er enklest på PC.</span>

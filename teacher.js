@@ -110,7 +110,7 @@ let modalWeekTo     = null;  // Date (monday) – end of the range
 let editingElement  = null;  // plan element being edited in the modal, or null
 let modalSaving     = false; // true while a save is in flight (guards double-submit)
 
-let teacherTab   = 'ukeplan';  // 'ukeplan' | 'vurd' | 'oversikt'
+let teacherTab   = 'hjem';  // 'hjem' | 'ukeplan' | 'vurd' | 'oversikt'
 
 let copyingRow       = false;  // row-copy in flight (guards double-clicks)
 let renderDeferred   = false;  // data arrived while the teacher was typing
@@ -129,6 +129,8 @@ let vfEnd        = '';         // ISO date – upper date bound (empty = none)
 let oversiktMode = 'compare';  // 'compare' (classes, one week) | 'prog' (one class, all weeks)
 let oversiktData = [];         // all-classes plan elements for the oversikt week (compare mode)
 let oversiktWeek = null;
+let hjemData     = [];         // all-classes plan elements for the dashboard's viewed week
+let hjemWeek     = null;       // the week hjemData is for (cache guard; null = stale)
 let allPlanData  = [];         // all plan elements (progresjon mode)
 let allPlanTs    = 0;
 let ovFrom       = null;       // week range filter (progresjon)
@@ -344,14 +346,13 @@ function enterDashboard(profile) {
   updateClassLabel();
   updateWeekLabel();
   if (needsOnboarding()) { showOnboarding(); return; }   // new account → first-run setup
-  // Smart default: land on a class the teacher actually teaches, not a blank modal.
+  // Smart default: have a class ready for when they click into the board.
   if (!selectedClass && classesTaught.length) {
     selectedClass = classesTaught[0];
     localStorage.setItem(CLASS_KEY, selectedClass);
     updateClassLabel();
   }
-  if (selectedClass) loadData();
-  else { hideOverlay(); showClassModal(); }
+  setTeacherTab('hjem');   // land on the dashboard, not the board/class modal
 }
 
 async function handleLogout() {
@@ -1276,7 +1277,7 @@ function renderOnboardStep() {
     next.textContent = 'Kom i gang';
   } else if (onboardStep === 1) {                // Regular subjects
     title.textContent = 'Hvilke fag underviser du i?';
-    body.appendChild(onboardHint('Velg de vanlige fagene dine. Valgfag kommer på neste steg.'));
+    body.appendChild(onboardHint('Velg fagene du underviser i. Valgfag og tilvalgsfag kommer i neste steg.'));
     buildOnboardSubjectChips(sub(), CORE_SUBJECTS);
     next.textContent = 'Neste';
   } else if (onboardStep === 2) {                // Electives
@@ -1372,8 +1373,7 @@ function completeOnboarding() {
     localStorage.setItem(CLASS_KEY, selectedClass);
   }
   updateClassLabel();
-  if (selectedClass) loadData();
-  else showClassModal();
+  setTeacherTab('hjem');   // finish onto the dashboard
 }
 
 // «Velg fag» modal for the board's «Valgte fag» visibility mode.
@@ -1583,12 +1583,14 @@ async function loadAssessments(opts = {}) {
 function changeWeek(delta) {
   weekMonday = addDays(weekMonday, delta * 7);
   updateWeekLabel();
+  if (teacherTab === 'hjem') { loadHjem(); return; }
   if (!selectedClass) return;
   if (teacherTab === 'oversikt') refreshOversikt(); else loadData();
 }
 function jumpToThisWeek() {
   weekMonday = mondayOf(new Date());
   updateWeekLabel();
+  if (teacherTab === 'hjem') { loadHjem(); return; }
   if (!selectedClass) return;
   if (teacherTab === 'oversikt') refreshOversikt(); else loadData();
 }
@@ -1611,6 +1613,7 @@ async function openWeekPicker() {
   if (!chosen) return;
   weekMonday = mondayOf(isoToDate(chosen));
   updateWeekLabel();
+  if (teacherTab === 'hjem') { loadHjem(); return; }
   if (!selectedClass) return;
   if (teacherTab === 'oversikt') refreshOversikt(); else loadData();
 }
@@ -1638,6 +1641,7 @@ function setupDashboardListeners() {
   document.getElementById('variantOpenBtn').addEventListener('click', openVariantFromInput);
   document.getElementById('printBtn').addEventListener('click', () => window.print());
 
+  document.getElementById('tTabHjem').addEventListener('click', () => setTeacherTab('hjem'));
   document.getElementById('tTabUkeplan').addEventListener('click', () => setTeacherTab('ukeplan'));
   document.getElementById('tTabVurd').addEventListener('click', () => setTeacherTab('vurd'));
   document.getElementById('tTabOversikt').addEventListener('click', () => setTeacherTab('oversikt'));
@@ -1899,6 +1903,7 @@ function deferIfEditing() {
 }
 
 function render() {
+  if (teacherTab === 'hjem') { renderHjem(); return; }   // keys off classesTaught, not selectedClass
   if (!selectedClass) return;
   if (deferIfEditing()) return;
   renderDeferred = false;
@@ -3105,7 +3110,7 @@ async function cloneFromBaseClass() {
 
 function setTeacherTab(tab) {
   teacherTab = tab;
-  [['ukeplan', 'tTabUkeplan', 'paneUkeplan'], ['vurd', 'tTabVurd', 'paneVurd'], ['oversikt', 'tTabOversikt', 'paneOversikt']]
+  [['hjem', 'tTabHjem', 'paneHjem'], ['ukeplan', 'tTabUkeplan', 'paneUkeplan'], ['vurd', 'tTabVurd', 'paneVurd'], ['oversikt', 'tTabOversikt', 'paneOversikt']]
     .forEach(([t, btnId, paneId]) => {
       const btn = document.getElementById(btnId);
       btn.classList.toggle('active', t === tab);
@@ -3115,6 +3120,7 @@ function setTeacherTab(tab) {
   document.getElementById('toolbar').style.display = tab === 'ukeplan' ? '' : 'none';
   // visibility (not display) so the controls-row keeps a constant size across tabs
   document.querySelector('.week-nav').style.visibility = tab === 'vurd' ? 'hidden' : 'visible';
+  if (tab === 'hjem') { loadHjem(); return; }   // keys off classesTaught, not selectedClass
   if (!selectedClass) return;
   if (tab === 'vurd') renderVurd();
   else if (tab === 'oversikt') refreshOversikt();
@@ -3145,7 +3151,9 @@ function refreshOversikt() {
 // Reload the right surface after a create/update/delete from the modal.
 function refreshAfterChange() {
   allPlanTs = 0; // invalidate progresjon cache
+  hjemWeek = null;   // invalidate the dashboard's week snapshot
   if (teacherTab === 'oversikt') refreshOversikt();
+  else if (teacherTab === 'hjem') loadHjem({ force: true });
   else loadData({ background: true, skipCache: true });
 }
 
@@ -3634,6 +3642,190 @@ function refreshConflicts() {
   });
   panel.classList.toggle('has-hits', hits.length > 0);
   panel.hidden = false;
+}
+
+// ─── Hjem (dashboard) tab ─────────────────────────────────────
+// A profile-driven landing: per-class cards showing this week's gaps in the
+// teacher's own fag (missing tema/lekser) as an ordered pick-list. v1 checks
+// every Mine-fag against every taught class (no per-class subject set yet).
+
+async function loadHjem(opts = {}) {
+  const week = dateToWeek(weekMonday);
+  loadAssessments();                       // cheap (cache); its own render is a no-op-ish refresh
+  if (!opts.force && hjemWeek === week) { renderHjem(); return; }
+  showBgLoading();
+  try {
+    const res = await fetch(`${SCRIPT_URL}?action=week&week=${encodeURIComponent(week)}`);
+    const data = await res.json();
+    hjemData = Array.isArray(data) ? data : [];
+    hjemWeek = week;
+  } catch (err) { /* keep any stale data; still render below */ }
+  hideBgLoading();
+  if (teacherTab === 'hjem') renderHjem();
+}
+
+// Classes the teacher teaches, in grade order.
+function hjemClasses() { return CLASSES.filter(c => classesTaught.includes(c)); }
+
+// Per-class tally + ordered gap list for the viewed week (from hjemData).
+function hjemClassGaps(cls) {
+  const subs = orderedSubjects(mySubjects());
+  const has = (s, t) => hjemData.some(p => p.type === t && p.subject === s && p.description && classMatches(p.classes, cls));
+  const temaGaps = [], lekseGaps = [];
+  let temaDone = 0;
+  subs.forEach(s => {
+    const hasTema = has(s, 'læringsmål');
+    if (hasTema) temaDone++;
+    if (!hasTema) temaGaps.push({ subject: s, type: 'læringsmål', label: 'Fyll inn tema for ' + s });
+    else if (!has(s, 'lekse')) lekseGaps.push({ subject: s, type: 'lekse', label: 'Legg til lekser for ' + s });
+  });
+  return { total: subs.length, temaDone, gaps: temaGaps.concat(lekseGaps) };   // tema before lekser
+}
+
+function hjemClassVurd(cls, week) {
+  return vurdData.filter(v => v.date && dateToWeek(new Date(v.date)) === week && classMatches(v.classes, cls));
+}
+
+function renderHjem() {
+  const pane = document.getElementById('paneHjem');
+  if (!pane) return;
+  pane.innerHTML = '';
+  const week = dateToWeek(weekMonday);
+  const thisWeek = week === dateToWeek(mondayOf(new Date()));
+
+  const header = document.createElement('div');
+  header.className = 'hjem-header';
+  const h = document.createElement('h2');
+  h.className = 'hjem-greeting';
+  h.textContent = 'Hei' + (teacherName ? ', ' + teacherName : '') + '!';
+  const wk = document.createElement('p');
+  wk.className = 'hjem-week';
+  wk.textContent = 'Uke ' + getWeekNumber(weekMonday) + (thisWeek ? ' – denne uka' : '');
+  header.appendChild(h); header.appendChild(wk);
+  pane.appendChild(header);
+
+  const my = mySubjects();
+  const classes = hjemClasses();
+  if (!my.length || !classes.length) {
+    const card = document.createElement('div');
+    card.className = 'hjem-card hjem-setup';
+    const p = document.createElement('p');
+    p.className = 'hjem-setup-text';
+    p.textContent = (!my.length && !classes.length)
+      ? 'Sett opp fagene og klassene dine, så viser vi deg hva som gjenstår hver uke.'
+      : (!my.length ? 'Legg til fagene dine, så viser vi deg hva som gjenstår.'
+                    : 'Legg til klassene dine, så viser vi deg hva som gjenstår.');
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'btn btn-primary';
+    btn.textContent = 'Sett opp profilen';
+    btn.addEventListener('click', () => showOnboarding());
+    card.appendChild(p); card.appendChild(btn);
+    pane.appendChild(card);
+    return;
+  }
+
+  const grid = document.createElement('div');
+  grid.className = 'hjem-grid';
+  classes.forEach(cls => grid.appendChild(buildHjemCard(cls, week)));
+  pane.appendChild(grid);
+}
+
+function buildHjemCard(cls, week) {
+  const card = document.createElement('div');
+  card.className = 'hjem-card';
+
+  const head = document.createElement('div');
+  head.className = 'hjem-card-head';
+  const name = document.createElement('span');
+  name.className = 'hjem-card-class';
+  name.textContent = cls;
+  head.appendChild(name);
+  if (kontaktClasses.includes(cls)) {
+    const star = document.createElement('span');
+    star.className = 'hjem-kontakt';
+    star.textContent = '★ kontaktlærer';
+    head.appendChild(star);
+  }
+  card.appendChild(head);
+
+  const { total, temaDone, gaps } = hjemClassGaps(cls);
+  const prog = document.createElement('div');
+  prog.className = 'hjem-progress';
+  const label = document.createElement('span');
+  label.className = 'hjem-progress-label';
+  label.textContent = temaDone + ' av ' + total + ' fag har tema';
+  const bar = document.createElement('div');
+  bar.className = 'hjem-bar';
+  const fill = document.createElement('div');
+  fill.className = 'hjem-bar-fill';
+  fill.style.width = (total ? Math.round(temaDone / total * 100) : 0) + '%';
+  bar.appendChild(fill);
+  prog.appendChild(label); prog.appendChild(bar);
+  card.appendChild(prog);
+
+  if (!gaps.length) {
+    const done = document.createElement('p');
+    done.className = 'hjem-allclear';
+    done.textContent = '✓ Alt klart denne uka';
+    card.appendChild(done);
+  } else {
+    const list = document.createElement('div');
+    list.className = 'hjem-actions';
+    gaps.slice(0, 4).forEach(g => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'hjem-action';
+      b.textContent = g.label;
+      b.addEventListener('click', () => hjemGoto(cls, g.subject, g.type));
+      list.appendChild(b);
+    });
+    if (gaps.length > 4) {
+      const more = document.createElement('p');
+      more.className = 'hjem-more';
+      more.textContent = 'og ' + (gaps.length - 4) + ' til …';
+      list.appendChild(more);
+    }
+    card.appendChild(list);
+  }
+
+  const vs = hjemClassVurd(cls, week);
+  if (vs.length) {
+    const vwrap = document.createElement('div');
+    vwrap.className = 'hjem-vurd';
+    vs.slice(0, 3).forEach(v => {
+      const line = document.createElement('div');
+      line.className = 'hjem-vurd-line';
+      const when = capitalizeFirst(new Date(v.date).toLocaleDateString('no', { weekday: 'short', day: 'numeric', month: 'short' }));
+      line.textContent = '📋 ' + (v.subject ? v.subject + ': ' : '') + (v.description || 'Vurdering') + ' – ' + when;
+      vwrap.appendChild(line);
+    });
+    card.appendChild(vwrap);
+  }
+
+  return card;
+}
+
+// Deep-link from a dashboard action to that class's board cell (best effort).
+function hjemGoto(cls, subject, type) {
+  if (cls !== selectedClass || variantCode) {
+    selectedClass = cls;
+    variantCode = null;
+    localStorage.setItem(CLASS_KEY, cls);
+    localStorage.removeItem(VARIANT_KEY);
+    saveProfileToServer();
+    planData = [];
+    updateClassLabel();
+  }
+  setTeacherTab('ukeplan');
+  loadData();
+  setTimeout(() => {
+    let row = null;
+    document.querySelectorAll('#board tr[data-subject]').forEach(r => { if (r.dataset.subject === subject) row = r; });
+    if (!row) return;
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    let field = null;
+    row.querySelectorAll('.rich-field').forEach(f => { if (f.dataset.type === type) field = f; });
+    (field || row.querySelector('.rich-field'))?.focus();
+  }, 350);
 }
 
 // ─── Oversikt tab (compare classes for a subject, this week) ──
