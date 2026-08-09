@@ -982,10 +982,41 @@ function toggleKontaktClass(cls) {
   saveClassesToServer();
 }
 
-// Grade-grouped class picker: click a class to toggle "taught"; the ★ on a
-// taught class toggles Kontaktlærer. Reused by onboarding step 2 and the profile.
-function buildClassPicker(container) {
+// Bulk (de)select taught classes (used by the "Velg alle" controls). One save.
+function setTaughtClasses(list, on) {
+  list.forEach(cls => {
+    const has = classesTaught.includes(cls);
+    if (on && !has) classesTaught = classesTaught.concat(cls);
+    if (!on && has) {
+      classesTaught = classesTaught.filter(c => c !== cls);
+      kontaktClasses = kontaktClasses.filter(c => c !== cls);   // kontakt ⊆ taught
+    }
+  });
+  saveClassesToServer();
+}
+
+// Grade-grouped class picker. `opts.withStar` shows the inline Kontaktlærer ★ on
+// taught classes (profile view); `opts.selectAll` adds "Velg alle" per grade and
+// a whole-school control (some teachers teach every class). Rebuilds itself when
+// a bulk control fires. Shared by the onboarding "classes" step and the profile.
+function buildClassPicker(container, opts = {}) {
+  const withStar  = opts.withStar !== false;
+  const selectAll = opts.selectAll !== false;
   container.innerHTML = '';
+  container.classList.add('class-picker');
+
+  if (selectAll) {
+    const bar = document.createElement('div');
+    bar.className = 'class-selectall-bar';
+    const allOn = CLASSES.every(c => classesTaught.includes(c));
+    const allBtn = document.createElement('button');
+    allBtn.type = 'button'; allBtn.className = 'link-btn';
+    allBtn.textContent = allOn ? 'Fjern alle klasser' : 'Velg alle klasser (hele skolen)';
+    allBtn.addEventListener('click', () => { setTaughtClasses(CLASSES, !allOn); buildClassPicker(container, opts); });
+    bar.appendChild(allBtn);
+    container.appendChild(bar);
+  }
+
   CLASS_GRADES.forEach(group => {
     const wrap = document.createElement('div');
     wrap.className = 'class-modal-group';
@@ -1000,51 +1031,193 @@ function buildClassPicker(container) {
       btn.type = 'button';
       btn.className = 'class-pick-btn';
       btn.textContent = cls;
-      const star = document.createElement('button');
-      star.type = 'button';
-      star.className = 'kontakt-star'
-        + (classesTaught.includes(cls) ? ' shown' : '')
-        + (kontaktClasses.includes(cls) ? ' active' : '');
-      star.textContent = '★';
-      star.title = 'Kontaktlærer';
-      star.setAttribute('aria-label', 'Kontaktlærer for ' + cls);
+      chip.appendChild(btn);
+      let star = null;
+      if (withStar) {
+        star = document.createElement('button');
+        star.type = 'button';
+        star.className = 'kontakt-star'
+          + (classesTaught.includes(cls) ? ' shown' : '')
+          + (kontaktClasses.includes(cls) ? ' active' : '');
+        star.textContent = '★';
+        star.title = 'Kontaktlærer';
+        star.setAttribute('aria-label', 'Kontaktlærer for ' + cls);
+        star.addEventListener('click', () => {
+          toggleKontaktClass(cls);
+          star.classList.toggle('active', kontaktClasses.includes(cls));
+        });
+        chip.appendChild(star);
+      }
       btn.addEventListener('click', () => {
         toggleTaughtClass(cls);
         const taught = classesTaught.includes(cls);
         chip.classList.toggle('active', taught);
-        star.classList.toggle('shown', taught);
-        star.classList.toggle('active', kontaktClasses.includes(cls));
+        if (star) { star.classList.toggle('shown', taught); star.classList.toggle('active', kontaktClasses.includes(cls)); }
       });
-      star.addEventListener('click', () => {
-        toggleKontaktClass(cls);
-        star.classList.toggle('active', kontaktClasses.includes(cls));
-      });
-      chip.appendChild(btn);
-      chip.appendChild(star);
       wrap.appendChild(chip);
     });
+    if (selectAll) {
+      const groupOn = group.classes.every(c => classesTaught.includes(c));
+      const gBtn = document.createElement('button');
+      gBtn.type = 'button'; gBtn.className = 'link-btn class-selectall-grade';
+      gBtn.textContent = groupOn ? 'Fjern alle' : 'Velg alle';
+      gBtn.addEventListener('click', () => { setTaughtClasses(group.classes, !groupOn); buildClassPicker(container, opts); });
+      wrap.appendChild(gBtn);
+    }
     container.appendChild(wrap);
   });
 }
 
-// ─── First-run onboarding ────────────────────────────────────────────────────
+// A flat chip row for a subject list – used by the onboarding subject steps
+// (core on one step, electives on the next) so each step stays uncluttered.
+function buildOnboardSubjectChips(container, subjectList) {
+  container.innerHTML = '';
+  const row = document.createElement('div');
+  row.className = 'vf-chip-row';
+  subjectList.slice().sort((a, b) => a.localeCompare(b, 'no')).forEach(s => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'vf-chip' + (mySubjects().includes(s) ? ' active' : '');
+    btn.textContent = s;
+    btn.addEventListener('click', async () => {
+      const now = await toggleMySubject(s);
+      btn.classList.toggle('active', !!now);
+    });
+    row.appendChild(btn);
+  });
+  container.appendChild(row);
+}
+
+// The onboarding Kontaktlærer step: the taught classes as ★ toggles.
+function buildKontaktStep(container) {
+  container.innerHTML = '';
+  const taught = CLASSES.filter(c => classesTaught.includes(c));   // grade order
+  if (!taught.length) {
+    const p = document.createElement('p');
+    p.className = 'onboard-empty';
+    p.textContent = 'Du har ikke valgt noen klasser ennå. Gå tilbake for å velge klasser, eller hopp over – du kan sette dette senere.';
+    container.appendChild(p);
+    return;
+  }
+  const row = document.createElement('div');
+  row.className = 'vf-chip-row';
+  taught.forEach(cls => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'vf-chip kontakt-chip' + (kontaktClasses.includes(cls) ? ' active' : '');
+    btn.textContent = '★ ' + cls;
+    btn.addEventListener('click', () => {
+      toggleKontaktClass(cls);
+      btn.classList.toggle('active', kontaktClasses.includes(cls));
+    });
+    row.appendChild(btn);
+  });
+  container.appendChild(row);
+}
+
+// ─── First-run onboarding (guided wizard) ────────────────────────────────────
 // Show once for a genuinely-new account (never onboarded, no subjects, no
-// classes); existing teachers are never surprised.
+// classes); existing teachers are never surprised. Steps: 0 welcome · 1 vanlige
+// fag · 2 valgfag · 3 klasser · 4 kontaktlærer · 5 done. Selections persist live
+// via their toggles; onboardedAt is stamped only when the user leaves the wizard.
 function needsOnboarding() {
   return !settings.onboardedAt && mySubjects().length === 0 && classesTaught.length === 0;
 }
+let onboardStep = 0;
+let onboardSkipped = false;
 function showOnboarding() {
-  buildSubjectChipPicker(document.getElementById('onboardSubjects'), mySubjects, toggleMySubject, {
-    summaryLabel: 'Dine fag', emptyLabel: 'Ingen fag valgt ennå.',
-  });
-  buildClassPicker(document.getElementById('onboardClasses'));
+  onboardStep = 0;
+  onboardSkipped = false;
   document.getElementById('onboardOverlay').classList.add('open');
   document.getElementById('onboardModal').classList.add('open');
   document.body.classList.add('scroll-locked');
+  renderOnboardStep();
 }
-// Both «Ferdig» and «Hopp over» end onboarding for good and continue into the
-// dashboard. Selections were already persisted live via their toggles.
-function finishOnboarding() {
+function onboardHint(text) {
+  const p = document.createElement('p');
+  p.className = 'form-hint onboard-hint';
+  p.textContent = text;
+  return p;
+}
+function renderOnboardStep() {
+  const title = document.getElementById('onboardTitle');
+  const body  = document.getElementById('onboardBody');
+  const prog  = document.getElementById('onboardProgress');
+  const back  = document.getElementById('onboardBack');
+  const skip  = document.getElementById('onboardSkip');
+  const next  = document.getElementById('onboardNext');
+  body.innerHTML = '';
+  back.style.display = ''; skip.style.display = ''; next.style.display = '';
+  prog.hidden = true;
+  const sub = () => { const d = document.createElement('div'); body.appendChild(d); return d; };
+
+  if (onboardStep === 0) {                       // Welcome
+    title.textContent = 'Velkommen til Ukeportalen!';
+    const p = document.createElement('p');
+    p.className = 'onboard-lead';
+    p.textContent = 'Vi stiller deg noen raske spørsmål om fagene og klassene dine. '
+      + 'Det brukes bare til å gjøre appen enklere for deg: brettet viser fagene dine øverst, '
+      + 'du slipper å velge klasse hver gang, og «Kopier forrige uke» forhåndsvelger de rette fagene. '
+      + 'Du kan endre alt senere i profilen din.';
+    body.appendChild(p);
+    back.style.display = 'none';
+    next.textContent = 'Kom i gang';
+  } else if (onboardStep === 1) {                // Regular subjects
+    title.textContent = 'Hvilke fag underviser du i?';
+    prog.hidden = false; prog.textContent = 'Steg 1 av 4';
+    body.appendChild(onboardHint('Velg de vanlige fagene dine. Valgfag kommer på neste steg.'));
+    buildOnboardSubjectChips(sub(), CORE_SUBJECTS);
+    next.textContent = 'Neste';
+  } else if (onboardStep === 2) {                // Electives
+    title.textContent = 'Valgfag og tilvalgsfag';
+    prog.hidden = false; prog.textContent = 'Steg 2 av 4';
+    body.appendChild(onboardHint('Har du noen av disse? Hopp videre hvis ikke.'));
+    buildOnboardSubjectChips(sub(), ELECTIVE_SUBJECTS);
+    next.textContent = 'Neste';
+  } else if (onboardStep === 3) {                // Classes
+    title.textContent = 'Hvilke klasser underviser du i?';
+    prog.hidden = false; prog.textContent = 'Steg 3 av 4';
+    body.appendChild(onboardHint('Trykk på klassene dine. Underviser du i alle, bruk «Velg alle».'));
+    buildClassPicker(sub(), { withStar: false, selectAll: true });
+    next.textContent = 'Neste';
+  } else if (onboardStep === 4) {                // Kontaktlærer
+    title.textContent = 'Er du kontaktlærer?';
+    prog.hidden = false; prog.textContent = 'Steg 4 av 4';
+    body.appendChild(onboardHint('Marker klassene du er kontaktlærer for. Ikke kontaktlærer? Bare gå videre.'));
+    buildKontaktStep(sub());
+    next.textContent = 'Fullfør';
+  } else {                                       // Done (celebratory or skipped)
+    back.style.display = 'none';
+    skip.style.display = 'none';
+    const p = document.createElement('p');
+    p.className = 'onboard-lead onboard-celebrate';
+    if (onboardSkipped) {
+      title.textContent = 'Den er grei!';
+      p.textContent = 'Du kan fylle inn dette senere i profilen din – trykk på navnet ditt øverst til høyre.';
+    } else {
+      title.textContent = 'Flott!';
+      p.textContent = '🎉 Nå skal du få begynne å jobbe!';
+    }
+    body.appendChild(p);
+    next.textContent = 'Åpne Ukeportalen';
+  }
+}
+function onboardNextClick() {
+  if (onboardStep >= 5) { completeOnboarding(); return; }
+  onboardStep += 1;
+  renderOnboardStep();
+}
+function onboardBackClick() {
+  if (onboardStep > 0) { onboardStep -= 1; renderOnboardStep(); }
+}
+function onboardSkipClick() {
+  onboardSkipped = true;
+  onboardStep = 5;
+  renderOnboardStep();
+}
+// Leave the wizard for good: stamp onboardedAt and continue into the dashboard.
+// Selections were already persisted live via their toggles.
+function completeOnboarding() {
   settings.onboardedAt = new Date().toISOString();
   saveSettings();
   document.getElementById('onboardOverlay').classList.remove('open');
@@ -1373,8 +1546,9 @@ function setupDashboardListeners() {
   document.getElementById('viewSubjectsClose').addEventListener('click', closeViewSubjectsModal);
   document.getElementById('viewSubjectsOverlay').addEventListener('click', closeViewSubjectsModal);
   document.getElementById('viewSubjectsDone').addEventListener('click', closeViewSubjectsModal);
-  document.getElementById('onboardDone').addEventListener('click', finishOnboarding);
-  document.getElementById('onboardSkip').addEventListener('click', finishOnboarding);
+  document.getElementById('onboardNext').addEventListener('click', onboardNextClick);
+  document.getElementById('onboardBack').addEventListener('click', onboardBackClick);
+  document.getElementById('onboardSkip').addEventListener('click', onboardSkipClick);
   document.getElementById('rerunOnboard').addEventListener('click', () => { closeProfileModal(); showOnboarding(); });
   document.getElementById('pwChangeBtn').addEventListener('click', changeOwnPassword);
   document.getElementById('setConfirmDelete').addEventListener('change', e => {
@@ -2210,7 +2384,7 @@ function setupModalListeners() {
     if (e.key !== 'Escape') return;
     if (document.querySelector('.ui-dialog')) return;
     const open = id => document.getElementById(id).classList.contains('open');
-    if (open('onboardModal')) finishOnboarding();   // Esc = «Hopp over»
+    if (open('onboardModal')) completeOnboarding();   // Esc leaves the wizard
     else if (open('addModal')) closeAddModal();
     else if (open('vurdFilterModal')) closeVurdFilterModal();
     else if (open('viewSubjectsModal')) closeViewSubjectsModal();
