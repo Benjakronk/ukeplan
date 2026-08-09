@@ -1127,13 +1127,14 @@ let onboardStep = 0;
 let onboardSkipped = false;
 let onboardDir = 'next';   // slide direction for the body enter animation
 
-// Journey progress bar: 5 zig-zag nodes (Konto · Fag · Valgfag · Klasser ·
-// Kontakt) drawn with isometric depth (an offset darker underside + a highlight),
-// and a map-pin marker that glides above the current node. Konto is pre-done and
-// the pin starts parked at node 2, so the journey opens already underway. Per
+// Journey progress bar: 7 zig-zag nodes (Konto · Fag · Valgfag · Klasser ·
+// Kontakt · Oppsummering · Mål) drawn with isometric depth (an offset darker
+// underside + a highlight), and a map-pin marker that glides above the current
+// node. Konto is pre-done and the pin starts parked at node 2, so the journey
+// opens already underway. The last node is a larger flagged destination. Per
 // step: [filledNodes, pointerNode] (1-based); the trail colours up to the pin.
-const ONBOARD_NODES = [[20, 32], [90, 16], [160, 32], [230, 16], [300, 32]];
-const ONBOARD_PROGRESS = { 0: [1, 2], 1: [1, 2], 2: [2, 3], 3: [3, 4], 4: [4, 5], 5: [5, 5] };
+const ONBOARD_NODES = [[18, 32], [65, 16], [112, 32], [159, 16], [206, 32], [253, 16], [298, 32]];
+const ONBOARD_PROGRESS = { 0: [1, 2], 1: [1, 2], 2: [2, 3], 3: [3, 4], 4: [4, 5], 5: [5, 6], 6: [7, 7] };
 function buildOnboardProgress() {
   const el = document.getElementById('onboardProgress');
   el.hidden = false;
@@ -1145,16 +1146,24 @@ function buildOnboardProgress() {
       + `<line class="oseg-face" x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}"/></g>`;
   }
   ONBOARD_NODES.forEach(([x, y], i) => {
-    nodes += `<g class="onode" data-i="${i}">`
-      + `<ellipse class="onode-base" cx="${x}" cy="${y + 3}" rx="6" ry="5"/>`
-      + `<ellipse class="onode-face" cx="${x}" cy="${y}" rx="6" ry="5"/>`
-      + `<ellipse class="onode-hi" cx="${x - 1.7}" cy="${y - 1.6}" rx="1.9" ry="1.4"/></g>`;
+    const goal = i === ONBOARD_NODES.length - 1;
+    const rx = goal ? 8.5 : 6, ry = goal ? 7 : 5;
+    let g = `<g class="onode${goal ? ' onode-goal' : ''}" data-i="${i}">`
+      + `<ellipse class="onode-base" cx="${x}" cy="${y + 3}" rx="${rx}" ry="${ry}"/>`
+      + `<ellipse class="onode-face" cx="${x}" cy="${y}" rx="${rx}" ry="${ry}"/>`;
+    if (goal) {   // a little flag marks the destination
+      g += `<line class="onode-flagpole" x1="${x}" y1="${y - 1}" x2="${x}" y2="${y - 13}"/>`
+        + `<path class="onode-flag" d="M ${x} ${y - 13} l 7 2.3 l -7 2.3 z"/>`;
+    } else {
+      g += `<ellipse class="onode-hi" cx="${x - 1.7}" cy="${y - 1.6}" rx="1.9" ry="1.4"/>`;
+    }
+    nodes += g + '</g>';
   });
   // Map pin: teardrop head tapering to a point at (0,0), with a hole.
   const pin = '<g class="opointer"><g class="opointer-bob">'
     + '<path class="opointer-body" d="M0 0 C -3 -5 -6 -7.5 -6 -11 A 6 6 0 1 1 6 -11 C 6 -7.5 3 -5 0 0 Z"/>'
     + '<circle class="opointer-hole" cx="0" cy="-11" r="2.4"/></g></g>';
-  el.innerHTML = `<svg class="onboard-journey" viewBox="0 -12 320 56" role="img" aria-label="Fremdrift i oppsett">${segs}${nodes}${pin}</svg>`;
+  el.innerHTML = `<svg class="onboard-journey" viewBox="0 -14 320 58" role="img" aria-label="Fremdrift i oppsett">${segs}${nodes}${pin}</svg>`;
 }
 function updateOnboardProgress(step) {
   const [filled, pointerNode] = ONBOARD_PROGRESS[step] || [1, 2];
@@ -1172,6 +1181,15 @@ function updateOnboardProgress(step) {
   const p = el.querySelector('.opointer');
   const [px, py] = ONBOARD_NODES[pointerNode - 1];
   p.style.transform = `translate(${px}px, ${py - 10}px)`;
+}
+// A small victory hop for the pin when it reaches the destination (Fullfør).
+function playPinVictory() {
+  const bob = document.querySelector('#onboardProgress .opointer-bob');
+  if (!bob) return;
+  bob.classList.remove('opointer-victory');
+  void bob.offsetWidth;
+  bob.classList.add('opointer-victory');
+  bob.addEventListener('animationend', () => bob.classList.remove('opointer-victory'), { once: true });
 }
 function playOnboardEnter() {
   const b = document.getElementById('onboardBody');
@@ -1212,9 +1230,8 @@ function renderOnboardStep() {
     title.textContent = 'Velkommen til Ukeportalen!';
     const p = document.createElement('p');
     p.className = 'onboard-lead';
-    p.textContent = 'Vi stiller deg noen raske spørsmål om fagene og klassene dine. '
-      + 'Det brukes bare til å gjøre appen enklere for deg: brettet viser fagene dine øverst, '
-      + 'du slipper å velge klasse hver gang, og «Kopier forrige uke» forhåndsvelger de rette fagene. '
+    p.textContent = 'Vi stiller deg noen raske spørsmål om fagene og klassene dine, '
+      + 'slik at vi kan gjøre appen enklere for deg! '
       + 'Du kan endre alt senere i profilen din.';
     body.appendChild(p);
     back.style.display = 'none';
@@ -1238,6 +1255,11 @@ function renderOnboardStep() {
     title.textContent = 'Er du kontaktlærer?';
     body.appendChild(onboardHint('Marker klassene du er kontaktlærer for. Ikke kontaktlærer? Bare gå videre.'));
     buildKontaktStep(sub());
+    next.textContent = 'Neste';
+  } else if (onboardStep === 5) {                // Summary
+    title.textContent = 'Ser dette riktig ut?';
+    body.appendChild(onboardHint('En rask oppsummering. Gå tilbake for å endre, ellers fullfører du.'));
+    buildOnboardSummary(sub());
     next.textContent = 'Fullfør';
   } else {                                       // Done (celebratory or skipped)
     back.style.display = 'none';
@@ -1245,7 +1267,7 @@ function renderOnboardStep() {
     p.className = 'onboard-lead onboard-celebrate';
     if (onboardSkipped) {
       title.textContent = 'Den er grei!';
-      p.textContent = 'Du kan fylle inn dette senere i profilen din – trykk på navnet ditt øverst til høyre.';
+      p.textContent = 'Du kan fylle inn dette senere i profilen din ved å trykke på navnet ditt øverst til høyre.';
       // Nudge back into setup: resume is the prominent primary, «open» is muted.
       skip.style.display = ''; skip.textContent = 'Åpne Ukeportalen';
       next.textContent = 'Vent, jeg vil gjøre det likevel';
@@ -1254,13 +1276,30 @@ function renderOnboardStep() {
       title.textContent = 'Flott!';
       p.textContent = '🎉 Nå skal du få begynne å jobbe!';
       next.textContent = 'Åpne Ukeportalen';
+      playPinVictory();                          // the pin plants a flag at the goal
     }
     body.appendChild(p);
   }
   playOnboardEnter();
 }
+// A read-only recap of what the teacher set, shown on the summary step.
+function buildOnboardSummary(container) {
+  container.innerHTML = '';
+  const row = (label, values, empty) => {
+    const d = document.createElement('div'); d.className = 'onboard-sum-row';
+    const l = document.createElement('span'); l.className = 'onboard-sum-label'; l.textContent = label;
+    const v = document.createElement('span'); v.className = 'onboard-sum-val';
+    if (values.length) v.textContent = values.join(', ');
+    else { v.textContent = empty; v.classList.add('onboard-sum-empty'); }
+    d.appendChild(l); d.appendChild(v);
+    return d;
+  };
+  container.appendChild(row('Fag', orderedSubjects(mySubjects()), 'Ingen valgt'));
+  container.appendChild(row('Klasser', CLASSES.filter(c => classesTaught.includes(c)), 'Ingen valgt'));
+  container.appendChild(row('Kontaktlærer', CLASSES.filter(c => kontaktClasses.includes(c)), 'Ingen'));
+}
 function onboardNextClick() {
-  if (onboardStep >= 5) { onboardSkipped ? resumeOnboarding() : completeOnboarding(); return; }
+  if (onboardStep >= 6) { onboardSkipped ? resumeOnboarding() : completeOnboarding(); return; }
   onboardDir = 'next';
   onboardStep += 1;
   renderOnboardStep();
@@ -1269,10 +1308,10 @@ function onboardBackClick() {
   if (onboardStep > 0) { onboardDir = 'back'; onboardStep -= 1; renderOnboardStep(); }
 }
 function onboardSkipClick() {
-  if (onboardStep >= 5) { completeOnboarding(); return; }   // «Åpne Ukeportalen» on the skipped-done step
+  if (onboardStep >= 6) { completeOnboarding(); return; }   // «Åpne Ukeportalen» on the skipped-done step
   onboardDir = 'next';
   onboardSkipped = true;
-  onboardStep = 5;
+  onboardStep = 6;
   renderOnboardStep();
 }
 // «Vent, jeg vil gjøre det likevel» – abandon the skip and resume the wizard.

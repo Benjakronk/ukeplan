@@ -488,16 +488,36 @@
 .onode.current .onode-face { stroke: var(--primary); }
 .onode-hi { fill: #fff; opacity: 0; transition: opacity .35s ease; }
 .onode.done .onode-hi { opacity: .4; }
+/* destination (goal) node: bigger, with a little flag */
+.onode-goal .onode-face { stroke-width: 3; }
+.onode-flagpole { stroke: var(--primary-dark); stroke-width: 1.6; stroke-linecap: round; }
+.onode-flag { fill: var(--vurd); }
 /* map pin marker */
 .opointer { fill: var(--vurd); transition: transform .4s cubic-bezier(.34, 1.4, .5, 1); filter: drop-shadow(0 2px 1.5px rgba(0,0,0,.32)); }
 .opointer-hole { fill: var(--surface); }
-.opointer-bob { animation: opointer-bob 1.7s ease-in-out infinite; }
+.opointer-bob { transform-box: fill-box; transform-origin: bottom center; animation: opointer-bob 1.7s ease-in-out infinite; }
 @keyframes opointer-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2.5px); } }
+/* victory hop when the pin reaches the destination (Fullfør) */
+.opointer-bob.opointer-victory { animation: opointer-victory .8s cubic-bezier(.3, 1.5, .5, 1); }
+@keyframes opointer-victory {
+  0%   { transform: translateY(0) scale(1); }
+  22%  { transform: translateY(-12px) scale(1.18); }
+  46%  { transform: translateY(0) scale(1); }
+  64%  { transform: translateY(-6px) scale(1.08); }
+  100% { transform: translateY(0) scale(1); }
+}
 @media (prefers-reduced-motion: reduce) {
   .onboard-anim { animation: none; }
   .opointer { transition: none; }
-  .opointer-bob { animation: none; }
+  .opointer-bob, .opointer-bob.opointer-victory { animation: none; }
 }
+
+/* Summary step: a clean recap of what the teacher set */
+.onboard-sum-row { display: flex; gap: 12px; padding: 10px 2px; border-bottom: 1px solid var(--border); }
+.onboard-sum-row:last-child { border-bottom: none; }
+.onboard-sum-label { flex: 0 0 108px; font-weight: 700; color: var(--text-muted); }
+.onboard-sum-val { flex: 1; color: var(--text); }
+.onboard-sum-empty { color: var(--text-muted); font-style: italic; }
 
 /* «Dine klasser» shortcut row atop the class chooser */
 .class-modal-mine { padding-bottom: 12px; margin-bottom: 2px; border-bottom: 1px solid var(--border); }
