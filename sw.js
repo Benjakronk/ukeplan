@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE = 'ukeplan-shell-v54';
+const CACHE = 'ukeplan-shell-v55';
 const ASSETS = [
   './',
   'index.html',

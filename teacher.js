@@ -206,6 +206,27 @@ function lekseDaysFor(subject) {
 let undoStack = [];
 let redoStack = [];
 
+// ─── Anti-autofill ────────────────────────────────────────────
+// Only the login username/password may be autofilled. Everywhere else browsers
+// happily inject the saved name/e-mail into lone text fields; `autocomplete=off`
+// is widely ignored, so we also open each field read-only and drop that on first
+// focus (autofill only targets editable fields at load).
+const AUTOFILL_KEEP = new Set(['usernameInput', 'passwordInput']);
+const AUTOFILL_SKIP_TYPES = new Set(['checkbox', 'radio', 'range', 'color', 'file',
+  'hidden', 'submit', 'button', 'image', 'reset', 'date', 'datetime-local', 'month', 'week', 'time', 'number']);
+function guardAutofill(el) {
+  if (!el || el.dataset.afGuarded || AUTOFILL_KEEP.has(el.id)) return;
+  if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return;
+  if (AUTOFILL_SKIP_TYPES.has((el.getAttribute('type') || 'text').toLowerCase())) return;
+  el.dataset.afGuarded = '1';
+  el.setAttribute('autocomplete', 'off');
+  el.setAttribute('data-lpignore', 'true');
+  el.setAttribute('data-1p-ignore', '');
+  el.readOnly = true;
+  el.addEventListener('focus', () => { el.readOnly = false; });
+}
+function guardAutofillAll(root) { (root || document).querySelectorAll('input, textarea').forEach(guardAutofill); }
+
 // ─── Lifecycle ────────────────────────────────────────────────
 
 window.addEventListener('DOMContentLoaded', init);
@@ -225,6 +246,7 @@ function init() {
   document.getElementById('teacherName').value = teacherName;
   updateProfileButton();
 
+  guardAutofillAll(document);   // block autofill everywhere except the login fields
   bootstrapSession();
 }
 
@@ -868,18 +890,12 @@ function buildSubjectChipPicker(container, getSelected, onToggle, opts = {}) {
   const search = document.createElement('input');
   search.type = 'text'; search.className = 'input mysubj-search';
   search.placeholder = 'Søk etter fag…';
-  // Stop the browser autofilling a saved name into this text field. autocomplete
-  // is widely ignored for lone text inputs, so also open the field read-only and
-  // drop read-only on first focus – autofill only targets editable fields at load.
+  // Dynamically created, so guard it here too (the startup sweep already ran).
   search.setAttribute('name', 'fagsok');
-  search.setAttribute('autocomplete', 'off');
   search.setAttribute('autocapitalize', 'off');
   search.setAttribute('autocorrect', 'off');
   search.setAttribute('spellcheck', 'false');
-  search.setAttribute('data-lpignore', 'true');
-  search.setAttribute('data-1p-ignore', '');
-  search.readOnly = true;
-  search.addEventListener('focus', () => { search.readOnly = false; });
+  guardAutofill(search);
   container.appendChild(search);
 
   const makeChip = s => {
