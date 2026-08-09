@@ -66,8 +66,9 @@ const PENDING_WRITES_KEY = 'up_pending_writes';
 
 let loggedIn      = false;   // set once ?action=me / login / enroll confirms a session
 let isAdmin       = false;   // current teacher is an administrator
-let classesTaught = [];      // classes this teacher teaches (server relation, from me/login)
+let classesTaught = [];      // union of subjectClasses (derived; kept as a var for reuse)
 let kontaktClasses = [];     // subset of classesTaught where the teacher is Kontaktlærer
+let subjectClasses = {};     // { subject: [classes] } – which classes each subject is taught in (server relation)
 let cloning       = false;   // true while a clone request is in flight (guards double-clicks)
 let editingVurd   = null; // the vurdering object being edited in the modal, or null
 let selectedClass = localStorage.getItem(CLASS_KEY) || null;
@@ -390,8 +391,13 @@ function applyProfile(profile) {
     defaultLekseDay: p.defaultLekseDay,       // legacy → lekseDays.default
   });
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));                 // cache only (no server echo)
-  // Taught classes + Kontaktlærer subset live in a server relation, not prefs.
-  classesTaught  = Array.isArray(profile.classes) ? profile.classes.filter(c => CLASSES.includes(c)) : [];
+  // The subject×class matrix (server relation) is the source of truth for taught
+  // classes; classesTaught is its union. Fall back to the flat classes relation
+  // for accounts that predate the matrix.
+  subjectClasses = sanitizeMatrix(profile.subjectClasses);
+  classesTaught  = Object.keys(subjectClasses).length
+    ? taughtUnion()
+    : (Array.isArray(profile.classes) ? profile.classes.filter(c => CLASSES.includes(c)) : []);
   kontaktClasses = Array.isArray(profile.kontakt) ? profile.kontakt.filter(c => classesTaught.includes(c)) : [];
   if (p.theme && window.UPTheme) UPTheme.set(p.theme);
   if (p.lastClass && CLASSES.includes(p.lastClass) && !variantCode) {
@@ -435,6 +441,55 @@ function saveClassesToServer() {
   classesSaveTimer = setTimeout(() => {
     api('setclasses', { classes: classesTaught.join(','), kontakt: kontaktClasses.join(',') })
       .then(r => { if (r && Array.isArray(r.classes)) { classesTaught = r.classes; kontaktClasses = r.kontakt || []; } })
+      .catch(() => {});
+  }, 600);
+}
+
+// ── Subject×class matrix (which classes each subject is taught in) ────────────
+function sanitizeMatrix(raw) {
+  const out = {};
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    Object.keys(raw).forEach(s => {
+      if (SUBJECTS.includes(s) && Array.isArray(raw[s])) {
+        const cls = raw[s].filter(c => CLASSES.includes(c)).filter((c, i, a) => a.indexOf(c) === i);
+        if (cls.length) out[s] = cls;
+      }
+    });
+  }
+  return out;
+}
+function taughtUnion() { return CLASSES.filter(c => Object.values(subjectClasses).some(l => l.includes(c))); }
+function classesForSubject(s) { return (subjectClasses[s] || []).filter(c => CLASSES.includes(c)); }
+
+// Recompute the derived union + keep kontakt ⊆ union, and sync the classes
+// relation (teacher_classes stays the taught-union + kontaktlærer mirror).
+function recomputeTaught() {
+  classesTaught = taughtUnion();
+  kontaktClasses = kontaktClasses.filter(c => classesTaught.includes(c));
+  saveClassesToServer();
+}
+function toggleSubjectClass(subject, cls) {
+  const cur = classesForSubject(subject);
+  subjectClasses[subject] = cur.includes(cls) ? cur.filter(c => c !== cls) : cur.concat(cls);
+  if (!subjectClasses[subject].length) delete subjectClasses[subject];
+  recomputeTaught();
+  saveSubjectClassesToServer();
+}
+function setSubjectClasses(subject, list, on) {
+  const cur = new Set(classesForSubject(subject));
+  list.forEach(c => { if (on) cur.add(c); else cur.delete(c); });
+  if (cur.size) subjectClasses[subject] = CLASSES.filter(c => cur.has(c));
+  else delete subjectClasses[subject];
+  recomputeTaught();
+  saveSubjectClassesToServer();
+}
+let subjectClassesSaveTimer = null;
+function saveSubjectClassesToServer() {
+  if (!loggedIn) return;
+  clearTimeout(subjectClassesSaveTimer);
+  subjectClassesSaveTimer = setTimeout(() => {
+    api('setsubjectclasses', { matrix: JSON.stringify(subjectClasses) })
+      .then(r => { if (r && r.subjectClasses) subjectClasses = sanitizeMatrix(r.subjectClasses); })
       .catch(() => {});
   }, 600);
 }
@@ -502,7 +557,7 @@ async function api(action, params = {}) {
     if (data.error === 'Unauthorized') {
       // Don't lose the edit that hit the dead session – stash it and replay
       // it after the next login (replayPendingWrites).
-      if (['create','update','delete','vurdcreate','vurdupdate','vurddelete','setclasses'].includes(action)) stashPendingWrite(action, params);
+      if (['create','update','delete','vurdcreate','vurdupdate','vurddelete','setclasses','setsubjectclasses'].includes(action)) stashPendingWrite(action, params);
       onSessionLost();
     }
     throw new Error(data.error);
@@ -871,7 +926,7 @@ function openProfileModal() {
   document.getElementById('setDefaultSubject').value = SUBJECTS.includes(settings.defaultSubject) ? settings.defaultSubject : '';
   buildMySubjectChips();
   buildLekseDaySettings();
-  buildClassPicker(document.getElementById('profileClasses'));
+  buildProfileClasses();
   syncThemeSeg();
   document.getElementById('profileOverlay').classList.add('open');
   document.getElementById('profileModal').classList.add('open');
@@ -996,7 +1051,7 @@ function buildMySubjectChips() {
   buildSubjectChipPicker(row, mySubjects, toggleMySubject, {
     summaryLabel: 'Dine fag',
     emptyLabel: 'Ingen fag valgt – da vises alle fag.',
-    onChange: () => { buildLekseDaySettings(); },   // per-subject lekse rows depend on Mine fag
+    onChange: () => { buildLekseDaySettings(); buildProfileClasses(); },   // per-subject lekse + class rows depend on Mine fag
   });
 }
 
@@ -1034,12 +1089,14 @@ function setTaughtClasses(list, on) {
   saveClassesToServer();
 }
 
-// Grade-grouped class picker. `opts.withStar` shows the inline Kontaktlærer ★ on
-// taught classes (profile view); `opts.selectAll` adds "Velg alle" per grade and
-// a whole-school control (some teachers teach every class). Rebuilds itself when
-// a bulk control fires. Shared by the onboarding "classes" step and the profile.
+// Grade-grouped class picker, bound to a selection via `opts.has(cls)` /
+// `opts.toggle(cls)` / `opts.setAll(list,on)` (default = the taught-class union;
+// callers pass a per-subject binding for the matrix). `opts.selectAll` adds a
+// "Velg alle" per grade + a whole-school control. Rebuilds itself on a bulk op.
 function buildClassPicker(container, opts = {}) {
-  const withStar  = opts.withStar !== false;
+  const has    = opts.has    || (cls => classesTaught.includes(cls));
+  const toggle = opts.toggle || toggleTaughtClass;
+  const setAll = opts.setAll || setTaughtClasses;
   const selectAll = opts.selectAll !== false;
   container.innerHTML = '';
   container.classList.add('class-picker');
@@ -1047,11 +1104,11 @@ function buildClassPicker(container, opts = {}) {
   if (selectAll) {
     const bar = document.createElement('div');
     bar.className = 'class-selectall-bar';
-    const allOn = CLASSES.every(c => classesTaught.includes(c));
+    const allOn = CLASSES.every(has);
     const allBtn = document.createElement('button');
     allBtn.type = 'button'; allBtn.className = 'link-btn';
     allBtn.textContent = allOn ? 'Fjern alle klasser' : 'Velg alle klasser (hele skolen)';
-    allBtn.addEventListener('click', () => { setTaughtClasses(CLASSES, !allOn); buildClassPicker(container, opts); });
+    allBtn.addEventListener('click', () => { setAll(CLASSES, !allOn); buildClassPicker(container, opts); });
     bar.appendChild(allBtn);
     container.appendChild(bar);
   }
@@ -1065,46 +1122,78 @@ function buildClassPicker(container, opts = {}) {
     wrap.appendChild(lbl);
     group.classes.forEach(cls => {
       const chip = document.createElement('div');
-      chip.className = 'class-pick' + (classesTaught.includes(cls) ? ' active' : '');
+      chip.className = 'class-pick' + (has(cls) ? ' active' : '');
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'class-pick-btn';
       btn.textContent = cls;
       chip.appendChild(btn);
-      let star = null;
-      if (withStar) {
-        star = document.createElement('button');
-        star.type = 'button';
-        star.className = 'kontakt-star'
-          + (classesTaught.includes(cls) ? ' shown' : '')
-          + (kontaktClasses.includes(cls) ? ' active' : '');
-        star.textContent = '★';
-        star.title = 'Kontaktlærer';
-        star.setAttribute('aria-label', 'Kontaktlærer for ' + cls);
-        star.addEventListener('click', () => {
-          toggleKontaktClass(cls);
-          star.classList.toggle('active', kontaktClasses.includes(cls));
-        });
-        chip.appendChild(star);
-      }
-      btn.addEventListener('click', () => {
-        toggleTaughtClass(cls);
-        const taught = classesTaught.includes(cls);
-        chip.classList.toggle('active', taught);
-        if (star) { star.classList.toggle('shown', taught); star.classList.toggle('active', kontaktClasses.includes(cls)); }
-      });
+      btn.addEventListener('click', () => { toggle(cls); chip.classList.toggle('active', has(cls)); });
       wrap.appendChild(chip);
     });
     if (selectAll) {
-      const groupOn = group.classes.every(c => classesTaught.includes(c));
+      const groupOn = group.classes.every(has);
       const gBtn = document.createElement('button');
       gBtn.type = 'button'; gBtn.className = 'link-btn class-selectall-grade';
       gBtn.textContent = groupOn ? 'Fjern alle' : 'Velg alle';
-      gBtn.addEventListener('click', () => { setTaughtClasses(group.classes, !groupOn); buildClassPicker(container, opts); });
+      gBtn.addEventListener('click', () => { setAll(group.classes, !groupOn); buildClassPicker(container, opts); });
       wrap.appendChild(gBtn);
     }
     container.appendChild(wrap);
   });
+}
+// Binding for a subject's row of the matrix (used by onboarding + profile).
+function subjectClassBinding(subject) {
+  return {
+    has: cls => classesForSubject(subject).includes(cls),
+    toggle: cls => toggleSubjectClass(subject, cls),
+    setAll: (list, on) => setSubjectClasses(subject, list, on),
+  };
+}
+
+// Profile "Fag og klasser": a class picker per Mine-fag subject (tucked in a
+// <details> to contain the growth) + a Kontaktlærer picker over the union.
+function buildProfileClasses() {
+  const box = document.getElementById('profileClasses');
+  if (!box) return;
+  box.innerHTML = '';
+  const subs = orderedSubjects(mySubjects());
+  if (!subs.length) {
+    const p = document.createElement('p');
+    p.className = 'form-hint';
+    p.textContent = 'Velg fagene dine over først, så kan du sette klasser per fag.';
+    box.appendChild(p);
+  } else {
+    const det = document.createElement('details');
+    det.className = 'profile-matrix';
+    det.open = true;
+    const sum = document.createElement('summary');
+    sum.textContent = 'Klasser per fag';
+    det.appendChild(sum);
+    subs.forEach(s => {
+      const wrap = document.createElement('div');
+      wrap.className = 'profile-subj';
+      const h = document.createElement('div');
+      h.className = 'profile-subj-label';
+      h.textContent = s;
+      wrap.appendChild(h);
+      const picker = document.createElement('div');
+      wrap.appendChild(picker);
+      buildClassPicker(picker, Object.assign({ selectAll: true }, subjectClassBinding(s)));
+      det.appendChild(wrap);
+    });
+    box.appendChild(det);
+  }
+  const kwrap = document.createElement('div');
+  kwrap.className = 'profile-subj';
+  const kh = document.createElement('div');
+  kh.className = 'profile-subj-label';
+  kh.textContent = 'Kontaktlærer for';
+  kwrap.appendChild(kh);
+  const kbox = document.createElement('div');
+  kwrap.appendChild(kbox);
+  buildKontaktStep(kbox);   // ★ chips over the taught union
+  box.appendChild(kwrap);
 }
 
 // A flat chip row for a subject list – used by the onboarding subject steps
@@ -1165,6 +1254,9 @@ function needsOnboarding() {
 let onboardStep = 0;
 let onboardSkipped = false;
 let onboardDir = 'next';   // slide direction for the body enter animation
+let subjClassIdx = 0;      // step 3 sub-index: which subject we're assigning classes for
+// The subjects (ordered) whose classes we assign, one screen each, in step 3.
+function onboardSubjSeq() { return orderedSubjects(mySubjects()); }
 
 // Journey progress bar: 7 zig-zag nodes (Konto · Fag · Valgfag · Klasser ·
 // Kontakt · Oppsummering · Mål) drawn with isometric depth (an offset darker
@@ -1241,6 +1333,7 @@ function showOnboarding() {
   onboardStep = 0;
   onboardSkipped = false;
   onboardDir = 'next';
+  subjClassIdx = 0;
   buildOnboardProgress();
   document.getElementById('onboardOverlay').classList.add('open');
   document.getElementById('onboardModal').classList.add('open');
@@ -1285,11 +1378,15 @@ function renderOnboardStep() {
     body.appendChild(onboardHint('Har du noen av disse? Hopp videre hvis ikke.'));
     buildOnboardSubjectChips(sub(), ELECTIVE_SUBJECTS);
     next.textContent = 'Neste';
-  } else if (onboardStep === 3) {                // Classes
-    title.textContent = 'Hvilke klasser underviser du i?';
-    body.appendChild(onboardHint('Trykk på klassene dine. Underviser du i alle, bruk «Velg alle».'));
-    buildClassPicker(sub(), { withStar: false, selectAll: true });
-    next.textContent = 'Neste';
+  } else if (onboardStep === 3) {                // Classes – one subject per screen
+    const seq = onboardSubjSeq();
+    if (!seq.length) { onboardStep = 4; renderOnboardStep(); return; }   // defensive
+    subjClassIdx = Math.min(subjClassIdx, seq.length - 1);
+    const subject = seq[subjClassIdx];
+    title.textContent = 'Hvilke klasser har du ' + subject + ' i?';
+    body.appendChild(onboardHint('Fag ' + (subjClassIdx + 1) + ' av ' + seq.length + '. Har du faget i alle klasser, bruk «Velg alle».'));
+    buildClassPicker(sub(), Object.assign({ selectAll: true }, subjectClassBinding(subject)));
+    next.textContent = subjClassIdx < seq.length - 1 ? 'Neste fag' : 'Neste';
   } else if (onboardStep === 4) {                // Kontaktlærer
     title.textContent = 'Er du kontaktlærer?';
     body.appendChild(onboardHint('Marker klassene du er kontaktlærer for. Ikke kontaktlærer? Bare gå videre.'));
@@ -1333,18 +1430,39 @@ function buildOnboardSummary(container) {
     d.appendChild(l); d.appendChild(v);
     return d;
   };
-  container.appendChild(row('Fag', orderedSubjects(mySubjects()), 'Ingen valgt'));
-  container.appendChild(row('Klasser', CLASSES.filter(c => classesTaught.includes(c)), 'Ingen valgt'));
+  const subs = orderedSubjects(mySubjects());
+  if (!subs.length) {
+    container.appendChild(row('Fag', [], 'Ingen valgt'));
+  } else {
+    subs.forEach(s => container.appendChild(row(s, classesForSubject(s), 'Ingen klasser')));
+  }
   container.appendChild(row('Kontaktlærer', CLASSES.filter(c => kontaktClasses.includes(c)), 'Ingen'));
 }
 function onboardNextClick() {
   if (onboardStep >= 6) { onboardSkipped ? resumeOnboarding() : completeOnboarding(); return; }
   onboardDir = 'next';
-  onboardStep += 1;
+  const seq = onboardSubjSeq();
+  if (onboardStep === 2) {                          // entering the class phase
+    if (seq.length) { onboardStep = 3; subjClassIdx = 0; } else { onboardStep = 4; }  // skip if no subjects
+  } else if (onboardStep === 3 && subjClassIdx < seq.length - 1) {
+    subjClassIdx += 1;                               // next subject, same phase
+  } else {
+    onboardStep += 1;                                // step 3(last)→4, or any other step
+  }
   renderOnboardStep();
 }
 function onboardBackClick() {
-  if (onboardStep > 0) { onboardDir = 'back'; onboardStep -= 1; renderOnboardStep(); }
+  if (onboardStep === 0) return;
+  onboardDir = 'back';
+  const seq = onboardSubjSeq();
+  if (onboardStep === 3 && subjClassIdx > 0) {
+    subjClassIdx -= 1;                               // previous subject, same phase
+  } else if (onboardStep === 4) {                    // back into the class phase (last subject) or skip it
+    if (seq.length) { onboardStep = 3; subjClassIdx = Math.max(0, seq.length - 1); } else { onboardStep = 2; }
+  } else {
+    onboardStep -= 1;
+  }
+  renderOnboardStep();
 }
 function onboardSkipClick() {
   if (onboardStep >= 6) { completeOnboarding(); return; }   // «Åpne Ukeportalen» on the skipped-done step
@@ -3646,8 +3764,9 @@ function refreshConflicts() {
 
 // ─── Hjem (dashboard) tab ─────────────────────────────────────
 // A profile-driven landing: per-class cards showing this week's gaps in the
-// teacher's own fag (missing tema/lekser) as an ordered pick-list. v1 checks
-// every Mine-fag against every taught class (no per-class subject set yet).
+// teacher's own fag (missing tema/lekser) as an ordered pick-list. Gaps are
+// checked per class against the subjects taught IN that class (the matrix);
+// accounts predating the matrix fall back to all Mine-fag.
 
 async function loadHjem(opts = {}) {
   const week = dateToWeek(weekMonday);
@@ -3667,9 +3786,17 @@ async function loadHjem(opts = {}) {
 // Classes the teacher teaches, in grade order.
 function hjemClasses() { return CLASSES.filter(c => classesTaught.includes(c)); }
 
+// Subjects to check for a class: those taught IN this class (matrix). Legacy
+// accounts with no matrix fall back to all Mine-fag (the old over-report).
+function hjemSubjectsFor(cls) {
+  const ordered = orderedSubjects(mySubjects());
+  if (!Object.keys(subjectClasses).length) return ordered;              // legacy fallback
+  return ordered.filter(s => classesForSubject(s).includes(cls));
+}
+
 // Per-class tally + ordered gap list for the viewed week (from hjemData).
 function hjemClassGaps(cls) {
-  const subs = orderedSubjects(mySubjects());
+  const subs = hjemSubjectsFor(cls);
   const has = (s, t) => hjemData.some(p => p.type === t && p.subject === s && p.description && classMatches(p.classes, cls));
   const temaGaps = [], lekseGaps = [];
   let temaDone = 0;
@@ -3722,6 +3849,15 @@ function renderHjem() {
     card.appendChild(p); card.appendChild(btn);
     pane.appendChild(card);
     return;
+  }
+
+  // Legacy nudge: has classes but no per-subject matrix → tallies over-report.
+  if (!Object.keys(subjectClasses).length) {
+    const nudge = document.createElement('button');
+    nudge.type = 'button'; nudge.className = 'hjem-nudge';
+    nudge.textContent = 'Forbedre: sett hvilke fag du har i hver klasse →';
+    nudge.addEventListener('click', () => openProfileModal());
+    pane.appendChild(nudge);
   }
 
   const grid = document.createElement('div');
