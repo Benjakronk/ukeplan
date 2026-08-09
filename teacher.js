@@ -702,9 +702,31 @@ function renderAdminTeachers(teachers) {
     toggleBtn.textContent = t.active ? 'Deaktiver' : 'Aktiver';
     toggleBtn.addEventListener('click', () => adminToggleActive(t));
     actions.appendChild(resetBtn); actions.appendChild(toggleBtn);
+    // Permanent delete is offered only for an already-deactivated account, and
+    // never for your own row (the server enforces both too).
+    const ownUsername = localStorage.getItem(UNAME_KEY);
+    if (!t.active && t.username !== ownUsername) {
+      const delBtn = document.createElement('button'); delBtn.className = 'btn btn-ghost btn-tiny admin-del-btn';
+      delBtn.textContent = 'Slett';
+      delBtn.addEventListener('click', () => adminDeleteAccount(t));
+      actions.appendChild(delBtn);
+    }
     row.appendChild(info); row.appendChild(actions);
     list.appendChild(row);
   });
+}
+async function adminDeleteAccount(t) {
+  const ok = await uiConfirm(
+    'Slette kontoen til ' + t.name + ' (@' + t.username + ') permanent? Dette kan ikke angres.\n\n' +
+    'Innhold de har lagt inn (ukeplan, vurderinger) blir liggende – det er ikke knyttet til kontoen og kan fortsatt redigeres av andre.',
+    { title: 'Slett konto', okText: 'Slett', danger: true });
+  if (!ok) return;
+  try {
+    const r = await api('admin_delete', { id: t.id });
+    if (r.error) throw new Error(r.error);
+    showToast('Kontoen til ' + t.name + ' ble slettet.');
+    loadAdminTeachers();
+  } catch (err) { showToast(translateError(err.message)); }
 }
 async function adminResetPassword(t) {
   const pw = await uiPrompt('Nytt midlertidig passord for ' + t.name + ' (@' + t.username + '). Minst 6 tegn. Gi det til læreren – de kan endre passordet selv senere.',

@@ -373,6 +373,8 @@
 .admin-row-name { font-weight: 700; }
 .admin-row-user { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
 .admin-row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.admin-del-btn { color: var(--danger); }
+.admin-del-btn:hover { border-color: var(--danger); color: var(--danger-dark); }
 
 /* ── Self-service "Bytt passord" (profile modal) ───────────────── */
 .pw-change summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-muted); }
