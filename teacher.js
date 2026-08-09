@@ -868,7 +868,9 @@ function buildSubjectChipPicker(container, getSelected, onToggle, opts = {}) {
   const search = document.createElement('input');
   search.type = 'text'; search.className = 'input mysubj-search';
   search.placeholder = 'Søk etter fag…';
-  // Stop the browser autofilling a saved name into this text field.
+  // Stop the browser autofilling a saved name into this text field. autocomplete
+  // is widely ignored for lone text inputs, so also open the field read-only and
+  // drop read-only on first focus – autofill only targets editable fields at load.
   search.setAttribute('name', 'fagsok');
   search.setAttribute('autocomplete', 'off');
   search.setAttribute('autocapitalize', 'off');
@@ -876,6 +878,8 @@ function buildSubjectChipPicker(container, getSelected, onToggle, opts = {}) {
   search.setAttribute('spellcheck', 'false');
   search.setAttribute('data-lpignore', 'true');
   search.setAttribute('data-1p-ignore', '');
+  search.readOnly = true;
+  search.addEventListener('focus', () => { search.readOnly = false; });
   container.appendChild(search);
 
   const makeChip = s => {

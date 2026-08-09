@@ -400,6 +400,8 @@
 /* ── Mine fag picker (grouped + search) ────────────────────────── */
 .mysubj-summary { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
 .mysubj-search { width: 100%; margin-bottom: 10px; }
+/* read-only only until focus (anti-autofill) – keep it looking editable */
+.mysubj-search:read-only { background: var(--surface); color: var(--text); cursor: text; }
 .mysubj-electives { margin-top: 8px; }
 .mysubj-electives summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; }
 .mysubj-electives summary:hover { color: var(--text); }
