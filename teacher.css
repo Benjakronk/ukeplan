@@ -471,15 +471,26 @@
   to   { opacity: 1; transform: none; }
 }
 
-/* Journey progress bar: zig-zag nodes + gliding pointer. Starts 20% (Konto). */
-.onboard-progress { overflow: visible; padding: 8px 0 2px; }
+/* Journey progress bar: isometric zig-zag nodes (raised "coins" with an offset
+   underside + highlight) and a gliding map pin. Starts underway (pin at node 2). */
+.onboard-progress { overflow: visible; padding: 12px 0 4px; }
 .onboard-journey { display: block; width: 100%; max-width: 320px; height: auto; margin: 0 auto; overflow: visible; }
-.oseg { stroke: var(--border); stroke-width: 3; stroke-linecap: round; transition: stroke .35s ease; }
-.oseg.done { stroke: var(--primary); }
-.onode { fill: var(--surface); stroke: var(--border); stroke-width: 2.5; transition: fill .35s ease, stroke .35s ease; }
-.onode.done { fill: var(--primary); stroke: var(--primary); }
-.onode.current { stroke: var(--primary); }
-.opointer { fill: var(--primary); transition: transform .4s cubic-bezier(.34, 1.4, .5, 1); }
+/* segments: a darker underside (depth) under a coloured face */
+.oseg-base { stroke: var(--primary-dark); stroke-width: 3; stroke-linecap: round; opacity: 0; transition: opacity .35s ease; }
+.oseg.done .oseg-base { opacity: 1; }
+.oseg-face { stroke: var(--border); stroke-width: 3; stroke-linecap: round; transition: stroke .35s ease; }
+.oseg.done .oseg-face { stroke: var(--primary); }
+/* nodes: raised disc (base = side, face = top, hi = sheen) */
+.onode-base { fill: var(--primary-dark); opacity: 0; transition: opacity .35s ease; }
+.onode.done .onode-base { opacity: 1; }
+.onode-face { fill: var(--surface); stroke: var(--border); stroke-width: 2.5; transition: fill .35s ease, stroke .35s ease; }
+.onode.done .onode-face { fill: var(--primary); stroke: var(--primary); }
+.onode.current .onode-face { stroke: var(--primary); }
+.onode-hi { fill: #fff; opacity: 0; transition: opacity .35s ease; }
+.onode.done .onode-hi { opacity: .4; }
+/* map pin marker */
+.opointer { fill: var(--vurd); transition: transform .4s cubic-bezier(.34, 1.4, .5, 1); filter: drop-shadow(0 2px 1.5px rgba(0,0,0,.32)); }
+.opointer-hole { fill: var(--surface); }
 .opointer-bob { animation: opointer-bob 1.7s ease-in-out infinite; }
 @keyframes opointer-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2.5px); } }
 @media (prefers-reduced-motion: reduce) {

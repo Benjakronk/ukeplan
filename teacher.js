@@ -1128,34 +1128,50 @@ let onboardSkipped = false;
 let onboardDir = 'next';   // slide direction for the body enter animation
 
 // Journey progress bar: 5 zig-zag nodes (Konto · Fag · Valgfag · Klasser ·
-// Kontakt). Konto is pre-done, so the bar starts filled 1/5 = 20%. Per step:
-// [filledNodes, pointerNode] (1-based). The pointer glides to its node.
+// Kontakt) drawn with isometric depth (an offset darker underside + a highlight),
+// and a map-pin marker that glides above the current node. Konto is pre-done and
+// the pin starts parked at node 2, so the journey opens already underway. Per
+// step: [filledNodes, pointerNode] (1-based); the trail colours up to the pin.
 const ONBOARD_NODES = [[20, 32], [90, 16], [160, 32], [230, 16], [300, 32]];
-const ONBOARD_PROGRESS = { 0: [1, 1], 1: [1, 2], 2: [2, 3], 3: [3, 4], 4: [4, 5], 5: [5, 5] };
+const ONBOARD_PROGRESS = { 0: [1, 2], 1: [1, 2], 2: [2, 3], 3: [3, 4], 4: [4, 5], 5: [5, 5] };
 function buildOnboardProgress() {
   const el = document.getElementById('onboardProgress');
   el.hidden = false;
   let segs = '', nodes = '';
   for (let j = 0; j < ONBOARD_NODES.length - 1; j++) {
     const [ax, ay] = ONBOARD_NODES[j], [bx, by] = ONBOARD_NODES[j + 1];
-    segs += `<line class="oseg" data-j="${j}" x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}"/>`;
+    segs += `<g class="oseg" data-j="${j}">`
+      + `<line class="oseg-base" x1="${ax}" y1="${ay + 3}" x2="${bx}" y2="${by + 3}"/>`
+      + `<line class="oseg-face" x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}"/></g>`;
   }
-  ONBOARD_NODES.forEach(([x, y], i) => { nodes += `<circle class="onode" data-i="${i}" cx="${x}" cy="${y}" r="6"/>`; });
-  const pointer = '<g class="opointer"><path class="opointer-bob" d="M -5 -7 L 5 -7 L 0 1 Z"/></g>';
-  el.innerHTML = `<svg class="onboard-journey" viewBox="0 0 320 44" role="img" aria-label="Fremdrift i oppsett">${segs}${nodes}${pointer}</svg>`;
+  ONBOARD_NODES.forEach(([x, y], i) => {
+    nodes += `<g class="onode" data-i="${i}">`
+      + `<ellipse class="onode-base" cx="${x}" cy="${y + 3}" rx="6" ry="5"/>`
+      + `<ellipse class="onode-face" cx="${x}" cy="${y}" rx="6" ry="5"/>`
+      + `<ellipse class="onode-hi" cx="${x - 1.7}" cy="${y - 1.6}" rx="1.9" ry="1.4"/></g>`;
+  });
+  // Map pin: teardrop head tapering to a point at (0,0), with a hole.
+  const pin = '<g class="opointer"><g class="opointer-bob">'
+    + '<path class="opointer-body" d="M0 0 C -3 -5 -6 -7.5 -6 -11 A 6 6 0 1 1 6 -11 C 6 -7.5 3 -5 0 0 Z"/>'
+    + '<circle class="opointer-hole" cx="0" cy="-11" r="2.4"/></g></g>';
+  el.innerHTML = `<svg class="onboard-journey" viewBox="0 -12 320 56" role="img" aria-label="Fremdrift i oppsett">${segs}${nodes}${pin}</svg>`;
 }
 function updateOnboardProgress(step) {
-  const [filled, pointerNode] = ONBOARD_PROGRESS[step] || [1, 1];
+  const [filled, pointerNode] = ONBOARD_PROGRESS[step] || [1, 2];
   const el = document.getElementById('onboardProgress');
   el.querySelectorAll('.onode').forEach(c => {
     const n = +c.dataset.i + 1;
     c.classList.toggle('done', n <= filled);
     c.classList.toggle('current', n === pointerNode && n > filled);
   });
-  el.querySelectorAll('.oseg').forEach(s => s.classList.toggle('done', (+s.dataset.j + 2) <= filled));
+  // Colour a segment when both ends are done, or when it's the leg into the pin.
+  el.querySelectorAll('.oseg').forEach(s => {
+    const far = +s.dataset.j + 2;
+    s.classList.toggle('done', far <= filled || far === pointerNode);
+  });
   const p = el.querySelector('.opointer');
   const [px, py] = ONBOARD_NODES[pointerNode - 1];
-  p.style.transform = `translate(${px}px, ${py - 12}px)`;
+  p.style.transform = `translate(${px}px, ${py - 10}px)`;
 }
 function playOnboardEnter() {
   const b = document.getElementById('onboardBody');
@@ -1188,6 +1204,7 @@ function renderOnboardStep() {
   const next  = document.getElementById('onboardNext');
   body.innerHTML = '';
   back.style.display = ''; skip.style.display = ''; next.style.display = '';
+  skip.textContent = 'Fyll inn senere';
   updateOnboardProgress(onboardStep);
   const sub = () => { const d = document.createElement('div'); body.appendChild(d); return d; };
 
@@ -1224,23 +1241,26 @@ function renderOnboardStep() {
     next.textContent = 'Fullfør';
   } else {                                       // Done (celebratory or skipped)
     back.style.display = 'none';
-    skip.style.display = 'none';
     const p = document.createElement('p');
     p.className = 'onboard-lead onboard-celebrate';
     if (onboardSkipped) {
       title.textContent = 'Den er grei!';
       p.textContent = 'Du kan fylle inn dette senere i profilen din – trykk på navnet ditt øverst til høyre.';
+      // Nudge back into setup: resume is the prominent primary, «open» is muted.
+      skip.style.display = ''; skip.textContent = 'Åpne Ukeportalen';
+      next.textContent = 'Vent, jeg vil gjøre det likevel';
     } else {
+      skip.style.display = 'none';
       title.textContent = 'Flott!';
       p.textContent = '🎉 Nå skal du få begynne å jobbe!';
+      next.textContent = 'Åpne Ukeportalen';
     }
     body.appendChild(p);
-    next.textContent = 'Åpne Ukeportalen';
   }
   playOnboardEnter();
 }
 function onboardNextClick() {
-  if (onboardStep >= 5) { completeOnboarding(); return; }
+  if (onboardStep >= 5) { onboardSkipped ? resumeOnboarding() : completeOnboarding(); return; }
   onboardDir = 'next';
   onboardStep += 1;
   renderOnboardStep();
@@ -1249,9 +1269,17 @@ function onboardBackClick() {
   if (onboardStep > 0) { onboardDir = 'back'; onboardStep -= 1; renderOnboardStep(); }
 }
 function onboardSkipClick() {
+  if (onboardStep >= 5) { completeOnboarding(); return; }   // «Åpne Ukeportalen» on the skipped-done step
   onboardDir = 'next';
   onboardSkipped = true;
   onboardStep = 5;
+  renderOnboardStep();
+}
+// «Vent, jeg vil gjøre det likevel» – abandon the skip and resume the wizard.
+function resumeOnboarding() {
+  onboardSkipped = false;
+  onboardDir = 'back';
+  onboardStep = 1;
   renderOnboardStep();
 }
 // Leave the wizard for good: stamp onboardedAt and continue into the dashboard.
