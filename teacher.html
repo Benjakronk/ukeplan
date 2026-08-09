@@ -426,25 +426,17 @@
     </div>
   </div>
 
-  <!-- First-run onboarding: pick subjects + classes taught (+ Kontaktlærer) -->
+  <!-- First-run onboarding wizard: welcome · fag · valgfag · klasser · kontaktlærer · ferdig -->
   <div id="onboardOverlay" class="class-modal-overlay"></div>
   <div id="onboardModal" class="class-modal onboard-modal" role="dialog" aria-modal="true" aria-labelledby="onboardTitle">
-    <div class="class-modal-header">
-      <h2 id="onboardTitle" class="class-modal-title">Velkommen! La oss sette opp Ukeportalen</h2>
-    </div>
-    <p class="class-modal-hint">Dette tar et lite øyeblikk og gjør brettet ditt personlig. Du kan endre alt senere i profilen.</p>
-    <div class="onboard-step">
-      <h3 class="onboard-step-title">1. Hvilke fag underviser du i?</h3>
-      <div id="onboardSubjects"></div>
-    </div>
-    <div class="onboard-step">
-      <h3 class="onboard-step-title">2. Hvilke klasser underviser du i?</h3>
-      <p class="form-hint">Trykk på klassene dine. Stjernen (★) markerer klasser du er kontaktlærer for.</p>
-      <div id="onboardClasses"></div>
-    </div>
+    <div id="onboardProgress" class="onboard-progress" hidden></div>
+    <h2 id="onboardTitle" class="class-modal-title"></h2>
+    <div id="onboardBody" class="onboard-body"></div>
     <div class="class-modal-actions onboard-actions">
+      <button id="onboardBack" class="btn btn-ghost" type="button">Tilbake</button>
+      <span class="add-modal-spacer"></span>
       <button id="onboardSkip" class="btn btn-ghost" type="button">Hopp over</button>
-      <button id="onboardDone" class="btn btn-primary" type="button">Ferdig</button>
+      <button id="onboardNext" class="btn btn-primary" type="button">Neste</button>
     </div>
   </div>
 

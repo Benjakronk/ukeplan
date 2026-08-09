@@ -426,7 +426,9 @@
 .lekseday-head { margin: 8px 0 2px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
 
 /* ── Taught-classes picker + Kontaktlærer star ─────────────── */
-#onboardClasses, #profileClasses { display: flex; flex-direction: column; gap: 12px; padding-top: 6px; }
+.class-picker { display: flex; flex-direction: column; gap: 12px; padding-top: 6px; }
+.class-selectall-bar { margin-bottom: 2px; }
+.class-selectall-grade { margin-left: 4px; font-size: 12px; }
 .class-pick { position: relative; display: inline-block; }
 .class-pick-btn {
   min-width: 46px; padding: 9px 12px;
@@ -449,11 +451,16 @@
 .kontakt-star:hover { border-color: var(--vurd); color: var(--vurd); }
 .kontakt-star.active { background: var(--vurd); color: var(--on-accent); border-color: var(--vurd); }
 
-/* ── First-run onboarding modal ────────────────────────────── */
+/* ── First-run onboarding wizard ───────────────────────────── */
 .onboard-modal { width: 620px; }
-.onboard-step { margin-top: 18px; }
-.onboard-step-title { font-size: 15px; font-weight: 700; margin-bottom: 10px; }
-.onboard-actions { justify-content: space-between; }
+.onboard-progress { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px; }
+.onboard-body { min-height: 132px; margin: 8px 0 4px; }
+.onboard-lead { font-size: 15px; line-height: 1.55; color: var(--text); }
+.onboard-hint { margin: 0 0 12px; }
+.onboard-empty { font-size: 14px; color: var(--text-muted); }
+.onboard-celebrate { font-size: 20px; font-weight: 700; text-align: center; padding: 20px 0; }
+.onboard-actions { justify-content: flex-start; align-items: center; gap: 8px; }
+.kontakt-chip.active { background: var(--vurd); color: var(--on-accent); border-color: var(--vurd); }
 
 /* «Dine klasser» shortcut row atop the class chooser */
 .class-modal-mine { padding-bottom: 12px; margin-bottom: 2px; border-bottom: 1px solid var(--border); }
