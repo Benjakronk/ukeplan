@@ -453,14 +453,39 @@
 
 /* ── First-run onboarding wizard ───────────────────────────── */
 .onboard-modal { width: 620px; }
-.onboard-progress { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px; }
-.onboard-body { min-height: 132px; margin: 8px 0 4px; }
+/* Fixed body size across steps so the modal never jumps (sized to the tallest
+   step – the class picker). Shorter steps just leave breathing room. */
+.onboard-body { height: 296px; overflow-y: auto; margin: 6px 0 4px; --enter-x: 22px; }
 .onboard-lead { font-size: 15px; line-height: 1.55; color: var(--text); }
 .onboard-hint { margin: 0 0 12px; }
 .onboard-empty { font-size: 14px; color: var(--text-muted); }
-.onboard-celebrate { font-size: 20px; font-weight: 700; text-align: center; padding: 20px 0; }
+.onboard-celebrate { font-size: 20px; font-weight: 700; text-align: center; padding: 44px 0; }
 .onboard-actions { justify-content: flex-start; align-items: center; gap: 8px; }
 .kontakt-chip.active { background: var(--vurd); color: var(--on-accent); border-color: var(--vurd); }
+
+/* Step transition: new content slides in + fades (direction set per next/back). */
+.onboard-anim { animation: onboard-enter .24s ease-out; }
+@keyframes onboard-enter {
+  from { opacity: 0; transform: translateX(var(--enter-x, 22px)); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Journey progress bar: zig-zag nodes + gliding pointer. Starts 20% (Konto). */
+.onboard-progress { overflow: visible; padding: 8px 0 2px; }
+.onboard-journey { display: block; width: 100%; max-width: 320px; height: auto; margin: 0 auto; overflow: visible; }
+.oseg { stroke: var(--border); stroke-width: 3; stroke-linecap: round; transition: stroke .35s ease; }
+.oseg.done { stroke: var(--primary); }
+.onode { fill: var(--surface); stroke: var(--border); stroke-width: 2.5; transition: fill .35s ease, stroke .35s ease; }
+.onode.done { fill: var(--primary); stroke: var(--primary); }
+.onode.current { stroke: var(--primary); }
+.opointer { fill: var(--primary); transition: transform .4s cubic-bezier(.34, 1.4, .5, 1); }
+.opointer-bob { animation: opointer-bob 1.7s ease-in-out infinite; }
+@keyframes opointer-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2.5px); } }
+@media (prefers-reduced-motion: reduce) {
+  .onboard-anim { animation: none; }
+  .opointer { transition: none; }
+  .opointer-bob { animation: none; }
+}
 
 /* «Dine klasser» shortcut row atop the class chooser */
 .class-modal-mine { padding-bottom: 12px; margin-bottom: 2px; border-bottom: 1px solid var(--border); }

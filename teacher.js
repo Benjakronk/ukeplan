@@ -747,7 +747,7 @@ async function adminResetPassword(t) {
 }
 async function adminToggleActive(t) {
   const activate = !t.active;
-  if (!activate && !(await uiConfirm('Deaktivere ' + t.name + '? De blir logget ut og kan ikke logge inn før kontoen aktiveres igjen.'))) return;
+  if (!activate && !(await uiConfirm('Deaktivere ' + t.name + '? Brukeren blir logget ut og kan ikke logge inn før kontoen aktiveres igjen.'))) return;
   try {
     const r = await api('admin_setactive', { id: t.id, active: activate ? '1' : '0' });
     if (r.error) throw new Error(r.error);
@@ -1125,9 +1125,50 @@ function needsOnboarding() {
 }
 let onboardStep = 0;
 let onboardSkipped = false;
+let onboardDir = 'next';   // slide direction for the body enter animation
+
+// Journey progress bar: 5 zig-zag nodes (Konto · Fag · Valgfag · Klasser ·
+// Kontakt). Konto is pre-done, so the bar starts filled 1/5 = 20%. Per step:
+// [filledNodes, pointerNode] (1-based). The pointer glides to its node.
+const ONBOARD_NODES = [[20, 32], [90, 16], [160, 32], [230, 16], [300, 32]];
+const ONBOARD_PROGRESS = { 0: [1, 1], 1: [1, 2], 2: [2, 3], 3: [3, 4], 4: [4, 5], 5: [5, 5] };
+function buildOnboardProgress() {
+  const el = document.getElementById('onboardProgress');
+  el.hidden = false;
+  let segs = '', nodes = '';
+  for (let j = 0; j < ONBOARD_NODES.length - 1; j++) {
+    const [ax, ay] = ONBOARD_NODES[j], [bx, by] = ONBOARD_NODES[j + 1];
+    segs += `<line class="oseg" data-j="${j}" x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}"/>`;
+  }
+  ONBOARD_NODES.forEach(([x, y], i) => { nodes += `<circle class="onode" data-i="${i}" cx="${x}" cy="${y}" r="6"/>`; });
+  const pointer = '<g class="opointer"><path class="opointer-bob" d="M -5 -7 L 5 -7 L 0 1 Z"/></g>';
+  el.innerHTML = `<svg class="onboard-journey" viewBox="0 0 320 44" role="img" aria-label="Fremdrift i oppsett">${segs}${nodes}${pointer}</svg>`;
+}
+function updateOnboardProgress(step) {
+  const [filled, pointerNode] = ONBOARD_PROGRESS[step] || [1, 1];
+  const el = document.getElementById('onboardProgress');
+  el.querySelectorAll('.onode').forEach(c => {
+    const n = +c.dataset.i + 1;
+    c.classList.toggle('done', n <= filled);
+    c.classList.toggle('current', n === pointerNode && n > filled);
+  });
+  el.querySelectorAll('.oseg').forEach(s => s.classList.toggle('done', (+s.dataset.j + 2) <= filled));
+  const p = el.querySelector('.opointer');
+  const [px, py] = ONBOARD_NODES[pointerNode - 1];
+  p.style.transform = `translate(${px}px, ${py - 12}px)`;
+}
+function playOnboardEnter() {
+  const b = document.getElementById('onboardBody');
+  b.style.setProperty('--enter-x', onboardDir === 'back' ? '-22px' : '22px');
+  b.classList.remove('onboard-anim');
+  void b.offsetWidth;             // reflow so the animation replays each step
+  b.classList.add('onboard-anim');
+}
 function showOnboarding() {
   onboardStep = 0;
   onboardSkipped = false;
+  onboardDir = 'next';
+  buildOnboardProgress();
   document.getElementById('onboardOverlay').classList.add('open');
   document.getElementById('onboardModal').classList.add('open');
   document.body.classList.add('scroll-locked');
@@ -1142,13 +1183,12 @@ function onboardHint(text) {
 function renderOnboardStep() {
   const title = document.getElementById('onboardTitle');
   const body  = document.getElementById('onboardBody');
-  const prog  = document.getElementById('onboardProgress');
   const back  = document.getElementById('onboardBack');
   const skip  = document.getElementById('onboardSkip');
   const next  = document.getElementById('onboardNext');
   body.innerHTML = '';
   back.style.display = ''; skip.style.display = ''; next.style.display = '';
-  prog.hidden = true;
+  updateOnboardProgress(onboardStep);
   const sub = () => { const d = document.createElement('div'); body.appendChild(d); return d; };
 
   if (onboardStep === 0) {                       // Welcome
@@ -1164,25 +1204,21 @@ function renderOnboardStep() {
     next.textContent = 'Kom i gang';
   } else if (onboardStep === 1) {                // Regular subjects
     title.textContent = 'Hvilke fag underviser du i?';
-    prog.hidden = false; prog.textContent = 'Steg 1 av 4';
     body.appendChild(onboardHint('Velg de vanlige fagene dine. Valgfag kommer på neste steg.'));
     buildOnboardSubjectChips(sub(), CORE_SUBJECTS);
     next.textContent = 'Neste';
   } else if (onboardStep === 2) {                // Electives
     title.textContent = 'Valgfag og tilvalgsfag';
-    prog.hidden = false; prog.textContent = 'Steg 2 av 4';
     body.appendChild(onboardHint('Har du noen av disse? Hopp videre hvis ikke.'));
     buildOnboardSubjectChips(sub(), ELECTIVE_SUBJECTS);
     next.textContent = 'Neste';
   } else if (onboardStep === 3) {                // Classes
     title.textContent = 'Hvilke klasser underviser du i?';
-    prog.hidden = false; prog.textContent = 'Steg 3 av 4';
     body.appendChild(onboardHint('Trykk på klassene dine. Underviser du i alle, bruk «Velg alle».'));
     buildClassPicker(sub(), { withStar: false, selectAll: true });
     next.textContent = 'Neste';
   } else if (onboardStep === 4) {                // Kontaktlærer
     title.textContent = 'Er du kontaktlærer?';
-    prog.hidden = false; prog.textContent = 'Steg 4 av 4';
     body.appendChild(onboardHint('Marker klassene du er kontaktlærer for. Ikke kontaktlærer? Bare gå videre.'));
     buildKontaktStep(sub());
     next.textContent = 'Fullfør';
@@ -1201,16 +1237,19 @@ function renderOnboardStep() {
     body.appendChild(p);
     next.textContent = 'Åpne Ukeportalen';
   }
+  playOnboardEnter();
 }
 function onboardNextClick() {
   if (onboardStep >= 5) { completeOnboarding(); return; }
+  onboardDir = 'next';
   onboardStep += 1;
   renderOnboardStep();
 }
 function onboardBackClick() {
-  if (onboardStep > 0) { onboardStep -= 1; renderOnboardStep(); }
+  if (onboardStep > 0) { onboardDir = 'back'; onboardStep -= 1; renderOnboardStep(); }
 }
 function onboardSkipClick() {
+  onboardDir = 'next';
   onboardSkipped = true;
   onboardStep = 5;
   renderOnboardStep();
