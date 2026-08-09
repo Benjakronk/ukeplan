@@ -698,14 +698,20 @@ function renderAdminTeachers(teachers) {
     const resetBtn = document.createElement('button'); resetBtn.className = 'btn btn-ghost btn-tiny';
     resetBtn.textContent = 'Nullstill passord';
     resetBtn.addEventListener('click', () => adminResetPassword(t));
-    const toggleBtn = document.createElement('button'); toggleBtn.className = 'btn btn-ghost btn-tiny';
-    toggleBtn.textContent = t.active ? 'Deaktiver' : 'Aktiver';
-    toggleBtn.addEventListener('click', () => adminToggleActive(t));
-    actions.appendChild(resetBtn); actions.appendChild(toggleBtn);
+    const ownUsername = localStorage.getItem(UNAME_KEY);
+    const isSelf = t.username === ownUsername;
+    actions.appendChild(resetBtn);
+    // No (de)activate on your own row – an admin must not lock themselves out
+    // (the server enforces this too).
+    if (!isSelf) {
+      const toggleBtn = document.createElement('button'); toggleBtn.className = 'btn btn-ghost btn-tiny';
+      toggleBtn.textContent = t.active ? 'Deaktiver' : 'Aktiver';
+      toggleBtn.addEventListener('click', () => adminToggleActive(t));
+      actions.appendChild(toggleBtn);
+    }
     // Permanent delete is offered only for an already-deactivated account, and
     // never for your own row (the server enforces both too).
-    const ownUsername = localStorage.getItem(UNAME_KEY);
-    if (!t.active && t.username !== ownUsername) {
+    if (!t.active && !isSelf) {
       const delBtn = document.createElement('button'); delBtn.className = 'btn btn-ghost btn-tiny admin-del-btn';
       delBtn.textContent = 'Slett';
       delBtn.addEventListener('click', () => adminDeleteAccount(t));
