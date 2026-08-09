@@ -461,6 +461,7 @@
 .onboard-empty { font-size: 14px; color: var(--text-muted); }
 .onboard-celebrate { font-size: 20px; font-weight: 700; text-align: center; padding: 44px 0; }
 .onboard-actions { justify-content: flex-start; align-items: center; gap: 8px; }
+.onboard-skip { color: var(--text-muted); }
 .kontakt-chip.active { background: var(--vurd); color: var(--on-accent); border-color: var(--vurd); }
 
 /* Step transition: new content slides in + fades (direction set per next/back). */
