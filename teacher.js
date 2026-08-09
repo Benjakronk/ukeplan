@@ -66,6 +66,8 @@ const PENDING_WRITES_KEY = 'up_pending_writes';
 
 let loggedIn      = false;   // set once ?action=me / login / enroll confirms a session
 let isAdmin       = false;   // current teacher is an administrator
+let classesTaught = [];      // classes this teacher teaches (server relation, from me/login)
+let kontaktClasses = [];     // subset of classesTaught where the teacher is Kontaktlærer
 let cloning       = false;   // true while a clone request is in flight (guards double-clicks)
 let editingVurd   = null; // the vurdering object being edited in the modal, or null
 let selectedClass = localStorage.getItem(CLASS_KEY) || null;
@@ -139,7 +141,8 @@ const SETTINGS_KEY = 'up_settings';
 let settings = loadSettings();
 function loadSettings() {
   const defaults = { confirmDelete: true, defaultSubject: '', mySubjects: [], subjectOrder: [],
-                     viewMode: 'mine', viewSubjects: [], lekseDays: { default: [], bySubject: {} } };
+                     viewMode: 'mine', viewSubjects: [], lekseDays: { default: [], bySubject: {} },
+                     onboardedAt: '' };
   let s;
   try { s = Object.assign(defaults, JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}); }
   catch { s = Object.assign({}, defaults); }
@@ -158,6 +161,7 @@ function migrateSettings(s) {
   if (!['mine', 'valgte', 'alle'].includes(s.viewMode)) s.viewMode = (s.showAll === true) ? 'alle' : 'mine';
   delete s.showAll;
   if (!Array.isArray(s.viewSubjects)) s.viewSubjects = [];
+  if (typeof s.onboardedAt !== 'string') s.onboardedAt = '';
   return s;
 }
 // The teacher's preferred board order (persisted). Subjects not listed fall back
@@ -299,6 +303,13 @@ function enterDashboard(profile) {
   showDashboard();
   updateClassLabel();
   updateWeekLabel();
+  if (needsOnboarding()) { showOnboarding(); return; }   // new account → first-run setup
+  // Smart default: land on a class the teacher actually teaches, not a blank modal.
+  if (!selectedClass && classesTaught.length) {
+    selectedClass = classesTaught[0];
+    localStorage.setItem(CLASS_KEY, selectedClass);
+    updateClassLabel();
+  }
   if (selectedClass) loadData();
   else { hideOverlay(); showClassModal(); }
 }
@@ -333,10 +344,14 @@ function applyProfile(profile) {
     viewMode:        p.viewMode,
     viewSubjects:    p.viewSubjects,
     lekseDays:       p.lekseDays,
+    onboardedAt:     typeof p.onboardedAt === 'string' ? p.onboardedAt : '',
     showAll:         p.showAll,               // legacy → viewMode
     defaultLekseDay: p.defaultLekseDay,       // legacy → lekseDays.default
   });
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));                 // cache only (no server echo)
+  // Taught classes + Kontaktlærer subset live in a server relation, not prefs.
+  classesTaught  = Array.isArray(profile.classes) ? profile.classes.filter(c => CLASSES.includes(c)) : [];
+  kontaktClasses = Array.isArray(profile.kontakt) ? profile.kontakt.filter(c => classesTaught.includes(c)) : [];
   if (p.theme && window.UPTheme) UPTheme.set(p.theme);
   if (p.lastClass && CLASSES.includes(p.lastClass) && !variantCode) {
     selectedClass = p.lastClass; localStorage.setItem(CLASS_KEY, selectedClass);
@@ -361,10 +376,25 @@ function saveProfileToServer() {
       viewMode:        settings.viewMode || 'mine',
       viewSubjects:    Array.isArray(settings.viewSubjects) ? settings.viewSubjects : [],
       lekseDays:       settings.lekseDays || { default: [], bySubject: {} },
+      onboardedAt:     settings.onboardedAt || '',
       theme:           window.UPTheme ? UPTheme.get() : 'auto',
       lastClass:       (!variantCode && selectedClass) || '',
     };
     api('profile', { name: teacherName, preferences: JSON.stringify(preferences) }).catch(() => {});
+  }, 600);
+}
+
+// Persist the taught classes + Kontaktlærer subset (server relation, debounced).
+// Routes through api() so it inherits Unauthorized stash/replay handling; the
+// echoed response is the source of truth (server enforces kontakt ⊆ classes).
+let classesSaveTimer = null;
+function saveClassesToServer() {
+  if (!loggedIn) return;
+  clearTimeout(classesSaveTimer);
+  classesSaveTimer = setTimeout(() => {
+    api('setclasses', { classes: classesTaught.join(','), kontakt: kontaktClasses.join(',') })
+      .then(r => { if (r && Array.isArray(r.classes)) { classesTaught = r.classes; kontaktClasses = r.kontakt || []; } })
+      .catch(() => {});
   }, 600);
 }
 
@@ -431,7 +461,7 @@ async function api(action, params = {}) {
     if (data.error === 'Unauthorized') {
       // Don't lose the edit that hit the dead session – stash it and replay
       // it after the next login (replayPendingWrites).
-      if (['create','update','delete','vurdcreate','vurdupdate','vurddelete'].includes(action)) stashPendingWrite(action, params);
+      if (['create','update','delete','vurdcreate','vurdupdate','vurddelete','setclasses'].includes(action)) stashPendingWrite(action, params);
       onSessionLost();
     }
     throw new Error(data.error);
@@ -772,6 +802,7 @@ function openProfileModal() {
   document.getElementById('setDefaultSubject').value = SUBJECTS.includes(settings.defaultSubject) ? settings.defaultSubject : '';
   buildMySubjectChips();
   buildLekseDaySettings();
+  buildClassPicker(document.getElementById('profileClasses'));
   syncThemeSeg();
   document.getElementById('profileOverlay').classList.add('open');
   document.getElementById('profileModal').classList.add('open');
@@ -900,6 +931,104 @@ function buildMySubjectChips() {
     emptyLabel: 'Ingen fag valgt – da vises alle fag.',
     onChange: () => { buildLekseDaySettings(); },   // per-subject lekse rows depend on Mine fag
   });
+}
+
+// ─── Taught classes + Kontaktlærer (shared by onboarding + profile) ──────────
+// Toggle whether the teacher teaches a class. Dropping a class also drops it
+// from the Kontaktlærer subset (kontakt ⊆ taught).
+function toggleTaughtClass(cls) {
+  if (classesTaught.includes(cls)) {
+    classesTaught = classesTaught.filter(c => c !== cls);
+    kontaktClasses = kontaktClasses.filter(c => c !== cls);
+  } else {
+    classesTaught = classesTaught.concat(cls);
+  }
+  saveClassesToServer();
+}
+// Toggle Kontaktlærer for a class – only meaningful for a taught class.
+function toggleKontaktClass(cls) {
+  if (!classesTaught.includes(cls)) return;
+  kontaktClasses = kontaktClasses.includes(cls)
+    ? kontaktClasses.filter(c => c !== cls)
+    : kontaktClasses.concat(cls);
+  saveClassesToServer();
+}
+
+// Grade-grouped class picker: click a class to toggle "taught"; the ★ on a
+// taught class toggles Kontaktlærer. Reused by onboarding step 2 and the profile.
+function buildClassPicker(container) {
+  container.innerHTML = '';
+  CLASS_GRADES.forEach(group => {
+    const wrap = document.createElement('div');
+    wrap.className = 'class-modal-group';
+    const lbl = document.createElement('span');
+    lbl.className = 'class-grade-label';
+    lbl.textContent = group.label;
+    wrap.appendChild(lbl);
+    group.classes.forEach(cls => {
+      const chip = document.createElement('div');
+      chip.className = 'class-pick' + (classesTaught.includes(cls) ? ' active' : '');
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'class-pick-btn';
+      btn.textContent = cls;
+      const star = document.createElement('button');
+      star.type = 'button';
+      star.className = 'kontakt-star'
+        + (classesTaught.includes(cls) ? ' shown' : '')
+        + (kontaktClasses.includes(cls) ? ' active' : '');
+      star.textContent = '★';
+      star.title = 'Kontaktlærer';
+      star.setAttribute('aria-label', 'Kontaktlærer for ' + cls);
+      btn.addEventListener('click', () => {
+        toggleTaughtClass(cls);
+        const taught = classesTaught.includes(cls);
+        chip.classList.toggle('active', taught);
+        star.classList.toggle('shown', taught);
+        star.classList.toggle('active', kontaktClasses.includes(cls));
+      });
+      star.addEventListener('click', () => {
+        toggleKontaktClass(cls);
+        star.classList.toggle('active', kontaktClasses.includes(cls));
+      });
+      chip.appendChild(btn);
+      chip.appendChild(star);
+      wrap.appendChild(chip);
+    });
+    container.appendChild(wrap);
+  });
+}
+
+// ─── First-run onboarding ────────────────────────────────────────────────────
+// Show once for a genuinely-new account (never onboarded, no subjects, no
+// classes); existing teachers are never surprised.
+function needsOnboarding() {
+  return !settings.onboardedAt && mySubjects().length === 0 && classesTaught.length === 0;
+}
+function showOnboarding() {
+  buildSubjectChipPicker(document.getElementById('onboardSubjects'), mySubjects, toggleMySubject, {
+    summaryLabel: 'Dine fag', emptyLabel: 'Ingen fag valgt ennå.',
+  });
+  buildClassPicker(document.getElementById('onboardClasses'));
+  document.getElementById('onboardOverlay').classList.add('open');
+  document.getElementById('onboardModal').classList.add('open');
+  document.body.classList.add('scroll-locked');
+}
+// Both «Ferdig» and «Hopp over» end onboarding for good and continue into the
+// dashboard. Selections were already persisted live via their toggles.
+function finishOnboarding() {
+  settings.onboardedAt = new Date().toISOString();
+  saveSettings();
+  document.getElementById('onboardOverlay').classList.remove('open');
+  document.getElementById('onboardModal').classList.remove('open');
+  document.body.classList.remove('scroll-locked');
+  if (!selectedClass && classesTaught.length) {          // smart default class
+    selectedClass = classesTaught[0];
+    localStorage.setItem(CLASS_KEY, selectedClass);
+  }
+  updateClassLabel();
+  if (selectedClass) loadData();
+  else showClassModal();
 }
 
 // «Velg fag» modal for the board's «Valgte fag» visibility mode.
@@ -1216,6 +1345,9 @@ function setupDashboardListeners() {
   document.getElementById('viewSubjectsClose').addEventListener('click', closeViewSubjectsModal);
   document.getElementById('viewSubjectsOverlay').addEventListener('click', closeViewSubjectsModal);
   document.getElementById('viewSubjectsDone').addEventListener('click', closeViewSubjectsModal);
+  document.getElementById('onboardDone').addEventListener('click', finishOnboarding);
+  document.getElementById('onboardSkip').addEventListener('click', finishOnboarding);
+  document.getElementById('rerunOnboard').addEventListener('click', () => { closeProfileModal(); showOnboarding(); });
   document.getElementById('pwChangeBtn').addEventListener('click', changeOwnPassword);
   document.getElementById('setConfirmDelete').addEventListener('change', e => {
     settings.confirmDelete = e.target.checked;
@@ -1326,6 +1458,26 @@ async function warnIfVariantEmpty(code) {
 function showClassModal() {
   const grid = document.getElementById('classModalGrid');
   grid.innerHTML = '';
+  // A "Dine klasser" shortcut row on top for one-tap switching to a taught class.
+  const mine = classesTaught.filter(c => CLASSES.includes(c));
+  if (mine.length) {
+    const wrap = document.createElement('div');
+    wrap.className = 'class-modal-group class-modal-mine';
+    const lbl = document.createElement('span');
+    lbl.className = 'class-grade-label';
+    lbl.textContent = 'Dine klasser';
+    wrap.appendChild(lbl);
+    mine.forEach(cls => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'class-modal-btn';
+      btn.textContent = cls;
+      if (cls === selectedClass) btn.classList.add('active');
+      btn.addEventListener('click', () => pickClass(cls));
+      wrap.appendChild(btn);
+    });
+    grid.appendChild(wrap);
+  }
   CLASS_GRADES.forEach(group => {
     const wrap = document.createElement('div');
     wrap.className = 'class-modal-group';
@@ -2030,7 +2182,8 @@ function setupModalListeners() {
     if (e.key !== 'Escape') return;
     if (document.querySelector('.ui-dialog')) return;
     const open = id => document.getElementById(id).classList.contains('open');
-    if (open('addModal')) closeAddModal();
+    if (open('onboardModal')) finishOnboarding();   // Esc = «Hopp over»
+    else if (open('addModal')) closeAddModal();
     else if (open('vurdFilterModal')) closeVurdFilterModal();
     else if (open('viewSubjectsModal')) closeViewSubjectsModal();
     else if (open('adminModal')) closeAdminModal();
