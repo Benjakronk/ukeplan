@@ -270,6 +270,10 @@ function setupAuthListeners() {
   document.getElementById('logoutBtn').addEventListener('click', handleLogout);
   document.getElementById('toEnrol').addEventListener('click', () => setAuthMode('enrol'));
   document.getElementById('toLogin').addEventListener('click', () => setAuthMode('login'));
+  // The username/password fields autofill in login mode; in enrol mode they're
+  // guarded (below), so drop read-only on focus so a new teacher can still type.
+  ['usernameInput', 'passwordInput'].forEach(id =>
+    document.getElementById(id).addEventListener('focus', e => { e.target.readOnly = false; }));
 }
 
 function setAuthMode(mode) {
@@ -279,6 +283,20 @@ function setAuthMode(mode) {
   document.getElementById('loginSub').textContent = enrol ? 'Opprett konto med koden fra skolen' : 'Logg inn for lærere';
   document.getElementById('loginSubmit').textContent = enrol ? 'Opprett konto' : 'Logg inn';
   document.getElementById('loginError').hidden = true;
+  // Creating an account should never prefill a previous teacher's saved
+  // credentials (shared computers); logging in should. Toggle the two fields.
+  const user = document.getElementById('usernameInput');
+  const pass = document.getElementById('passwordInput');
+  if (enrol) {
+    user.value = ''; pass.value = '';
+    user.readOnly = true; pass.readOnly = true;
+    user.setAttribute('autocomplete', 'off');
+    pass.setAttribute('autocomplete', 'new-password');
+  } else {
+    user.readOnly = false; pass.readOnly = false;
+    user.setAttribute('autocomplete', 'username');
+    pass.setAttribute('autocomplete', 'current-password');
+  }
   const focusId = enrol ? 'enrolCode' : 'usernameInput';
   setTimeout(() => { const el = document.getElementById(focusId); if (el) el.focus(); }, 30);
 }
@@ -1294,7 +1312,7 @@ function renderOnboardStep() {
     } else {
       skip.style.display = 'none';
       title.textContent = 'Flott!';
-      p.textContent = '🎉 Nå skal du få begynne å jobbe!';
+      p.textContent = '🎉 Profilen er fullført!';
       next.textContent = 'Åpne Ukeportalen';
       playPinVictory();                          // the pin plants a flag at the goal
     }
