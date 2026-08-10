@@ -127,7 +127,7 @@ let vfDesc       = '';         // free-text search in the description (empty = a
 // up on top of the table («Tøm alle filtre» shows everything).
 let vfStart      = toISODate(new Date());
 let vfEnd        = '';         // ISO date – upper date bound (empty = none)
-let oversiktMode = 'compare';  // 'compare' (classes, one week) | 'prog' (one class, all weeks)
+let oversiktMode = 'prog';  // 'prog' (one class, all weeks) | 'compare' (classes, one week)
 let oversiktData = [];         // all-classes plan elements for the oversikt week (compare mode)
 let oversiktWeek = null;
 let hjemData     = [];         // all-classes plan elements for the dashboard's viewed week
@@ -1825,7 +1825,7 @@ function setupDashboardListeners() {
   buildVurdClassBtns();
 
   const subjSel = document.getElementById('oversiktSubject');
-  SUBJECTS_SORTED.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; subjSel.appendChild(o); });
+  fillSubjectSelect(subjSel, null);   // «Mine fag» grouped first, no «none» option
   subjSel.addEventListener('change', () => { ovFrom = null; ovTo = null; renderOversiktActive(); });
   document.getElementById('oversiktGrade').addEventListener('change', renderOversikt);
 
@@ -3395,7 +3395,11 @@ function setTeacherTab(tab) {
   if (tab === 'kontakt') { loadKontakt(); return; }   // keys off kontaktClasses
   if (!selectedClass) return;
   if (tab === 'vurd') renderVurd();
-  else if (tab === 'oversikt') refreshOversikt();
+  else if (tab === 'oversikt') {
+    // Progresjon (now the default) shows one class – default it to the open class.
+    if (oversiktMode === 'prog' && CLASSES.includes(selectedClass)) document.getElementById('oversiktClass').value = selectedClass;
+    refreshOversikt();
+  }
   else render();
 }
 
@@ -4602,6 +4606,7 @@ function renderOversiktProg() {
   if (!board) return;
   board.innerHTML = '';
   document.getElementById('oversiktWeek').textContent = '';
+  fillSubjectSelect(document.getElementById('oversiktSubject'), null);   // keep «Mine fag» grouping current
   const subject = document.getElementById('oversiktSubject').value;
   const cls = document.getElementById('oversiktClass').value || selectedClass;
 

@@ -157,13 +157,13 @@
       <div id="paneOversikt" class="tab-pane" hidden>
         <div class="pane-head">
           <div class="view-toggle">
-            <button id="ovModeCompare" class="vt-btn active" type="button">Sammenlign klasser</button>
-            <button id="ovModeProg" class="vt-btn" type="button">Progresjon</button>
+            <button id="ovModeProg" class="vt-btn active" type="button">Progresjon</button>
+            <button id="ovModeCompare" class="vt-btn" type="button">Sammenlign klasser</button>
           </div>
           <label class="oversikt-field">Fag
             <select id="oversiktSubject" class="input"></select>
           </label>
-          <label class="oversikt-field" id="ovGradeField">Trinn
+          <label class="oversikt-field" id="ovGradeField" hidden>Trinn
             <select id="oversiktGrade" class="input">
               <option value="">Alle</option>
               <option value="8">8.</option>
@@ -171,17 +171,17 @@
               <option value="10">10.</option>
             </select>
           </label>
-          <label class="oversikt-field" id="ovClassField" hidden>Klasse
+          <label class="oversikt-field" id="ovClassField">Klasse
             <select id="oversiktClass" class="input"></select>
           </label>
-          <label class="oversikt-field" id="ovRangeFromField" hidden>Fra uke
+          <label class="oversikt-field" id="ovRangeFromField">Fra uke
             <select id="ovFrom" class="input"></select>
           </label>
-          <label class="oversikt-field" id="ovRangeToField" hidden>Til uke
+          <label class="oversikt-field" id="ovRangeToField">Til uke
             <select id="ovTo" class="input"></select>
           </label>
-          <button id="ovTemaBtn" class="btn btn-primary btn-tiny" type="button" hidden>+ Tema for periode</button>
-          <button id="ovExportBtn" class="btn btn-ghost btn-tiny" type="button" hidden>&#11015; Eksporter .docx</button>
+          <button id="ovTemaBtn" class="btn btn-primary btn-tiny" type="button">+ Tema for periode</button>
+          <button id="ovExportBtn" class="btn btn-ghost btn-tiny" type="button">&#11015; Eksporter .docx</button>
           <span id="oversiktWeek" class="oversikt-caption"></span>
         </div>
         <div id="oversiktBoard"></div>
