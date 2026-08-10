@@ -3881,10 +3881,11 @@ function refreshConflicts() {
 }
 
 // ─── Hjem (dashboard) tab ─────────────────────────────────────
-// A profile-driven landing: per-class cards showing this week's gaps in the
-// teacher's own fag (missing tema/lekser) as an ordered pick-list. Gaps are
-// checked per class against the subjects taught IN that class (the matrix);
-// accounts predating the matrix fall back to all Mine-fag.
+// A profile-driven landing: per-class cards with a per-subject checklist for the
+// week — each subject taught in that class shows its status: a prominent "Fyll
+// inn tema" button, a "✓ tema" tag, and a secondary "+ lekser" button. Subjects
+// are those taught IN the class (the matrix); accounts predating the matrix fall
+// back to all Mine-fag.
 
 async function loadHjem(opts = {}) {
   const week = dateToWeek(weekMonday);
@@ -3912,19 +3913,20 @@ function hjemSubjectsFor(cls) {
   return ordered.filter(s => classesForSubject(s).includes(cls));
 }
 
-// Per-class tally + ordered gap list for the viewed week (from hjemData).
-function hjemClassGaps(cls) {
+// Per-class, per-subject tema/lekse status for the viewed week (from hjemData).
+// Rows sort most-incomplete first (needs tema → needs lekser → done).
+function hjemClassStatus(cls) {
   const subs = hjemSubjectsFor(cls);
   const has = (s, t) => hjemData.some(p => p.type === t && p.subject === s && p.description && classMatches(p.classes, cls));
-  const temaGaps = [], lekseGaps = [];
-  let temaDone = 0;
-  subs.forEach(s => {
-    const hasTema = has(s, 'læringsmål');
-    if (hasTema) temaDone++;
-    if (!hasTema) temaGaps.push({ subject: s, type: 'læringsmål', label: 'Fyll inn tema for ' + s });
-    else if (!has(s, 'lekse')) lekseGaps.push({ subject: s, type: 'lekse', label: 'Legg til lekser for ' + s });
-  });
-  return { total: subs.length, temaDone, gaps: temaGaps.concat(lekseGaps) };   // tema before lekser
+  const rows = subs.map(s => ({ subject: s, tema: has(s, 'læringsmål'), lekse: has(s, 'lekse') }));
+  const score = r => (r.tema ? (r.lekse ? 0 : 1) : 2);
+  rows.sort((a, b) => score(b) - score(a));
+  return {
+    rows,
+    total: subs.length,
+    temaDone: rows.filter(r => r.tema).length,
+    allDone: subs.length > 0 && rows.every(r => r.tema && r.lekse),
+  };
 }
 
 function hjemClassVurd(cls, week) {
@@ -4002,7 +4004,7 @@ function buildHjemCard(cls, week) {
   }
   card.appendChild(head);
 
-  const { total, temaDone, gaps } = hjemClassGaps(cls);
+  const { rows, total, temaDone, allDone } = hjemClassStatus(cls);
   const prog = document.createElement('div');
   prog.className = 'hjem-progress';
   const label = document.createElement('span');
@@ -4017,27 +4019,46 @@ function buildHjemCard(cls, week) {
   prog.appendChild(label); prog.appendChild(bar);
   card.appendChild(prog);
 
-  if (!gaps.length) {
+  if (allDone) {
     const done = document.createElement('p');
     done.className = 'hjem-allclear';
     done.textContent = '✓ Alt klart denne uka';
     card.appendChild(done);
   } else {
+    // Per-subject checklist: shows what's done and what's left, with tema (the
+    // priority) as a prominent button and lekser as a distinct, secondary one.
     const list = document.createElement('div');
-    list.className = 'hjem-actions';
-    gaps.slice(0, 4).forEach(g => {
-      const b = document.createElement('button');
-      b.type = 'button'; b.className = 'hjem-action';
-      b.textContent = g.label;
-      b.addEventListener('click', () => hjemGoto(cls, g.subject, g.type));
-      list.appendChild(b);
+    list.className = 'hjem-checklist';
+    rows.forEach(r => {
+      const row = document.createElement('div');
+      row.className = 'hjem-subj';
+      const nm = document.createElement('span');
+      nm.className = 'hjem-subj-name' + (r.tema ? ' is-done' : '');
+      nm.textContent = r.subject;
+      const status = document.createElement('div');
+      status.className = 'hjem-subj-status';
+      if (!r.tema) {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'hjem-task hjem-task-tema';
+        b.textContent = 'Fyll inn tema';
+        b.addEventListener('click', () => hjemGoto(cls, r.subject, 'læringsmål'));
+        status.appendChild(b);
+      } else {
+        const tag = document.createElement('span');
+        tag.className = 'hjem-done-tag';
+        tag.textContent = '✓ tema';
+        status.appendChild(tag);
+        if (!r.lekse) {
+          const b = document.createElement('button');
+          b.type = 'button'; b.className = 'hjem-task hjem-task-lekse';
+          b.textContent = '+ lekser';
+          b.addEventListener('click', () => hjemGoto(cls, r.subject, 'lekse'));
+          status.appendChild(b);
+        }
+      }
+      row.appendChild(nm); row.appendChild(status);
+      list.appendChild(row);
     });
-    if (gaps.length > 4) {
-      const more = document.createElement('p');
-      more.className = 'hjem-more';
-      more.textContent = 'og ' + (gaps.length - 4) + ' til …';
-      list.appendChild(more);
-    }
     card.appendChild(list);
   }
 
