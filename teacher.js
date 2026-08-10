@@ -790,10 +790,13 @@ function syncThemeSeg() {
 }
 
 // ─── Admin panel (administrators only) ────────────────────────
+let adminTeachers = [];   // last-fetched full teacher list (for client-side search)
 function openAdminModal() {
   document.getElementById('adminOverlay').classList.add('open');
   document.getElementById('adminModal').classList.add('open');
   document.body.classList.add('scroll-locked');
+  const search = document.getElementById('adminSearch');
+  if (search) search.value = '';
   loadAdminTeachers();
 }
 function closeAdminModal() {
@@ -808,17 +811,34 @@ async function loadAdminTeachers() {
     const res = await fetch(`${SCRIPT_URL}?action=admin_teachers`, { credentials: 'include' });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
-    renderAdminTeachers(data);
+    adminTeachers = Array.isArray(data) ? data : [];
+    renderAdminTeachers();
   } catch (err) {
+    adminTeachers = [];
     list.innerHTML = '';
     const p = document.createElement('p'); p.className = 'login-error'; p.textContent = translateError(err.message);
     list.appendChild(p);
   }
 }
-function renderAdminTeachers(teachers) {
+function renderAdminTeachers() {
   const list = document.getElementById('adminList');
+  const countEl = document.getElementById('adminCount');
+  const q = (document.getElementById('adminSearch')?.value || '').trim().toLowerCase();
   list.innerHTML = '';
-  if (!teachers.length) { list.innerHTML = '<p class="muted">Ingen lærere ennå.</p>'; return; }
+  if (!adminTeachers.length) {
+    list.innerHTML = '<p class="muted">Ingen lærere ennå.</p>';
+    if (countEl) countEl.textContent = '';
+    return;
+  }
+  const teachers = q
+    ? adminTeachers.filter(t => (t.name || '').toLowerCase().includes(q) || (t.username || '').toLowerCase().includes(q))
+    : adminTeachers;
+  if (countEl) {
+    countEl.textContent = q
+      ? `${teachers.length} av ${adminTeachers.length}`
+      : `${adminTeachers.length} ${adminTeachers.length === 1 ? 'lærer' : 'lærere'}`;
+  }
+  if (!teachers.length) { list.innerHTML = '<p class="muted">Ingen treff.</p>'; return; }
   teachers.forEach(t => {
     const row = document.createElement('div');
     row.className = 'admin-row' + (t.active ? '' : ' inactive');
@@ -1854,9 +1874,10 @@ function setupDashboardListeners() {
   document.getElementById('profileOverlay').addEventListener('click', closeProfileModal);
   document.getElementById('profileDone').addEventListener('click', closeProfileModal);
   document.getElementById('logoutBtn2').addEventListener('click', () => { closeProfileModal(); handleLogout(); });
-  document.getElementById('adminPanelBtn').addEventListener('click', () => { closeProfileModal(); openAdminModal(); });
+  document.getElementById('adminPanelBtn').addEventListener('click', openAdminModal);
   document.getElementById('adminClose').addEventListener('click', closeAdminModal);
   document.getElementById('adminOverlay').addEventListener('click', closeAdminModal);
+  document.getElementById('adminSearch').addEventListener('input', renderAdminTeachers);
   document.getElementById('viewSubjectsClose').addEventListener('click', closeViewSubjectsModal);
   document.getElementById('viewSubjectsOverlay').addEventListener('click', closeViewSubjectsModal);
   document.getElementById('viewSubjectsDone').addEventListener('click', closeViewSubjectsModal);

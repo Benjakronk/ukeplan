@@ -44,6 +44,18 @@
 .profile-btn-icon { font-size: 15px; line-height: 1; }
 .profile-btn-name { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* Admin panel button (header, administrators only) */
+.admin-header-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border); background: var(--surface);
+  border-radius: 999px; padding: 5px 12px 5px 10px; cursor: pointer;
+  font-family: var(--font); font-size: 13px; font-weight: 600; color: var(--text-muted);
+}
+.admin-header-btn[hidden] { display: none; }
+@media (hover: hover) { .admin-header-btn:hover { border-color: var(--primary); color: var(--text); } }
+.admin-header-btn-icon { font-size: 14px; line-height: 1; }
+@media (max-width: 480px) { .admin-header-btn-label { display: none; } }
+
 /* Profile modal extras */
 .form-hint { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
 .settings-toggle { display: flex; align-items: flex-start; gap: 9px; font-size: 14px; cursor: pointer; line-height: 1.4; }
@@ -364,7 +376,11 @@
 @media (max-width: 640px) { .only-narrow { display: inline; color: var(--warn-text); font-weight: 600; } }
 
 /* ── Admin panel (teacher accounts) ────────────────────────────── */
-.admin-list { display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow-y: auto; margin-top: 4px; }
+.admin-modal { width: 680px; }
+.admin-search-row { display: flex; align-items: center; gap: 10px; margin: 4px 0 12px; }
+.admin-search { flex: 1; }
+.admin-count { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.admin-list { display: flex; flex-direction: column; gap: 8px; max-height: 62vh; overflow-y: auto; margin-top: 4px; }
 .admin-row {
   display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
   padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-btn); background: var(--surface);

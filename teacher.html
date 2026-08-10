@@ -71,6 +71,10 @@
           <p class="site-subtitle">Runni ungdomsskole</p>
         </div>
         <div class="teacher-header-actions">
+          <button id="adminPanelBtn" class="admin-header-btn" type="button" title="Adminpanel" hidden>
+            <span class="admin-header-btn-icon" aria-hidden="true">&#128736;</span>
+            <span class="admin-header-btn-label">Admin</span>
+          </button>
           <button id="profileBtn" class="profile-btn" type="button" title="Profil og innstillinger">
             <span class="profile-btn-icon" aria-hidden="true">👤</span>
             <span id="profileBtnName" class="profile-btn-name">Lærer</span>
@@ -400,7 +404,6 @@
     </div>
 
     <div class="add-modal-actions">
-      <button id="adminPanelBtn" class="btn btn-ghost" type="button" hidden>&#128736; Adminpanel</button>
       <span class="add-modal-spacer"></span>
       <button id="logoutBtn2" class="btn btn-ghost" type="button">Logg ut</button>
       <button id="profileDone" class="btn btn-primary" type="button">Ferdig</button>
@@ -415,6 +418,11 @@
       <button id="adminClose" class="panel-close" aria-label="Lukk">&times;</button>
     </div>
     <p class="class-modal-hint">Nullstill passord eller deaktiver kontoer. Nye lærere oppretter konto selv med skolekoden.</p>
+    <div class="admin-search-row">
+      <input type="text" id="adminSearch" class="input admin-search" placeholder="Søk etter navn eller brukernavn…"
+             autocomplete="off" aria-label="Søk etter lærer">
+      <span id="adminCount" class="admin-count" aria-live="polite"></span>
+    </div>
     <div id="adminList" class="admin-list"></div>
   </div>
 
