@@ -986,10 +986,23 @@ function openProfileModal() {
   buildLekseDaySettings();
   buildProfileClasses();
   syncThemeSeg();
+  setProfileTab('fag');   // always open on the first tab
   document.getElementById('profileOverlay').classList.add('open');
   document.getElementById('profileModal').classList.add('open');
   document.body.classList.add('scroll-locked');
-  setTimeout(() => document.getElementById('teacherName').focus(), 60);
+  // No autofocus: the default tab (Fag & klasser) has no obvious single field,
+  // and focusing anything here would pop the mobile keyboard on open.
+}
+// Switch the profile modal's visible section (tabbed sub-pages). Mirrors
+// setTeacherTab: flip .active/aria-selected on the buttons and `hidden` on panes.
+function setProfileTab(tab) {
+  [['fag', 'ptabFag', 'ppaneFag'], ['innst', 'ptabInnst', 'ppaneInnst'], ['konto', 'ptabKonto', 'ppaneKonto']]
+    .forEach(([t, btnId, paneId]) => {
+      const btn = document.getElementById(btnId);
+      btn.classList.toggle('active', t === tab);
+      btn.setAttribute('aria-selected', t === tab ? 'true' : 'false');
+      document.getElementById(paneId).hidden = t !== tab;
+    });
 }
 function closeProfileModal() {
   // An emptied name field falls back to the last saved name – entries should
@@ -1005,19 +1018,30 @@ function closeProfileModal() {
 // subjects as chips + valgfag behind an expander. getSelected() → string[];
 // onToggle(subject) mutates + persists and returns the new selected state
 // (may be async, e.g. a deselect confirmation); opts.onChange fires after a change.
+// A compact subject picker: the CHOSEN subjects show as removable chips, and a
+// "Legg til fag" button reveals the full grouped search picker (progressive
+// disclosure) instead of a wall of 22 toggles. Shared by «Mine fag» (profile)
+// and the «Valgte fag» modal – signature is unchanged.
 function buildSubjectChipPicker(container, getSelected, onToggle, opts = {}) {
   container.innerHTML = '';
+  container.classList.add('mysubj-picker');
   const nb = (a, b) => a.localeCompare(b, 'no');
 
-  const summary = document.createElement('p');
-  summary.className = 'mysubj-summary';
-  const updateSummary = () => {
-    const cur = getSelected();
-    summary.textContent = cur.length
-      ? (opts.summaryLabel || 'Valgt') + ': ' + cur.join(', ')
-      : (opts.emptyLabel || 'Ingen valgt.');
-  };
-  container.appendChild(summary);
+  const chosen = document.createElement('div');
+  chosen.className = 'mysubj-chosen';
+  container.appendChild(chosen);
+
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'mysubj-add';
+  addBtn.textContent = '+ Legg til fag';
+  container.appendChild(addBtn);
+
+  // The full grouped picker, hidden until "Legg til fag" is pressed.
+  const panel = document.createElement('div');
+  panel.className = 'mysubj-addpanel';
+  panel.hidden = true;
+  container.appendChild(panel);
 
   const search = document.createElement('input');
   search.type = 'text'; search.className = 'input mysubj-search';
@@ -1028,7 +1052,7 @@ function buildSubjectChipPicker(container, getSelected, onToggle, opts = {}) {
   search.setAttribute('autocorrect', 'off');
   search.setAttribute('spellcheck', 'false');
   guardAutofill(search);
-  container.appendChild(search);
+  panel.appendChild(search);
 
   const makeChip = s => {
     const btn = document.createElement('button');
@@ -1037,9 +1061,8 @@ function buildSubjectChipPicker(container, getSelected, onToggle, opts = {}) {
     btn.dataset.subject = s;
     btn.textContent = s;
     btn.addEventListener('click', async () => {
-      const nowActive = await onToggle(s);
-      btn.classList.toggle('active', !!nowActive);
-      updateSummary();
+      await onToggle(s);
+      updateUI();   // re-reads the true selection (an onToggle may veto via uiConfirm)
       if (opts.onChange) opts.onChange();
     });
     return btn;
@@ -1048,7 +1071,7 @@ function buildSubjectChipPicker(container, getSelected, onToggle, opts = {}) {
   const core = document.createElement('div');
   core.className = 'vf-chip-row mysubj-group';
   CORE_SUBJECTS.slice().sort(nb).forEach(s => core.appendChild(makeChip(s)));
-  container.appendChild(core);
+  panel.appendChild(core);
 
   const det = document.createElement('details');
   det.className = 'mysubj-electives';
@@ -1059,13 +1082,12 @@ function buildSubjectChipPicker(container, getSelected, onToggle, opts = {}) {
   elw.className = 'vf-chip-row mysubj-group';
   ELECTIVE_SUBJECTS.slice().sort(nb).forEach(s => elw.appendChild(makeChip(s)));
   det.appendChild(elw);
-  if (ELECTIVE_SUBJECTS.some(s => getSelected().includes(s))) det.open = true;
-  container.appendChild(det);
+  panel.appendChild(det);
 
   search.addEventListener('input', () => {
     const q = search.value.trim().toLowerCase();
     let elecHit = false;
-    container.querySelectorAll('.vf-chip').forEach(ch => {
+    panel.querySelectorAll('.vf-chip').forEach(ch => {
       const match = !q || ch.dataset.subject.toLowerCase().includes(q);
       ch.style.display = match ? '' : 'none';
       if (match && q && ELECTIVE_SUBJECTS.includes(ch.dataset.subject)) elecHit = true;
@@ -1073,7 +1095,49 @@ function buildSubjectChipPicker(container, getSelected, onToggle, opts = {}) {
     if (elecHit) det.open = true;
   });
 
-  updateSummary();
+  addBtn.addEventListener('click', () => {
+    panel.hidden = !panel.hidden;
+    addBtn.classList.toggle('open', !panel.hidden);
+    if (!panel.hidden) {
+      if (ELECTIVE_SUBJECTS.some(s => getSelected().includes(s))) det.open = true;
+      setTimeout(() => search.focus(), 30);
+    }
+  });
+
+  // Rebuild the chosen-chips row and re-sync the panel chip states from the
+  // current selection (single source of truth = getSelected()).
+  function updateUI() {
+    const cur = getSelected().slice().sort(nb);
+    chosen.innerHTML = '';
+    if (!cur.length) {
+      const empty = document.createElement('p');
+      empty.className = 'mysubj-empty';
+      empty.textContent = opts.emptyLabel || 'Ingen valgt.';
+      chosen.appendChild(empty);
+    } else {
+      cur.forEach(s => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'mysubj-chip';
+        chip.setAttribute('aria-label', 'Fjern ' + s);
+        chip.title = 'Fjern ' + s;
+        const lab = document.createElement('span'); lab.className = 'mysubj-chip-label'; lab.textContent = s;
+        const x = document.createElement('span'); x.className = 'mysubj-chip-x'; x.setAttribute('aria-hidden', 'true'); x.textContent = '×';
+        chip.appendChild(lab); chip.appendChild(x);
+        chip.addEventListener('click', async () => {
+          await onToggle(s);
+          updateUI();
+          if (opts.onChange) opts.onChange();
+        });
+        chosen.appendChild(chip);
+      });
+    }
+    panel.querySelectorAll('.vf-chip').forEach(ch => {
+      ch.classList.toggle('active', getSelected().includes(ch.dataset.subject));
+    });
+  }
+
+  updateUI();
 }
 
 // Toggle a Mine-fag subject. Deselecting one that has per-subject settings asks
@@ -1870,6 +1934,9 @@ function setupDashboardListeners() {
 
   // Profile / settings modal
   document.getElementById('profileBtn').addEventListener('click', openProfileModal);
+  document.getElementById('ptabFag').addEventListener('click', () => setProfileTab('fag'));
+  document.getElementById('ptabInnst').addEventListener('click', () => setProfileTab('innst'));
+  document.getElementById('ptabKonto').addEventListener('click', () => setProfileTab('konto'));
   document.getElementById('profileClose').addEventListener('click', closeProfileModal);
   document.getElementById('profileOverlay').addEventListener('click', closeProfileModal);
   document.getElementById('profileDone').addEventListener('click', closeProfileModal);
