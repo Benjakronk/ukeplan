@@ -3144,9 +3144,9 @@ async function cloneFromPreviousWeek() {
 
 // Copy a subject row to other classes – pick which cell types (and optionally
 // vurderinger) to copy; targets pre-select the teacher's other classes for the
-// subject (the matrix). Additive (existing target content is kept), single undo.
-// `opts.types` presets which kinds start checked (the post-edit affordance passes
-// just the edited type).
+// subject (the matrix). Idempotent: a target that already has the content is
+// skipped (one all-classes week fetch); single undo. `opts.types` presets which
+// kinds start checked (the post-edit affordance passes just the edited type).
 const COPY_KINDS = [
   { key: 'læringsmål', label: 'Tema' },
   { key: 'ressurs',    label: 'Ressurser' },
@@ -3185,7 +3185,7 @@ async function copyRowToClasses(subject, opts = {}) {
       const p = document.createElement('p');
       p.className = 'ui-dialog-message';
       p.textContent = 'Kopierer fra ' + selectedClass + ' for uke ' + getWeekNumber(weekMonday) +
-        '. Innhold som finnes i målklassene fra før, beholdes.';
+        '. Klasser som allerede har innholdet, hoppes over.';
       ctx.body.appendChild(p);
 
       const kh = document.createElement('div'); kh.className = 'copy-section-label'; kh.textContent = 'Hva skal kopieres?';
@@ -3264,26 +3264,47 @@ async function copyRowToClasses(subject, opts = {}) {
   copyingRow = true;
   setSaving();
   try {
+    // Fetch the week's content across all classes so we can skip a target that
+    // already has the content (keeps the copy idempotent). Best-effort: on a
+    // failed fetch we fall back to additive, as before.
+    let weekAll = null;
+    try {
+      const res = await fetch(`${SCRIPT_URL}?action=week&week=${encodeURIComponent(week)}`);
+      const d = await res.json();
+      if (Array.isArray(d)) weekAll = d;
+    } catch { /* additive fallback */ }
+    const norm = s => (s || '').trim();
+    const targetHasEl = (cls, el) => {
+      if (!weekAll) return false;
+      if (el.type === 'lekse')   // list item: only an identical one counts as a dup
+        return weekAll.some(p => p.type === 'lekse' && p.subject === subject && classMatches(p.classes, cls) && norm(p.description) === norm(el.description));
+      return weekAll.some(p => p.type === el.type && p.subject === subject && p.description && classMatches(p.classes, cls));  // week-level cell already filled
+    };
+    const targetHasVurd = (cls, v) => vurdData.some(x => x.subject === subject && x.date === v.date
+      && norm(x.description || x.notes) === norm(v.description || v.notes) && classMatches(x.classes, cls));
+
     const elems = [], vurds = [];
+    let skipped = 0;
     for (const cls of targets) {
       for (const el of elsToCopy) {
+        if (targetHasEl(cls, el)) { skipped++; continue; }
         const params = Object.assign(elementCreateParams(el), { classes: cls });
         const r = await api('create', params);
         elems.push({ params, id: r && r.id });
       }
       if (copyVurd) {
         for (const v of rowVurd) {
-          if (classMatches(v.classes, cls)) continue;   // already includes this class
+          if (targetHasVurd(cls, v)) { skipped++; continue; }
           const params = { date: v.date, subject, classes: cls, description: v.description || v.notes || '', teacher: v.teacher || teacherName };
           const r = await vurdApi('create', params);
           vurds.push({ params, id: r && r.id });
         }
       }
     }
-    if (!elems.length && !vurds.length) { setSaved(); showToast('Ingenting nytt å kopiere (finnes fra før).'); return; }
+    if (!elems.length && !vurds.length) { setSaved(); showToast('Alt fantes fra før – ingenting å kopiere.'); return; }
     recordMixedCreate({ elems, vurds }, 'kopierte ' + subject + ' til ' + targets.join(', '));
     setSaved();
-    showToast('Kopierte til ' + targets.join(', ') + '.');
+    showToast('Kopierte til ' + targets.join(', ') + '.' + (skipped ? ' (' + skipped + ' fantes fra før)' : ''));
   } catch (err) {
     setSaveError(err.message);
   } finally {
