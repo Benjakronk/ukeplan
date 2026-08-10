@@ -661,6 +661,24 @@ function recordCreateMany(creates, label) {
     redo: () => Promise.all(refs.map(async r => { const x = await api('create', r.params); r.id = x && x.id; })),
   });
 }
+// One undo entry that reverts both plan-element and vurdering creates together
+// (used by the row-copy, which may create both in one action).
+function recordMixedCreate({ elems = [], vurds = [] }, label) {
+  const e = elems.map(c => ({ id: c.id, params: c.params }));
+  const v = vurds.map(c => ({ id: c.id, params: c.params }));
+  if (!e.length && !v.length) return;
+  pushUndo({
+    label: label || 'kopierte',
+    undo: () => Promise.all([
+      ...e.map(r => api('delete', { id: r.id })),
+      ...v.map(r => vurdApi('delete', { id: r.id })),
+    ]),
+    redo: () => Promise.all([
+      ...e.map(async r => { const x = await api('create', r.params); r.id = x && x.id; }),
+      ...v.map(async r => { const x = await vurdApi('create', r.params); r.id = x && x.id; }),
+    ]),
+  });
+}
 function recordDelete(el, label) {
   const params = elementCreateParams(el);
   const ref = { id: el.id };
@@ -2455,7 +2473,7 @@ async function commitHomeworkRow(row) {
         // Progresjon rows draw from allPlanData; the board from planData
         // (only while the commit's week is still the one on screen).
         if (ed.dataset.cls) allPlanData.push(created);
-        else if (week === dateToWeek(weekMonday)) planData.push(created);
+        else if (week === dateToWeek(weekMonday)) { planData.push(created); offerRowCopy(subject, 'lekse'); }
       }
     }
     ed._original = sanitizeHtml(ed.innerHTML);
@@ -2576,6 +2594,7 @@ async function commitRichCell(ed, html) {
       if (created && created.id) {
         recordCreate(params, created.id, 'tekst');
         if (week === dateToWeek(weekMonday)) planData.push(created);
+        offerRowCopy(subject, type);
       }
     }
     allPlanTs = 0;
@@ -3123,37 +3142,98 @@ async function cloneFromPreviousWeek() {
   }
 }
 
-// Copy one subject-row's plan elements (tema/ressurser/lekser, this week) to
-// other classes – for teachers running parallel classes. Vurderinger are
-// already multi-class in the modal and are not copied here.
-async function copyRowToClasses(subject) {
+// Copy a subject row to other classes – pick which cell types (and optionally
+// vurderinger) to copy; targets pre-select the teacher's other classes for the
+// subject (the matrix). Additive (existing target content is kept), single undo.
+// `opts.types` presets which kinds start checked (the post-edit affordance passes
+// just the edited type).
+const COPY_KINDS = [
+  { key: 'læringsmål', label: 'Tema' },
+  { key: 'ressurs',    label: 'Ressurser' },
+  { key: 'lekse',      label: 'Lekser' },
+  { key: 'vurdering',  label: 'Vurdering' },
+];
+// After a NEW cell is saved, offer to copy it to the teacher's other classes for
+// the subject (matrix) – a quick, dismissable nudge, only when relevant.
+const COPY_TYPE_SHORT = { 'læringsmål': 'tema', 'ressurs': 'ressurser', 'lekse': 'lekser' };
+function offerRowCopy(subject, type) {
+  if (variantCode) return;
+  const others = classesForSubject(subject).filter(c => c !== selectedClass);
+  if (!others.length) return;
+  showToast('Lagret. Kopiere ' + (COPY_TYPE_SHORT[type] || 'innholdet') + ' til dine andre ' + others.length + ' ' + subject + '-klasser?',
+    { duration: 6000, action: { label: 'Kopier', onClick: () => copyRowToClasses(subject, { types: [type] }) } });
+}
+async function copyRowToClasses(subject, opts = {}) {
   if (copyingRow) return;
-  const els = planData.filter(p => SUBJECT_TYPES.includes(p.type) && p.subject === subject);
-  if (!els.length) { showToast('Ingenting å kopiere i ' + subject + ' denne uka.'); return; }
+  const week = dateToWeek(weekMonday);
+  const rowEls  = planData.filter(p => SUBJECT_TYPES.includes(p.type) && p.subject === subject);
+  const rowVurd = vurdData.filter(v => v.date && dateToWeek(new Date(v.date)) === week
+    && v.subject === subject && classMatches(v.classes, selectedClass));
+  if (!rowEls.length && !rowVurd.length) { showToast('Ingenting å kopiere i ' + subject + ' denne uka.'); return; }
 
-  let chosen = [];
+  const present = k => k === 'vurdering' ? rowVurd.length > 0 : rowEls.some(e => e.type === k);
+  const checked = new Set(opts.types
+    ? opts.types.filter(present)
+    : COPY_KINDS.filter(k => k.key !== 'vurdering' && present(k.key)).map(k => k.key));   // vurdering opt-in
+
+  const mineClasses = classesForSubject(subject).filter(c => c !== selectedClass);        // matrix pre-select
+  let chosen = mineClasses.slice();
+
   const targets = await buildUiDialog({
-    title: 'Kopier ' + subject + ' til andre klasser',
+    title: 'Kopier ' + subject,
     render: ctx => {
       const p = document.createElement('p');
       p.className = 'ui-dialog-message';
-      p.textContent = 'Kopierer radens ' + els.length + ' element(er) for uke ' + getWeekNumber(weekMonday) +
-        ' fra ' + selectedClass + '. Innhold som finnes i målklassene fra før, beholdes.';
+      p.textContent = 'Kopierer fra ' + selectedClass + ' for uke ' + getWeekNumber(weekMonday) +
+        '. Innhold som finnes i målklassene fra før, beholdes.';
       ctx.body.appendChild(p);
-      const grid = document.createElement('div');
-      grid.className = 'class-modal-grid';
+
+      const kh = document.createElement('div'); kh.className = 'copy-section-label'; kh.textContent = 'Hva skal kopieres?';
+      ctx.body.appendChild(kh);
+      const krow = document.createElement('div'); krow.className = 'copy-kinds';
+      COPY_KINDS.filter(k => present(k.key)).forEach(k => {
+        const b = document.createElement('button'); b.type = 'button';
+        b.className = 'class-modal-btn' + (checked.has(k.key) ? ' active' : '');
+        b.textContent = k.label;
+        b.addEventListener('click', () => {
+          if (checked.has(k.key)) checked.delete(k.key); else checked.add(k.key);
+          b.classList.toggle('active');
+          ctx.setError('');
+        });
+        krow.appendChild(b);
+      });
+      ctx.body.appendChild(krow);
+
+      const ch = document.createElement('div'); ch.className = 'copy-section-label'; ch.textContent = 'Til hvilke klasser?';
+      ctx.body.appendChild(ch);
+      const btnByClass = {};
+      if (mineClasses.length) {
+        const q = document.createElement('button'); q.type = 'button'; q.className = 'link-btn copy-quick';
+        const allMineOn = () => mineClasses.every(c => chosen.includes(c));
+        const relabel = () => { q.textContent = allMineOn() ? 'Fjern dine ' + subject + '-klasser' : 'Velg dine ' + subject + '-klasser'; };
+        q.addEventListener('click', () => {
+          const on = !allMineOn();
+          mineClasses.forEach(c => {
+            const has = chosen.includes(c);
+            if (on && !has) chosen.push(c);
+            if (!on && has) chosen = chosen.filter(x => x !== c);
+            if (btnByClass[c]) btnByClass[c].classList.toggle('active', chosen.includes(c));
+          });
+          relabel(); ctx.setError('');
+        });
+        relabel();
+        ctx.body.appendChild(q);
+      }
+      const grid = document.createElement('div'); grid.className = 'class-modal-grid';
       CLASS_GRADES.forEach(group => {
-        const wrap = document.createElement('div');
-        wrap.className = 'class-modal-group';
-        const lbl = document.createElement('span');
-        lbl.className = 'class-grade-label';
-        lbl.textContent = group.label;
+        const wrap = document.createElement('div'); wrap.className = 'class-modal-group';
+        const lbl = document.createElement('span'); lbl.className = 'class-grade-label'; lbl.textContent = group.label;
         wrap.appendChild(lbl);
         group.classes.forEach(cls => {
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'class-modal-btn';
+          const btn = document.createElement('button'); btn.type = 'button';
+          btn.className = 'class-modal-btn' + (chosen.includes(cls) ? ' active' : '');
           btn.textContent = cls;
+          btnByClass[cls] = btn;
           if (cls === selectedClass) { btn.disabled = true; btn.classList.add('locked'); }
           else btn.addEventListener('click', () => {
             chosen = chosen.includes(cls) ? chosen.filter(c => c !== cls) : chosen.concat(cls);
@@ -3169,6 +3249,7 @@ async function copyRowToClasses(subject) {
     buttons: [
       { label: 'Avbryt', className: 'btn-ghost', value: null },
       { label: 'Kopier', className: 'btn-primary', primary: true, onClick: ctx => {
+        if (!checked.size) { ctx.setError('Velg hva som skal kopieres.'); return undefined; }
         if (!chosen.length) { ctx.setError('Velg minst én klasse.'); return undefined; }
         return chosen.slice();
       } },
@@ -3176,20 +3257,33 @@ async function copyRowToClasses(subject) {
   });
   if (!targets || !targets.length) return;
 
+  const planTypes = [...checked].filter(k => k !== 'vurdering');
+  const elsToCopy = rowEls.filter(e => planTypes.includes(e.type));
+  const copyVurd = checked.has('vurdering');
+
   copyingRow = true;
   setSaving();
   try {
-    const creates = [];
+    const elems = [], vurds = [];
     for (const cls of targets) {
-      for (const el of els) {
+      for (const el of elsToCopy) {
         const params = Object.assign(elementCreateParams(el), { classes: cls });
         const r = await api('create', params);
-        creates.push({ params, id: r && r.id });
+        elems.push({ params, id: r && r.id });
+      }
+      if (copyVurd) {
+        for (const v of rowVurd) {
+          if (classMatches(v.classes, cls)) continue;   // already includes this class
+          const params = { date: v.date, subject, classes: cls, description: v.description || v.notes || '', teacher: v.teacher || teacherName };
+          const r = await vurdApi('create', params);
+          vurds.push({ params, id: r && r.id });
+        }
       }
     }
-    recordCreateMany(creates, 'kopierte ' + subject + ' til ' + targets.join(', '));
+    if (!elems.length && !vurds.length) { setSaved(); showToast('Ingenting nytt å kopiere (finnes fra før).'); return; }
+    recordMixedCreate({ elems, vurds }, 'kopierte ' + subject + ' til ' + targets.join(', '));
     setSaved();
-    showToast('Kopierte ' + els.length + ' element(er) til ' + targets.join(', ') + '.');
+    showToast('Kopierte til ' + targets.join(', ') + '.');
   } catch (err) {
     setSaveError(err.message);
   } finally {

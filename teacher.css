@@ -567,3 +567,9 @@
 .profile-matrix > summary:hover { color: var(--text); }
 .profile-subj { margin: 10px 0; }
 .profile-subj-label { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+
+/* ── Row-copy dialog (Hva/Til hvilke klasser) ──────────────── */
+.copy-section-label { font-size: 12px; font-weight: 700; color: var(--text-muted); margin: 12px 0 6px; }
+.copy-section-label:first-child { margin-top: 0; }
+.copy-kinds { display: flex; flex-wrap: wrap; gap: 6px; }
+.copy-quick { display: inline-block; margin-bottom: 8px; font-size: 13px; }
