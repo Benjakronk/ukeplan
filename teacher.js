@@ -4779,8 +4779,10 @@ function showOverlayError(msg) {
   }
   o.classList.add('active');
 }
-function showBgLoading() { document.getElementById('bgLoading')?.classList.add('active'); }
-function hideBgLoading() { document.getElementById('bgLoading')?.classList.remove('active'); }
+// The background-fetch spinner was removed – backend calls are fast and it only
+// caused layout twitch. Kept as no-ops so the call sites need no changes.
+function showBgLoading() {}
+function hideBgLoading() {}
 
 function updateStatus() {
   document.getElementById('lastUpdated').textContent = 'Sist oppdatert: ' + new Date().toLocaleString('no');

@@ -281,14 +281,6 @@ body.scroll-locked { overflow: hidden; }
 
 .controls-actions { display: flex; align-items: center; gap: 6px; }
 
-.bg-loading { display: none; align-items: center; }
-.bg-loading.active { display: inline-flex; }
-.mini-spinner {
-  width: 16px; height: 16px;
-  border: 2px solid var(--border); border-top-color: var(--primary);
-  border-radius: 50%; animation: spin 0.7s linear infinite;
-}
-
 /* ── Week strip (Mon–Fri) – compact single-line cells ──────── */
 .week-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 16px; }
 .strip-day {
