@@ -475,19 +475,29 @@
 .view-seg-btn.active { background: var(--primary); color: var(--on-accent); }
 .board-filter-count { font-size: 12px; color: var(--text-muted); }
 
-/* ── Standard lekse-days (profile modal) ───────────────────── */
-#profileModal { width: 600px; max-width: 92vw; }
-#setLekseDays { display: flex; flex-direction: column; gap: 8px; }
+/* ── «Mine klasser»: per-subject collapsible + lekse-days ─────── */
+#profileModal { width: 640px; max-width: 92vw; }
+/* Each Mine-fag subject is a collapsed <details> holding its picker + lekse-days. */
+.profile-subj-details { border: 1px solid var(--border); border-radius: var(--radius-btn); margin: 6px 0; background: var(--surface); }
+.profile-subj-details > summary { cursor: pointer; padding: 8px 12px; font-size: 13px; font-weight: 700; color: var(--text); }
+.profile-subj-details > summary:hover { color: var(--primary); }
+.profile-subj-details[open] > summary { border-bottom: 1px solid var(--border); }
+.profile-subj-details > *:not(summary) { padding-left: 12px; padding-right: 12px; }
+.profile-lekse { padding-bottom: 10px; }
+/* Elective year picker (a year-level unit): 8./9./10. toggles. */
+.profile-year-picker { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 10px; }
+.year-pick {
+  appearance: none; cursor: pointer; font-family: var(--font); font-size: 13px; font-weight: 600;
+  padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text);
+}
+@media (hover: hover) { .year-pick:hover { border-color: var(--primary); } }
+.year-pick.active { background: var(--primary); color: var(--on-accent); border-color: var(--primary); }
 .lekseday-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.lekseday-label { flex: 0 0 auto; min-width: 88px; font-size: 13px; color: var(--text); }
+.lekseday-label { flex: 0 0 auto; min-width: 88px; font-size: 13px; color: var(--text); font-variant-numeric: tabular-nums; }
 .lekseday-days { display: flex; flex-wrap: wrap; gap: 5px; }
 .lekseday-days .day-btn { padding: 3px 9px; font-size: 12px; }
-.lekseday-head { margin: 8px 0 2px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
-/* Per-subject group: subject header + one indented day-row per class. */
-.lekseday-subject { margin-bottom: 10px; }
-.lekseday-subject .lekseday-head { font-size: 13px; color: var(--text); font-weight: 700; }
-.lekseday-subject .lekseday-row { padding-left: 10px; }
-.lekseday-subject .lekseday-label { min-width: 44px; font-variant-numeric: tabular-nums; }
+.lekseday-head { margin: 10px 0 4px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
 
 /* ── Taught-classes picker + Kontaktlærer star ─────────────── */
 .class-picker { display: flex; flex-direction: column; gap: 12px; padding-top: 6px; }
@@ -596,6 +606,8 @@
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card);
   padding: 16px 18px; display: flex; flex-direction: column; gap: 12px;
 }
+/* Valgfag card: a year-level unit, set apart from the per-class cards. */
+.hjem-valgfag { border-left: 3px solid var(--vurd); background: var(--surface-2); }
 .hjem-card-head { display: flex; align-items: baseline; gap: 10px; }
 .hjem-card-class { font-family: var(--font-display); font-size: 18px; font-weight: 700; color: var(--text); }
 .hjem-kontakt { font-size: 11px; font-weight: 700; color: var(--vurd); letter-spacing: .02em; }

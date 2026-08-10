@@ -24,6 +24,26 @@ const CLASS_GRADES = [
 ];
 const CLASSES = CLASS_GRADES.flatMap(g => g.classes);
 
+// The grade-year group a class belongs to (null for a variant/adapted-plan code).
+function gradeGroupOf(cls) { return CLASS_GRADES.find(g => g.classes.includes(cls)) || null; }
+function isElective(subject) { return ELECTIVE_SUBJECTS.includes(subject); }
+// Electives are a year-level unit: a plan element covers the whole grade-year, so
+// one shared plan reaches every student in the year who chose the elective.
+function electiveYearClasses(cls) { const g = gradeGroupOf(cls); return g ? g.classes.slice() : [cls]; }
+// The `classes` string to write for a new element: the whole year for an elective
+// (variant codes never expand, since gradeGroupOf returns null), else the class.
+function writeClassesFor(subject, cls) {
+  return isElective(subject) && gradeGroupOf(cls) ? electiveYearClasses(cls).join(' ') : cls;
+}
+// The set of `classes` strings to write for a multi-class selection (add-modal):
+// electives collapse to ONE element per grade-year (that has any selected class);
+// everything else stays one element per class.
+function electiveWriteGroups(subject, classesList) {
+  if (!isElective(subject)) return classesList.slice();
+  const years = CLASS_GRADES.filter(g => g.classes.some(c => classesList.includes(c))).map(g => g.classes.join(' '));
+  return years.length ? years : classesList.slice();
+}
+
 const CORE_SUBJECTS = [
   'Norsk','Matematikk','Engelsk','Naturfag','Samfunnsfag','KRLE',
   'Kroppsøving','Musikk','Kunst og håndverk','Mat og helse','Utdanningsvalg',
@@ -222,13 +242,14 @@ function viewSubjects() {
   return Array.isArray(settings.viewSubjects) ? settings.viewSubjects.filter(s => SUBJECTS.includes(s)) : [];
 }
 // Resolved standard lekse-days for a subject in a given class: the per-subject-
-// per-class setting, else the legacy per-subject value (fallback for accounts
-// set up before lekse-days went per-class), else none.
+// per-class (or, for electives, per-grade-year) setting, else the legacy
+// per-subject value (fallback for accounts set up before this), else none.
 function lekseDaysFor(subject, cls) {
   const ld = settings.lekseDays || {};
-  const byClass = ld.bySubjectClass && ld.bySubjectClass[subject];
-  const perClass = byClass && cls && byClass[cls];
-  let days = (Array.isArray(perClass) && perClass.length) ? perClass : null;
+  const key = (isElective(subject) && gradeGroupOf(cls)) ? gradeGroupOf(cls).label : cls;
+  const byKey = ld.bySubjectClass && ld.bySubjectClass[subject];
+  const perKey = byKey && key && byKey[key];
+  let days = (Array.isArray(perKey) && perKey.length) ? perKey : null;
   if (!days) {
     const legacy = ld.bySubject && ld.bySubject[subject];
     days = Array.isArray(legacy) ? legacy : [];
@@ -1014,12 +1035,13 @@ async function changeOwnPassword() {
   }
 }
 
-// Standard lekse-days config: per Mine-fag subject, one day-row for each class the
-// teacher teaches it in (from the fag×klasse matrix). No global default anymore.
-function buildLekseDaySettings() {
-  const box = document.getElementById('setLekseDays');
-  if (!box) return;
-  box.innerHTML = '';
+// Standard-lekse-day rows for ONE subject (rendered inside that subject's details
+// in «Mine klasser»): one day-row per class the teacher teaches it in – or, for an
+// elective (a year-level unit), one row per grade-year. Keyed in
+// lekseDays.bySubjectClass[subject][key] (key = class name, or grade label for
+// electives). Resolved by lekseDaysFor.
+function buildLekseDayRows(container, subject) {
+  container.innerHTML = '';
   const ld = settings.lekseDays || (settings.lekseDays = { bySubjectClass: {}, bySubject: {} });
   if (!ld.bySubjectClass) ld.bySubjectClass = {};
 
@@ -1048,36 +1070,34 @@ function buildLekseDaySettings() {
     wrap.appendChild(btns);
     return wrap;
   };
-  // Bind a day-set to lekseDays.bySubjectClass[subject][cls], pruning empties.
-  const classDays = (s, cls) => ({
-    get: () => (ld.bySubjectClass[s] && ld.bySubjectClass[s][cls]) || [],
+  const dayBinding = key => ({
+    get: () => (ld.bySubjectClass[subject] && ld.bySubjectClass[subject][key]) || [],
     set: v => {
-      if (!ld.bySubjectClass[s]) ld.bySubjectClass[s] = {};
-      if (v.length) ld.bySubjectClass[s][cls] = v; else delete ld.bySubjectClass[s][cls];
-      if (!Object.keys(ld.bySubjectClass[s]).length) delete ld.bySubjectClass[s];
+      if (!ld.bySubjectClass[subject]) ld.bySubjectClass[subject] = {};
+      if (v.length) ld.bySubjectClass[subject][key] = v; else delete ld.bySubjectClass[subject][key];
+      if (!Object.keys(ld.bySubjectClass[subject]).length) delete ld.bySubjectClass[subject];
     },
   });
 
-  const my = orderedSubjects(mySubjects());
-  if (!my.length) return;
-  my.forEach(s => {
-    const grp = document.createElement('div');
-    grp.className = 'lekseday-subject';
-    const head = document.createElement('p');
-    head.className = 'lekseday-head';
-    head.textContent = s;
-    grp.appendChild(head);
-    const classes = classesForSubject(s);
-    if (!classes.length) {
-      const note = document.createElement('p');
-      note.className = 'form-hint';
-      note.textContent = 'Sett klasser for faget under «Fag og klasser» først.';
-      grp.appendChild(note);
-    } else {
-      classes.forEach(cls => { const b = classDays(s, cls); grp.appendChild(makeDayRow(cls, b.get, b.set)); });
-    }
-    box.appendChild(grp);
-  });
+  const head = document.createElement('p');
+  head.className = 'lekseday-head';
+  head.textContent = 'Standard lekse-dager';
+  container.appendChild(head);
+
+  const classes = classesForSubject(subject);
+  if (!classes.length) {
+    const note = document.createElement('p');
+    note.className = 'form-hint';
+    note.textContent = 'Velg klasser for faget over først.';
+    container.appendChild(note);
+    return;
+  }
+  if (isElective(subject)) {   // one row per grade-year the teacher has it in
+    CLASS_GRADES.filter(g => g.classes.some(c => classes.includes(c)))
+      .forEach(g => { const b = dayBinding(g.label); container.appendChild(makeDayRow(g.label + ' trinn', b.get, b.set)); });
+  } else {                     // one row per class
+    classes.forEach(cls => { const b = dayBinding(cls); container.appendChild(makeDayRow(cls, b.get, b.set)); });
+  }
 }
 
 function openProfileModal() {
@@ -1086,8 +1106,7 @@ function openProfileModal() {
   profileOpen = true;   // defer server writes until "Lagre" (or a flush on close)
   profileDirty = false; dirtyPrefs = dirtyClasses = dirtyMatrix = false;
   buildMySubjectChips();
-  buildLekseDaySettings();
-  buildProfileClasses();
+  buildProfileClasses();   // per-subject class pickers + lekse-days live in here now
   syncThemeSeg();
   setProfileTab('fag');   // always open on the first tab
   updateProfileSaveBtn();
@@ -1283,7 +1302,7 @@ function buildMySubjectChips() {
   buildSubjectChipPicker(row, mySubjects, toggleMySubject, {
     summaryLabel: 'Dine fag',
     emptyLabel: 'Ingen fag valgt – da vises alle fag.',
-    onChange: () => { buildLekseDaySettings(); buildProfileClasses(); },   // per-subject lekse + class rows depend on Mine fag
+    onChange: () => { buildProfileClasses(); },   // per-subject class + lekse rows depend on Mine fag
   });
 }
 
@@ -1341,7 +1360,7 @@ function buildClassPicker(container, opts = {}) {
     const allBtn = document.createElement('button');
     allBtn.type = 'button'; allBtn.className = 'link-btn';
     allBtn.textContent = allOn ? 'Fjern alle klasser' : 'Velg alle klasser (hele skolen)';
-    allBtn.addEventListener('click', () => { setAll(CLASSES, !allOn); buildClassPicker(container, opts); });
+    allBtn.addEventListener('click', () => { setAll(CLASSES, !allOn); buildClassPicker(container, opts); if (opts.onChange) opts.onChange(); });
     bar.appendChild(allBtn);
     container.appendChild(bar);
   }
@@ -1361,7 +1380,7 @@ function buildClassPicker(container, opts = {}) {
       btn.className = 'class-pick-btn';
       btn.textContent = cls;
       chip.appendChild(btn);
-      btn.addEventListener('click', () => { toggle(cls); chip.classList.toggle('active', has(cls)); });
+      btn.addEventListener('click', () => { toggle(cls); chip.classList.toggle('active', has(cls)); if (opts.onChange) opts.onChange(); });
       wrap.appendChild(chip);
     });
     if (selectAll) {
@@ -1369,7 +1388,7 @@ function buildClassPicker(container, opts = {}) {
       const gBtn = document.createElement('button');
       gBtn.type = 'button'; gBtn.className = 'link-btn class-selectall-grade';
       gBtn.textContent = groupOn ? 'Fjern alle' : 'Velg alle';
-      gBtn.addEventListener('click', () => { setAll(group.classes, !groupOn); buildClassPicker(container, opts); });
+      gBtn.addEventListener('click', () => { setAll(group.classes, !groupOn); buildClassPicker(container, opts); if (opts.onChange) opts.onChange(); });
       wrap.appendChild(gBtn);
     }
     container.appendChild(wrap);
@@ -1384,39 +1403,35 @@ function subjectClassBinding(subject) {
   };
 }
 
-// Profile "Fag og klasser": a class picker per Mine-fag subject (tucked in a
-// <details> to contain the growth) + a Kontaktlærer picker over the union.
+// Compact year picker for an elective (a year-level unit): one toggle per grade,
+// active when the whole grade is selected. Updates in place + fires onChange so
+// the subject's lekse-day rows rebuild without collapsing the open <details>.
+function buildYearPicker(container, subject, onChange) {
+  container.innerHTML = '';
+  container.classList.add('profile-year-picker');
+  CLASS_GRADES.forEach(g => {
+    const isOn = () => g.classes.every(c => classesForSubject(subject).includes(c));
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'year-pick' + (isOn() ? ' active' : '');
+    btn.textContent = g.label + ' trinn';
+    btn.addEventListener('click', () => {
+      setSubjectClasses(subject, g.classes, !isOn());
+      btn.classList.toggle('active', isOn());
+      if (onChange) onChange();
+    });
+    container.appendChild(btn);
+  });
+}
+
+// Profile "Mine klasser": the Kontaktlærer picker on top, then a "Klasser per fag"
+// collapsible with one collapsed <details> per Mine-fag subject holding its class
+// picker (core) / year picker (elective) + that subject's standard lekse-days.
 function buildProfileClasses() {
   const box = document.getElementById('profileClasses');
   if (!box) return;
   box.innerHTML = '';
-  const subs = orderedSubjects(mySubjects());
-  if (!subs.length) {
-    const p = document.createElement('p');
-    p.className = 'form-hint';
-    p.textContent = 'Velg fagene dine over først, så kan du sette klasser per fag.';
-    box.appendChild(p);
-  } else {
-    const det = document.createElement('details');
-    det.className = 'profile-matrix';
-    det.open = true;
-    const sum = document.createElement('summary');
-    sum.textContent = 'Klasser per fag';
-    det.appendChild(sum);
-    subs.forEach(s => {
-      const wrap = document.createElement('div');
-      wrap.className = 'profile-subj';
-      const h = document.createElement('div');
-      h.className = 'profile-subj-label';
-      h.textContent = s;
-      wrap.appendChild(h);
-      const picker = document.createElement('div');
-      wrap.appendChild(picker);
-      buildClassPicker(picker, Object.assign({ selectAll: true }, subjectClassBinding(s)));
-      det.appendChild(wrap);
-    });
-    box.appendChild(det);
-  }
+
   const kwrap = document.createElement('div');
   kwrap.className = 'profile-subj';
   const kh = document.createElement('div');
@@ -1427,6 +1442,42 @@ function buildProfileClasses() {
   kwrap.appendChild(kbox);
   buildKontaktStep(kbox);   // ★ chips over the taught union
   box.appendChild(kwrap);
+
+  const subs = orderedSubjects(mySubjects());
+  if (!subs.length) {
+    const p = document.createElement('p');
+    p.className = 'form-hint';
+    p.textContent = 'Velg fagene dine over først, så kan du sette klasser per fag.';
+    box.appendChild(p);
+    return;
+  }
+  const outer = document.createElement('details');
+  outer.className = 'profile-matrix';
+  outer.open = true;
+  const osum = document.createElement('summary');
+  osum.textContent = 'Klasser per fag';
+  outer.appendChild(osum);
+
+  subs.forEach(s => {
+    const det = document.createElement('details');
+    det.className = 'profile-subj-details';   // starts collapsed
+    const sum = document.createElement('summary');
+    sum.className = 'profile-subj-summary';
+    sum.textContent = s + (isElective(s) ? ' (valgfag)' : '');
+    det.appendChild(sum);
+
+    const picker = document.createElement('div');
+    det.appendChild(picker);
+    const lekseBox = document.createElement('div');
+    lekseBox.className = 'profile-lekse';
+    const refreshLekse = () => buildLekseDayRows(lekseBox, s);
+    if (isElective(s)) buildYearPicker(picker, s, refreshLekse);
+    else buildClassPicker(picker, Object.assign({ selectAll: true, onChange: refreshLekse }, subjectClassBinding(s)));
+    det.appendChild(lekseBox);
+    refreshLekse();
+    outer.appendChild(det);
+  });
+  box.appendChild(outer);
 }
 
 // A flat chip row for a subject list – used by the onboarding subject steps
@@ -2658,7 +2709,7 @@ async function commitHomeworkRow(row) {
   const subject = ed.dataset.subject;
   // Progresjon rows bind class + week; the board falls back to current context.
   const week    = ed.dataset.week || dateToWeek(weekMonday);
-  const classes = ed.dataset.cls  || planKey();
+  const classes = writeClassesFor(subject, ed.dataset.cls || planKey());   // whole year for electives
 
   const rerunIfPending = () => {
     ed._busy = false;
@@ -2787,6 +2838,7 @@ async function commitRichCell(ed, html) {
   const type    = ed.dataset.type;
   const week    = dateToWeek(weekMonday);
   const val     = html.trim();
+  const wcls    = writeClassesFor(subject, planKey());   // whole year for electives
 
   // Emptying a cell that had content = deletion. Confirm, and put the text back
   // if the teacher backs out.
@@ -2809,17 +2861,17 @@ async function commitRichCell(ed, html) {
       const el = findLoadedElement(ids[0]);
       const before = elementUpdateFields(el);
       await api('update', {
-        id: ids[0], type, classes: planKey(), week,
+        id: ids[0], type, classes: wcls, week,
         day: '', subject, description: val, teacher: teacherName,
       });
-      recordUpdate(ids[0], before, { type, classes: planKey(), week, weekTo: '', day: '', subject, description: val, teacher: teacherName }, 'endring');
+      recordUpdate(ids[0], before, { type, classes: wcls, week, weekTo: '', day: '', subject, description: val, teacher: teacherName }, 'endring');
       if (el) el.description = val;
       for (const extra of ids.slice(1)) await api('delete', { id: extra });
       planData = planData.filter(p => !ids.slice(1).includes(p.id));
       cacheCurrentWeek();
       ed.dataset.ids = JSON.stringify([ids[0]]);
     } else {
-      const params = { type, classes: planKey(), week, day: '', subject, description: val, teacher: teacherName };
+      const params = { type, classes: wcls, week, day: '', subject, description: val, teacher: teacherName };
       const created = await api('create', params);
       ed.dataset.ids = JSON.stringify(created && created.id ? [created.id] : []);
       // Keep planData in step so a deferred re-render shows the new content
@@ -2855,6 +2907,9 @@ function setupModalListeners() {
   document.getElementById('modalOverlay').addEventListener('click', () => closeAddModal());
   document.getElementById('addSave').addEventListener('click', saveFromModal);
   document.getElementById('addDelete').addEventListener('click', deleteFromModal);
+  // Switching Fag to/from an elective flips the class picker between per-class and
+  // per-year (electives are a year unit).
+  document.getElementById('subjectSelect').addEventListener('change', () => { buildModalClassBtns(); refreshConflicts(); });
   document.getElementById('weekFrom').addEventListener('change', e => {
     modalWeekFrom = isoToDate(e.target.value);
     if (modalWeekTo < modalWeekFrom) { modalWeekTo = modalWeekFrom; buildModalWeekOptions(); }
@@ -3150,6 +3205,11 @@ function selectModalType(t) {
 function buildModalClassBtns() {
   const grid = document.getElementById('classBtns');
   grid.innerHTML = '';
+  // Electives are a year-level unit → pick by grade-year, not per class (plan
+  // types only; vurderinger stay class-wide). Selecting a year toggles the whole
+  // grade in modalClasses; the write path collapses it to one element per year.
+  const subject  = document.getElementById('subjectSelect').value;
+  const byYear   = isElective(subject) && modalType !== 'vurdering';
   CLASS_GRADES.forEach(group => {
     const wrap = document.createElement('div');
     wrap.className = 'class-modal-group';
@@ -3157,6 +3217,31 @@ function buildModalClassBtns() {
     lbl.className = 'class-grade-label';
     lbl.textContent = group.label;
     wrap.appendChild(lbl);
+
+    if (byYear) {
+      // Any class of the year selected = the year is "on" (the write covers the
+      // whole year via electiveWriteGroups regardless).
+      const on = group.classes.some(c => modalClasses.includes(c));
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'class-modal-btn' + (on ? ' active' : '');
+      btn.textContent = group.label + ' trinn';
+      if (editingElement) { btn.disabled = true; btn.classList.add('locked'); }
+      else btn.addEventListener('click', () => {
+        const turnOn = !group.classes.some(c => modalClasses.includes(c));
+        group.classes.forEach(c => {
+          const has = modalClasses.includes(c);
+          if (turnOn && !has) modalClasses.push(c);
+          if (!turnOn && has) modalClasses = modalClasses.filter(x => x !== c);
+        });
+        buildModalClassBtns();
+        refreshConflicts();
+      });
+      wrap.appendChild(btn);
+      grid.appendChild(wrap);
+      return;
+    }
+
     group.classes.forEach(cls => {
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -3235,8 +3320,10 @@ async function saveFromModal() {
         recordUpdate(editingElement.id, before, after, 'endring');
       } else {
         const creates = [];
-        for (const cls of modalClasses) {
-          const params = { type: modalType, classes: cls, week: weekFrom, weekTo, day, subject, description: desc, teacher };
+        // Electives are a year unit → one element per grade-year (classes = the
+        // whole year); other subjects → one element per selected class.
+        for (const classes of electiveWriteGroups(subject, modalClasses)) {
+          const params = { type: modalType, classes, week: weekFrom, weekTo, day, subject, description: desc, teacher };
           const r = await api('create', params);
           creates.push({ params, id: r && r.id });
         }
@@ -3447,6 +3534,7 @@ const COPY_KINDS = [
 const COPY_TYPE_SHORT = { 'læringsmål': 'tema', 'ressurs': 'ressurser', 'lekse': 'lekser' };
 function offerRowCopy(subject, type) {
   if (variantCode) return;
+  if (isElective(subject)) return;   // electives are already a year-wide unit – nothing to copy
   const others = classesForSubject(subject).filter(c => c !== selectedClass);
   if (!others.length) return;
   showToast('Lagret. Kopiere ' + (COPY_TYPE_SHORT[type] || 'innholdet') + ' til dine andre ' + others.length + ' ' + subject + '-klasser?',
@@ -4227,19 +4315,18 @@ function stopHjemPoll() { if (hjemPollTimer) { clearInterval(hjemPollTimer); hje
 // Classes the teacher teaches; pinned first, grade order within each group.
 function hjemClasses() { return orderedClasses(CLASSES.filter(c => classesTaught.includes(c))); }
 
-// Subjects to check for a class: those taught IN this class (matrix). Legacy
-// accounts with no matrix fall back to all Mine-fag (the old over-report).
+// CORE subjects to check for a class: those taught IN it (matrix). Electives are
+// pulled out into their own per-year card. Legacy accounts (no matrix) fall back
+// to all Mine-fag core subjects.
 function hjemSubjectsFor(cls) {
-  const ordered = orderedSubjects(mySubjects());
+  const ordered = orderedSubjects(mySubjects()).filter(s => CORE_SUBJECTS.includes(s));
   if (!Object.keys(subjectClasses).length) return ordered;              // legacy fallback
   return ordered.filter(s => classesForSubject(s).includes(cls));
 }
 
-// Per-class, per-subject tema/lekse status for the viewed week (from hjemData).
-// Pinned subjects first, then most-incomplete first (needs tema → lekser → done).
-function hjemClassStatus(cls) {
-  const subs = hjemSubjectsFor(cls);
-  const has = (s, t) => hjemData.some(p => p.type === t && p.subject === s && p.description && classMatches(p.classes, cls));
+// Build a status object from a subject list + a has(subject,type) predicate:
+// pinned subjects first, then most-incomplete first (needs tema → lekser → done).
+function hjemStatusFrom(subs, has) {
   const rows = subs.map(s => ({ subject: s, tema: has(s, 'læringsmål'), lekse: has(s, 'lekse') }));
   const pins = pinnedSubjects();
   const score = r => (r.tema ? (r.lekse ? 0 : 1) : 2);
@@ -4254,6 +4341,24 @@ function hjemClassStatus(cls) {
     temaDone: rows.filter(r => r.tema).length,
     allDone: subs.length > 0 && rows.every(r => r.tema && r.lekse),
   };
+}
+function hjemClassStatus(cls) {
+  return hjemStatusFrom(hjemSubjectsFor(cls),
+    (s, t) => hjemData.some(p => p.type === t && p.subject === s && p.description && classMatches(p.classes, cls)));
+}
+
+// Electives are a year-level unit → grouped once per grade-year, not per class.
+function hjemElectiveSubjects() {
+  return orderedSubjects(mySubjects()).filter(s => isElective(s) && classesForSubject(s).length);
+}
+function hjemElectiveYears() {
+  const els = hjemElectiveSubjects();
+  return CLASS_GRADES.filter(g => els.some(s => g.classes.some(c => classesForSubject(s).includes(c))));
+}
+function hjemElectiveStatus(group) {
+  const subs = hjemElectiveSubjects().filter(s => group.classes.some(c => classesForSubject(s).includes(c)));
+  return hjemStatusFrom(subs,
+    (s, t) => hjemData.some(p => p.type === t && p.subject === s && p.description && group.classes.some(c => classMatches(p.classes, c))));
 }
 
 function hjemClassVurd(cls, week) {
@@ -4310,7 +4415,77 @@ function renderHjem() {
   const grid = document.createElement('div');
   grid.className = 'hjem-grid';
   classes.forEach(cls => grid.appendChild(buildHjemCard(cls, week)));
+  hjemElectiveYears().forEach(g => grid.appendChild(buildValgfagCard(g, week)));   // electives once per year
   pane.appendChild(grid);
+}
+
+// Progress bar ("X av Y fag har tema").
+function buildHjemProgress(temaDone, total) {
+  const prog = document.createElement('div');
+  prog.className = 'hjem-progress';
+  const label = document.createElement('span');
+  label.className = 'hjem-progress-label';
+  label.textContent = temaDone + ' av ' + total + ' fag har tema';
+  const bar = document.createElement('div');
+  bar.className = 'hjem-bar';
+  const fill = document.createElement('div');
+  fill.className = 'hjem-bar-fill';
+  fill.style.width = (total ? Math.round(temaDone / total * 100) : 0) + '%';
+  bar.appendChild(fill);
+  prog.appendChild(label); prog.appendChild(bar);
+  return prog;
+}
+function hjemAllClear() {
+  const done = document.createElement('p');
+  done.className = 'hjem-allclear';
+  done.textContent = '✓ Alt klart denne uka';
+  return done;
+}
+// The per-subject checklist (class cards + the valgfag card). `gotoClass` is the
+// class the fill-buttons deep-link to (a representative year class for valgfag,
+// where the write is year-scoped). Each row carries a subject-pin toggle.
+function buildHjemChecklist(rows, gotoClass) {
+  const list = document.createElement('div');
+  list.className = 'hjem-checklist';
+  rows.forEach(r => {
+    const row = document.createElement('div');
+    row.className = 'hjem-subj';
+    const sPinned = pinnedSubjects().includes(r.subject);
+    const spin = document.createElement('button');
+    spin.type = 'button';
+    spin.className = 'hjem-pin hjem-pin-sm' + (sPinned ? ' pinned' : '');
+    spin.textContent = '📌';
+    spin.title = sPinned ? 'Festet øverst i kortet – klikk for å løsne' : 'Fest faget øverst i kortet';
+    spin.setAttribute('aria-label', spin.title);
+    spin.addEventListener('click', () => toggleSubjectPin(r.subject));
+    const nm = document.createElement('span');
+    nm.className = 'hjem-subj-name' + (r.tema ? ' is-done' : '');
+    nm.textContent = r.subject;
+    const status = document.createElement('div');
+    status.className = 'hjem-subj-status';
+    if (!r.tema) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'hjem-task hjem-task-tema';
+      b.textContent = 'Fyll inn tema';
+      b.addEventListener('click', () => hjemGoto(gotoClass, r.subject, 'læringsmål'));
+      status.appendChild(b);
+    } else {
+      const tag = document.createElement('span');
+      tag.className = 'hjem-done-tag';
+      tag.textContent = '✓ tema';
+      status.appendChild(tag);
+      if (!r.lekse) {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'hjem-task hjem-task-lekse';
+        b.textContent = '+ lekser';
+        b.addEventListener('click', () => hjemGoto(gotoClass, r.subject, 'lekse'));
+        status.appendChild(b);
+      }
+    }
+    row.appendChild(spin); row.appendChild(nm); row.appendChild(status);
+    list.appendChild(row);
+  });
+  return list;
 }
 
 function buildHjemCard(cls, week) {
@@ -4340,71 +4515,9 @@ function buildHjemCard(cls, week) {
   head.appendChild(pin);
   card.appendChild(head);
 
-  const { rows, total, temaDone, allDone } = hjemClassStatus(cls);
-  const prog = document.createElement('div');
-  prog.className = 'hjem-progress';
-  const label = document.createElement('span');
-  label.className = 'hjem-progress-label';
-  label.textContent = temaDone + ' av ' + total + ' fag har tema';
-  const bar = document.createElement('div');
-  bar.className = 'hjem-bar';
-  const fill = document.createElement('div');
-  fill.className = 'hjem-bar-fill';
-  fill.style.width = (total ? Math.round(temaDone / total * 100) : 0) + '%';
-  bar.appendChild(fill);
-  prog.appendChild(label); prog.appendChild(bar);
-  card.appendChild(prog);
-
-  if (allDone) {
-    const done = document.createElement('p');
-    done.className = 'hjem-allclear';
-    done.textContent = '✓ Alt klart denne uka';
-    card.appendChild(done);
-  } else {
-    // Per-subject checklist: shows what's done and what's left, with tema (the
-    // priority) as a prominent button and lekser as a distinct, secondary one.
-    const list = document.createElement('div');
-    list.className = 'hjem-checklist';
-    rows.forEach(r => {
-      const row = document.createElement('div');
-      row.className = 'hjem-subj';
-      const sPinned = pinnedSubjects().includes(r.subject);
-      const spin = document.createElement('button');
-      spin.type = 'button';
-      spin.className = 'hjem-pin hjem-pin-sm' + (sPinned ? ' pinned' : '');
-      spin.textContent = '📌';
-      spin.title = sPinned ? 'Festet øverst i kortet – klikk for å løsne' : 'Fest faget øverst i kortet';
-      spin.setAttribute('aria-label', spin.title);
-      spin.addEventListener('click', () => toggleSubjectPin(r.subject));
-      const nm = document.createElement('span');
-      nm.className = 'hjem-subj-name' + (r.tema ? ' is-done' : '');
-      nm.textContent = r.subject;
-      const status = document.createElement('div');
-      status.className = 'hjem-subj-status';
-      if (!r.tema) {
-        const b = document.createElement('button');
-        b.type = 'button'; b.className = 'hjem-task hjem-task-tema';
-        b.textContent = 'Fyll inn tema';
-        b.addEventListener('click', () => hjemGoto(cls, r.subject, 'læringsmål'));
-        status.appendChild(b);
-      } else {
-        const tag = document.createElement('span');
-        tag.className = 'hjem-done-tag';
-        tag.textContent = '✓ tema';
-        status.appendChild(tag);
-        if (!r.lekse) {
-          const b = document.createElement('button');
-          b.type = 'button'; b.className = 'hjem-task hjem-task-lekse';
-          b.textContent = '+ lekser';
-          b.addEventListener('click', () => hjemGoto(cls, r.subject, 'lekse'));
-          status.appendChild(b);
-        }
-      }
-      row.appendChild(spin); row.appendChild(nm); row.appendChild(status);
-      list.appendChild(row);
-    });
-    card.appendChild(list);
-  }
+  const st = hjemClassStatus(cls);
+  card.appendChild(buildHjemProgress(st.temaDone, st.total));
+  card.appendChild(st.allDone ? hjemAllClear() : buildHjemChecklist(st.rows, cls));
 
   const vs = hjemClassVurd(cls, week);
   if (vs.length) {
@@ -4420,6 +4533,25 @@ function buildHjemCard(cls, week) {
     card.appendChild(vwrap);
   }
 
+  return card;
+}
+
+// Electives shown once per grade-year (a year-level unit). Fill-buttons deep-link
+// to the year's first class board, where the write is year-scoped (classes=year).
+function buildValgfagCard(group, week) {
+  const card = document.createElement('div');
+  card.className = 'hjem-card hjem-valgfag';
+  const head = document.createElement('div');
+  head.className = 'hjem-card-head';
+  const name = document.createElement('span');
+  name.className = 'hjem-card-class';
+  name.textContent = 'Valgfag · ' + group.label + ' trinn';
+  head.appendChild(name);
+  card.appendChild(head);
+
+  const st = hjemElectiveStatus(group);
+  card.appendChild(buildHjemProgress(st.temaDone, st.total));
+  card.appendChild(st.allDone ? hjemAllClear() : buildHjemChecklist(st.rows, group.classes[0]));
   return card;
 }
 
@@ -4830,6 +4962,7 @@ async function commitProgCell(ed, html) {
   if (ed._busy) { ed._pendingHtml = html; return; }   // serialize – see commitRichCell
   const ids = JSON.parse(ed.dataset.ids || '[]');
   const cls = ed.dataset.cls, subject = ed.dataset.subject, type = ed.dataset.type, week = ed.dataset.week;
+  const wcls = writeClassesFor(subject, cls);   // whole year for electives
   const val = html.trim();
 
   if (!val && ids.length) {
@@ -4849,14 +4982,14 @@ async function commitProgCell(ed, html) {
     } else if (ids.length) {
       const el = findLoadedElement(ids[0]);
       const before = elementUpdateFields(el);
-      await api('update', { id: ids[0], type, classes: cls, week, day: '', subject, description: val, teacher: teacherName });
-      recordUpdate(ids[0], before, { type, classes: cls, week, weekTo: '', day: '', subject, description: val, teacher: teacherName }, 'endring');
+      await api('update', { id: ids[0], type, classes: wcls, week, day: '', subject, description: val, teacher: teacherName });
+      recordUpdate(ids[0], before, { type, classes: wcls, week, weekTo: '', day: '', subject, description: val, teacher: teacherName }, 'endring');
       if (el) el.description = val;
       for (const extra of ids.slice(1)) await api('delete', { id: extra });
       allPlanData = allPlanData.filter(p => !ids.slice(1).includes(p.id));
       ed.dataset.ids = JSON.stringify([ids[0]]);
     } else {
-      const params = { type, classes: cls, week, day: '', subject, description: val, teacher: teacherName };
+      const params = { type, classes: wcls, week, day: '', subject, description: val, teacher: teacherName };
       const c = await api('create', params);
       ed.dataset.ids = JSON.stringify(c && c.id ? [c.id] : []);
       if (c && c.id) { recordCreate(params, c.id, 'tekst'); allPlanData.push(c); }
