@@ -532,6 +532,7 @@ async function replayPendingWrites() {
 }
 
 function showLogin() {
+  stopHjemPoll();
   document.getElementById('dashboard').hidden = true;
   document.getElementById('loginScreen').classList.add('active');
   setAuthMode('login');
@@ -1765,6 +1766,11 @@ function updateWeekLabel() {
 // ─── Dashboard listeners ──────────────────────────────────────
 
 function setupDashboardListeners() {
+  // Pause the dashboard poll when the tab is hidden; refresh at once on return.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { stopHjemPoll(); return; }
+    if (loggedIn && teacherTab === 'hjem') { loadHjem({ force: true }); startHjemPoll(); }
+  });
   document.getElementById('prevWeekBtn').addEventListener('click', () => changeWeek(-1));
   document.getElementById('nextWeekBtn').addEventListener('click', () => changeWeek(1));
   document.getElementById('jumpTodayBtn').addEventListener('click', jumpToThisWeek);
@@ -3356,7 +3362,8 @@ function setTeacherTab(tab) {
   document.getElementById('toolbar').style.display = tab === 'ukeplan' ? '' : 'none';
   // visibility (not display) so the controls-row keeps a constant size across tabs
   document.querySelector('.week-nav').style.visibility = tab === 'vurd' ? 'hidden' : 'visible';
-  if (tab === 'hjem') { loadHjem(); return; }   // keys off classesTaught, not selectedClass
+  if (tab === 'hjem') { loadHjem(); startHjemPoll(); return; }   // keys off classesTaught, not selectedClass
+  stopHjemPoll();
   if (!selectedClass) return;
   if (tab === 'vurd') renderVurd();
   else if (tab === 'oversikt') refreshOversikt();
@@ -3889,7 +3896,7 @@ function refreshConflicts() {
 
 async function loadHjem(opts = {}) {
   const week = dateToWeek(weekMonday);
-  loadAssessments();                       // cheap (cache); its own render is a no-op-ish refresh
+  loadAssessments(opts.force ? { force: true } : {});   // TTL-cheap; forced on explicit refreshes
   if (!opts.force && hjemWeek === week) { renderHjem(); return; }
   showBgLoading();
   try {
@@ -3901,6 +3908,30 @@ async function loadHjem(opts = {}) {
   hideBgLoading();
   if (teacherTab === 'hjem') renderHjem();
 }
+
+// ── Live-ish refresh while sitting on the dashboard ───────────
+// Poll every 30s, but ONLY while the Hjem tab is open AND the browser tab is
+// visible (never polls a backgrounded tab); silent (no spinner) and re-renders
+// only when the data actually changed. Returning to the tab refreshes at once.
+let hjemPollTimer = null;
+const HJEM_POLL_MS = 30000;
+async function pollHjem() {
+  if (teacherTab !== 'hjem' || document.hidden || !loggedIn) return;
+  const week = dateToWeek(weekMonday);
+  try {
+    const res = await fetch(`${SCRIPT_URL}?action=week&week=${encodeURIComponent(week)}`);
+    const data = await res.json();
+    if (Array.isArray(data)) {
+      const changed = JSON.stringify(data) !== JSON.stringify(hjemData);
+      hjemData = data; hjemWeek = week;
+      if (changed && teacherTab === 'hjem') renderHjem();
+    }
+  } catch { /* transient – try again next tick */ }
+  // vurderinger aren't polled (change rarely); they refresh on their TTL, on tab
+  // entry, and on the visibility-regain force below.
+}
+function startHjemPoll() { stopHjemPoll(); hjemPollTimer = setInterval(pollHjem, HJEM_POLL_MS); }
+function stopHjemPoll() { if (hjemPollTimer) { clearInterval(hjemPollTimer); hjemPollTimer = null; } }
 
 // Classes the teacher teaches, in grade order.
 function hjemClasses() { return CLASSES.filter(c => classesTaught.includes(c)); }
