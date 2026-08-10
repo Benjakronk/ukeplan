@@ -2120,7 +2120,7 @@ function renderGeneral() {
   });
 }
 
-function buildGeneralLine(el) {
+function buildGeneralLine(el, opts = {}) {
   const line = document.createElement('div');
   line.className = 'general-line';
   // Day is bold; day + fag combine into one label when both are set.
@@ -2134,8 +2134,16 @@ function buildGeneralLine(el) {
   txt.className = 'rich-content';
   txt.innerHTML = prefix + sanitizeHtml(el.description);
   line.appendChild(txt);
-  line.title = 'Klikk for å redigere';
-  line.addEventListener('click', () => openElementEdit(el));
+  if (opts.teacher && el.teacher) {
+    const who = document.createElement('span');
+    who.className = 'general-line-teacher';
+    who.textContent = ' – ' + el.teacher;
+    line.appendChild(who);
+  }
+  if (!opts.readonly) {
+    line.title = 'Klikk for å redigere';
+    line.addEventListener('click', () => openElementEdit(el));
+  }
   return line;
 }
 
@@ -4337,6 +4345,32 @@ function renderKontakt() {
     secC.appendChild(list);
   }
   pane.appendChild(secC);
+
+  // D · Beskjeder og praktisk info (this week, read-only, attributed)
+  const secD = kontaktSection('Beskjeder og praktisk info (uke ' + getWeekNumber(weekMonday) + ')');
+  const general = kontaktWeekData.filter(p => GENERAL_TYPES.includes(p.type) && p.description && classMatches(p.classes, cls));
+  if (!general.length) {
+    const p = document.createElement('p'); p.className = 'kontakt-empty';
+    p.textContent = 'Ingen beskjeder for klassen denne uka.';
+    secD.appendChild(p);
+  } else {
+    GENERAL_TYPES.forEach(type => {
+      const items = general.filter(p => p.type === type);
+      if (!items.length) return;
+      const box = document.createElement('div');
+      box.className = 'general-card banner-' + type;
+      const meta = document.createElement('div');
+      meta.className = 'general-meta';
+      const icon = document.createElement('span'); icon.textContent = GENERAL_ICON[type] || '📌'; meta.appendChild(icon);
+      const badge = document.createElement('span'); badge.className = 'general-badge'; badge.textContent = TYPE_LABEL[type]; meta.appendChild(badge);
+      box.appendChild(meta);
+      const list = document.createElement('div'); list.className = 'general-list';
+      items.forEach(el => list.appendChild(buildGeneralLine(el, { readonly: true, teacher: true })));
+      box.appendChild(list);
+      secD.appendChild(box);
+    });
+  }
+  pane.appendChild(secD);
 }
 
 function kontaktSection(titleText) {
