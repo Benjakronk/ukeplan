@@ -149,8 +149,9 @@ let modalPendingDesc = null;   // description to seed into the editor on the nex
 const SETTINGS_KEY = 'up_settings';
 let settings = loadSettings();
 function loadSettings() {
-  const defaults = { confirmDelete: true, defaultSubject: '', mySubjects: [], subjectOrder: [],
-                     viewMode: 'mine', viewSubjects: [], lekseDays: { default: [], bySubject: {} },
+  const defaults = { confirmDelete: true, mySubjects: [], subjectOrder: [],
+                     viewMode: 'mine', viewSubjects: [], lekseDays: { bySubjectClass: {}, bySubject: {} },
+                     pinnedClasses: [], pinnedSubjects: [],
                      onboardedAt: '' };
   let s;
   try { s = Object.assign(defaults, JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}); }
@@ -160,16 +161,21 @@ function loadSettings() {
 // Bring older cached/loaded settings up to the current shape (scalar lekse-day,
 // boolean showAll → the newer structures). Safe to run on any settings object.
 function migrateSettings(s) {
-  if (typeof s.defaultLekseDay === 'string') {   // old scalar → { default:[it], bySubject:{} }
-    if (!s.lekseDays) s.lekseDays = { default: s.defaultLekseDay ? [s.defaultLekseDay] : [], bySubject: {} };
+  if (typeof s.defaultLekseDay === 'string') {   // old scalar → legacy per-subject fallback holder
+    if (!s.lekseDays) s.lekseDays = { bySubjectClass: {}, bySubject: {} };
     delete s.defaultLekseDay;
   }
-  if (!s.lekseDays || typeof s.lekseDays !== 'object') s.lekseDays = { default: [], bySubject: {} };
-  if (!Array.isArray(s.lekseDays.default)) s.lekseDays.default = [];
+  if (!s.lekseDays || typeof s.lekseDays !== 'object') s.lekseDays = { bySubjectClass: {}, bySubject: {} };
+  // Lekse-days are now per-subject-per-class (`bySubjectClass`); the old global
+  // `default` is dropped and `bySubject` kept only as a read-only resolution fallback.
+  delete s.lekseDays.default;
+  if (!s.lekseDays.bySubjectClass || typeof s.lekseDays.bySubjectClass !== 'object') s.lekseDays.bySubjectClass = {};
   if (!s.lekseDays.bySubject || typeof s.lekseDays.bySubject !== 'object') s.lekseDays.bySubject = {};
   if (!['mine', 'valgte', 'alle'].includes(s.viewMode)) s.viewMode = (s.showAll === true) ? 'alle' : 'mine';
   delete s.showAll;
   if (!Array.isArray(s.viewSubjects)) s.viewSubjects = [];
+  if (!Array.isArray(s.pinnedClasses)) s.pinnedClasses = [];
+  if (!Array.isArray(s.pinnedSubjects)) s.pinnedSubjects = [];
   if (typeof s.onboardedAt !== 'string') s.onboardedAt = '';
   return s;
 }
@@ -184,12 +190,27 @@ function orderedSubjects(list) {
   const idx = s => { const i = pref.indexOf(s); return i < 0 ? pref.length + SUBJECTS.indexOf(s) : i; };
   return list.slice().sort((a, b) => idx(a) - idx(b));
 }
-// Subject to pre-fill in the add modal: the teacher's chosen default (if valid),
-// else empty – never an arbitrary "Norsk". General types carry no subject.
-function modalDefaultSubject(type) {
-  if (GENERAL_TYPES.includes(type)) return '';
-  const ds = settings.defaultSubject;
-  return ds && SUBJECTS.includes(ds) ? ds : '';
+// Dashboard prioritization: pinned classes/subjects float to the top of the
+// dashboard (cards) / a card's checklist, keeping grade / normal order within.
+function pinnedClasses()  { return Array.isArray(settings.pinnedClasses)  ? settings.pinnedClasses.filter(c => CLASSES.includes(c))   : []; }
+function pinnedSubjects() { return Array.isArray(settings.pinnedSubjects) ? settings.pinnedSubjects.filter(s => SUBJECTS.includes(s)) : []; }
+function orderedClasses(list) {
+  const pins = pinnedClasses();
+  return list.slice().sort((a, b) => {
+    const pa = pins.includes(a), pb = pins.includes(b);
+    if (pa !== pb) return pa ? -1 : 1;            // pinned first…
+    return CLASSES.indexOf(a) - CLASSES.indexOf(b);  // …grade order within each group
+  });
+}
+function toggleClassPin(cls) {
+  const cur = pinnedClasses();
+  settings.pinnedClasses = cur.includes(cls) ? cur.filter(c => c !== cls) : cur.concat(cls);
+  saveSettings(); renderHjem();
+}
+function toggleSubjectPin(subject) {
+  const cur = pinnedSubjects();
+  settings.pinnedSubjects = cur.includes(subject) ? cur.filter(s => s !== subject) : cur.concat(subject);
+  saveSettings(); renderHjem();
 }
 function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); saveProfileToServer(); }
 // The subjects the teacher teaches (profile modal). Empty = no filtering.
@@ -200,11 +221,18 @@ function mySubjects() {
 function viewSubjects() {
   return Array.isArray(settings.viewSubjects) ? settings.viewSubjects.filter(s => SUBJECTS.includes(s)) : [];
 }
-// Resolved standard lekse-days for a subject: per-subject override, else global.
-function lekseDaysFor(subject) {
-  const ld = settings.lekseDays || { default: [], bySubject: {} };
-  const per = ld.bySubject && ld.bySubject[subject];
-  const days = (Array.isArray(per) && per.length) ? per : (Array.isArray(ld.default) ? ld.default : []);
+// Resolved standard lekse-days for a subject in a given class: the per-subject-
+// per-class setting, else the legacy per-subject value (fallback for accounts
+// set up before lekse-days went per-class), else none.
+function lekseDaysFor(subject, cls) {
+  const ld = settings.lekseDays || {};
+  const byClass = ld.bySubjectClass && ld.bySubjectClass[subject];
+  const perClass = byClass && cls && byClass[cls];
+  let days = (Array.isArray(perClass) && perClass.length) ? perClass : null;
+  if (!days) {
+    const legacy = ld.bySubject && ld.bySubject[subject];
+    days = Array.isArray(legacy) ? legacy : [];
+  }
   return days.filter(d => DAYS.includes(d));
 }
 
@@ -386,15 +414,16 @@ function applyProfile(profile) {
   const p = profile.preferences || {};
   settings = migrateSettings({
     confirmDelete:   p.confirmDelete !== false,                                  // default true
-    defaultSubject:  typeof p.defaultSubject === 'string' ? p.defaultSubject : '',
     mySubjects:      Array.isArray(p.mySubjects) ? p.mySubjects : [],
     subjectOrder:    Array.isArray(p.subjectOrder) ? p.subjectOrder : [],
     viewMode:        p.viewMode,
     viewSubjects:    p.viewSubjects,
     lekseDays:       p.lekseDays,
+    pinnedClasses:   Array.isArray(p.pinnedClasses) ? p.pinnedClasses : [],
+    pinnedSubjects:  Array.isArray(p.pinnedSubjects) ? p.pinnedSubjects : [],
     onboardedAt:     typeof p.onboardedAt === 'string' ? p.onboardedAt : '',
     showAll:         p.showAll,               // legacy → viewMode
-    defaultLekseDay: p.defaultLekseDay,       // legacy → lekseDays.default
+    defaultLekseDay: p.defaultLekseDay,       // legacy → lekseDays.bySubject fallback
   });
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));                 // cache only (no server echo)
   // The subject×class matrix (server relation) is the source of truth for taught
@@ -440,12 +469,13 @@ let profileSaveTimer = null;
 function profilePreferences() {
   return {
     confirmDelete:   settings.confirmDelete !== false,
-    defaultSubject:  settings.defaultSubject || '',
     mySubjects:      Array.isArray(settings.mySubjects) ? settings.mySubjects : [],
     subjectOrder:    Array.isArray(settings.subjectOrder) ? settings.subjectOrder : [],
     viewMode:        settings.viewMode || 'mine',
     viewSubjects:    Array.isArray(settings.viewSubjects) ? settings.viewSubjects : [],
-    lekseDays:       settings.lekseDays || { default: [], bySubject: {} },
+    lekseDays:       settings.lekseDays || { bySubjectClass: {}, bySubject: {} },
+    pinnedClasses:   Array.isArray(settings.pinnedClasses) ? settings.pinnedClasses : [],
+    pinnedSubjects:  Array.isArray(settings.pinnedSubjects) ? settings.pinnedSubjects : [],
     onboardedAt:     settings.onboardedAt || '',
     theme:           window.UPTheme ? UPTheme.get() : 'auto',
     lastClass:       (!variantCode && selectedClass) || '',
@@ -984,12 +1014,14 @@ async function changeOwnPassword() {
   }
 }
 
-// Standard lekse-days config: a global row + one row per Mine-fag subject.
+// Standard lekse-days config: per Mine-fag subject, one day-row for each class the
+// teacher teaches it in (from the fag×klasse matrix). No global default anymore.
 function buildLekseDaySettings() {
   const box = document.getElementById('setLekseDays');
   if (!box) return;
   box.innerHTML = '';
-  const ld = settings.lekseDays || (settings.lekseDays = { default: [], bySubject: {} });
+  const ld = settings.lekseDays || (settings.lekseDays = { bySubjectClass: {}, bySubject: {} });
+  if (!ld.bySubjectClass) ld.bySubjectClass = {};
 
   const makeDayRow = (labelText, getDays, setDays) => {
     const wrap = document.createElement('div');
@@ -1016,26 +1048,41 @@ function buildLekseDaySettings() {
     wrap.appendChild(btns);
     return wrap;
   };
-
-  box.appendChild(makeDayRow('Standard', () => ld.default, v => { ld.default = v; }));
+  // Bind a day-set to lekseDays.bySubjectClass[subject][cls], pruning empties.
+  const classDays = (s, cls) => ({
+    get: () => (ld.bySubjectClass[s] && ld.bySubjectClass[s][cls]) || [],
+    set: v => {
+      if (!ld.bySubjectClass[s]) ld.bySubjectClass[s] = {};
+      if (v.length) ld.bySubjectClass[s][cls] = v; else delete ld.bySubjectClass[s][cls];
+      if (!Object.keys(ld.bySubjectClass[s]).length) delete ld.bySubjectClass[s];
+    },
+  });
 
   const my = orderedSubjects(mySubjects());
-  if (my.length) {
+  if (!my.length) return;
+  my.forEach(s => {
+    const grp = document.createElement('div');
+    grp.className = 'lekseday-subject';
     const head = document.createElement('p');
     head.className = 'lekseday-head';
-    head.textContent = 'Egne dager per fag';
-    box.appendChild(head);
-    my.forEach(s => box.appendChild(makeDayRow(s,
-      () => (ld.bySubject[s] || []),
-      v => { if (v.length) ld.bySubject[s] = v; else delete ld.bySubject[s]; })));
-  }
+    head.textContent = s;
+    grp.appendChild(head);
+    const classes = classesForSubject(s);
+    if (!classes.length) {
+      const note = document.createElement('p');
+      note.className = 'form-hint';
+      note.textContent = 'Sett klasser for faget under «Fag og klasser» først.';
+      grp.appendChild(note);
+    } else {
+      classes.forEach(cls => { const b = classDays(s, cls); grp.appendChild(makeDayRow(cls, b.get, b.set)); });
+    }
+    box.appendChild(grp);
+  });
 }
 
 function openProfileModal() {
   document.getElementById('teacherName').value = teacherName;
   document.getElementById('setConfirmDelete').checked = settings.confirmDelete !== false;
-  fillSubjectSelect(document.getElementById('setDefaultSubject'), '(velg hver gang)');
-  document.getElementById('setDefaultSubject').value = SUBJECTS.includes(settings.defaultSubject) ? settings.defaultSubject : '';
   profileOpen = true;   // defer server writes until "Lagre" (or a flush on close)
   profileDirty = false; dirtyPrefs = dirtyClasses = dirtyMatrix = false;
   buildMySubjectChips();
@@ -1205,12 +1252,15 @@ function buildSubjectChipPicker(container, getSelected, onToggle, opts = {}) {
 async function toggleMySubject(s) {
   const cur = mySubjects();
   if (cur.includes(s)) {
-    const per = settings.lekseDays && settings.lekseDays.bySubject && settings.lekseDays.bySubject[s];
-    if (per && per.length && !(await uiConfirm(s + ' har egne lekse-dager. Vil du fjerne faget og disse innstillingene?'))) {
+    const ld = settings.lekseDays || {};
+    const hasClassDays = ld.bySubjectClass && ld.bySubjectClass[s] && Object.keys(ld.bySubjectClass[s]).length;
+    const hasLegacy = ld.bySubject && Array.isArray(ld.bySubject[s]) && ld.bySubject[s].length;
+    if ((hasClassDays || hasLegacy) && !(await uiConfirm(s + ' har egne lekse-dager. Vil du fjerne faget og disse innstillingene?'))) {
       return true;   // keep selected
     }
     settings.mySubjects = cur.filter(x => x !== s);
-    if (settings.lekseDays && settings.lekseDays.bySubject) delete settings.lekseDays.bySubject[s];
+    if (ld.bySubjectClass) delete ld.bySubjectClass[s];
+    if (ld.bySubject) delete ld.bySubject[s];
     settings.viewSubjects = viewSubjects().filter(x => x !== s);
     saveSettings();
     return false;
@@ -2025,9 +2075,6 @@ function setupDashboardListeners() {
     syncThemeSeg();
     saveProfileToServer();
   });
-  const dsSel = document.getElementById('setDefaultSubject');
-  fillSubjectSelect(dsSel, '(velg hver gang)');
-  dsSel.addEventListener('change', e => { settings.defaultSubject = e.target.value; saveSettings(); });
 
   // Undo / redo (buttons + keyboard). Native Ctrl+Z is left to text fields.
   document.getElementById('undoBtn').addEventListener('click', doUndo);
@@ -2542,8 +2589,9 @@ function buildHomeworkEditCell(subject, elements, opts = {}) {
   add.className = 'hw-edit-add';
   add.textContent = '+ lekse';
   add.addEventListener('click', () => {
-    // Add one blank lekse row per configured standard day (or a single dayless row).
-    const days = lekseDaysFor(subject);
+    // Add one blank lekse row per configured standard day for this subject+class
+    // (or a single dayless row). opts.cls = Progresjon's row class; else the board's.
+    const days = lekseDaysFor(subject, opts.cls || selectedClass);
     const list2 = days.length ? days : [''];
     let first = null;
     list2.forEach(d => {
@@ -2889,7 +2937,7 @@ function openAddModal(preset = {}) {
   modalInitialDesc = '';
   document.getElementById('vurdTeacherInput').value = preset.teacher || teacherName;
   fillSubjectSelect(document.getElementById('subjectSelect'), '(uten fag)');   // reflect current Mine fag
-  document.getElementById('subjectSelect').value = preset.subject || modalDefaultSubject(modalType);
+  document.getElementById('subjectSelect').value = preset.subject || '';
   buildModalWeekOptions();
   setDateInputBounds(preset.date);
   document.getElementById('addModalTitle').textContent = 'Legg til element';
@@ -2947,7 +2995,7 @@ function openVurdEdit(v) {
   modalPendingDesc = v.description || v.notes || '';
   modalInitialDesc = v.description || v.notes || '';
   document.getElementById('vurdTeacherInput').value = v.teacher || teacherName;
-  document.getElementById('subjectSelect').value = SUBJECTS.includes(v.subject) ? v.subject : modalDefaultSubject('vurdering');
+  document.getElementById('subjectSelect').value = SUBJECTS.includes(v.subject) ? v.subject : '';
   buildModalWeekOptions();
   setDateInputBounds(v.date);
   document.getElementById('dateInput').value = v.date || '';
@@ -3076,8 +3124,6 @@ function selectModalType(t) {
   document.getElementById('dateRow').style.display       = isVurd ? '' : 'none';
   document.getElementById('dayRow').style.display        = hasDay ? '' : 'none';
   if (!hasDay) { modalDays = []; syncDayBtns(); }
-  const subjSel = document.getElementById('subjectSelect');
-  if (!subjSel.value) subjSel.value = modalDefaultSubject(t);
 
   // Adapted plan: plan elements target the code (hide the class picker, show a
   // note); vurdering keeps the normal class picker (assessments are class-wide).
@@ -4178,8 +4224,8 @@ async function pollHjem() {
 function startHjemPoll() { stopHjemPoll(); hjemPollTimer = setInterval(pollHjem, HJEM_POLL_MS); }
 function stopHjemPoll() { if (hjemPollTimer) { clearInterval(hjemPollTimer); hjemPollTimer = null; } }
 
-// Classes the teacher teaches, in grade order.
-function hjemClasses() { return CLASSES.filter(c => classesTaught.includes(c)); }
+// Classes the teacher teaches; pinned first, grade order within each group.
+function hjemClasses() { return orderedClasses(CLASSES.filter(c => classesTaught.includes(c))); }
 
 // Subjects to check for a class: those taught IN this class (matrix). Legacy
 // accounts with no matrix fall back to all Mine-fag (the old over-report).
@@ -4190,13 +4236,18 @@ function hjemSubjectsFor(cls) {
 }
 
 // Per-class, per-subject tema/lekse status for the viewed week (from hjemData).
-// Rows sort most-incomplete first (needs tema → needs lekser → done).
+// Pinned subjects first, then most-incomplete first (needs tema → lekser → done).
 function hjemClassStatus(cls) {
   const subs = hjemSubjectsFor(cls);
   const has = (s, t) => hjemData.some(p => p.type === t && p.subject === s && p.description && classMatches(p.classes, cls));
   const rows = subs.map(s => ({ subject: s, tema: has(s, 'læringsmål'), lekse: has(s, 'lekse') }));
+  const pins = pinnedSubjects();
   const score = r => (r.tema ? (r.lekse ? 0 : 1) : 2);
-  rows.sort((a, b) => score(b) - score(a));
+  rows.sort((a, b) => {
+    const pa = pins.includes(a.subject), pb = pins.includes(b.subject);
+    if (pa !== pb) return pa ? -1 : 1;       // pinned subjects float to the top
+    return score(b) - score(a);
+  });
   return {
     rows,
     total: subs.length,
@@ -4278,6 +4329,15 @@ function buildHjemCard(cls, week) {
     star.textContent = '★ kontaktlærer';
     head.appendChild(star);
   }
+  const cPinned = pinnedClasses().includes(cls);
+  const pin = document.createElement('button');
+  pin.type = 'button';
+  pin.className = 'hjem-pin' + (cPinned ? ' pinned' : '');
+  pin.textContent = '📌';
+  pin.title = cPinned ? 'Festet øverst – klikk for å løsne' : 'Fest klassen øverst';
+  pin.setAttribute('aria-label', pin.title);
+  pin.addEventListener('click', () => toggleClassPin(cls));
+  head.appendChild(pin);
   card.appendChild(head);
 
   const { rows, total, temaDone, allDone } = hjemClassStatus(cls);
@@ -4308,6 +4368,14 @@ function buildHjemCard(cls, week) {
     rows.forEach(r => {
       const row = document.createElement('div');
       row.className = 'hjem-subj';
+      const sPinned = pinnedSubjects().includes(r.subject);
+      const spin = document.createElement('button');
+      spin.type = 'button';
+      spin.className = 'hjem-pin hjem-pin-sm' + (sPinned ? ' pinned' : '');
+      spin.textContent = '📌';
+      spin.title = sPinned ? 'Festet øverst i kortet – klikk for å løsne' : 'Fest faget øverst i kortet';
+      spin.setAttribute('aria-label', spin.title);
+      spin.addEventListener('click', () => toggleSubjectPin(r.subject));
       const nm = document.createElement('span');
       nm.className = 'hjem-subj-name' + (r.tema ? ' is-done' : '');
       nm.textContent = r.subject;
@@ -4332,7 +4400,7 @@ function buildHjemCard(cls, week) {
           status.appendChild(b);
         }
       }
-      row.appendChild(nm); row.appendChild(status);
+      row.appendChild(spin); row.appendChild(nm); row.appendChild(status);
       list.appendChild(row);
     });
     card.appendChild(list);

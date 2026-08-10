@@ -483,6 +483,11 @@
 .lekseday-days { display: flex; flex-wrap: wrap; gap: 5px; }
 .lekseday-days .day-btn { padding: 3px 9px; font-size: 12px; }
 .lekseday-head { margin: 8px 0 2px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
+/* Per-subject group: subject header + one indented day-row per class. */
+.lekseday-subject { margin-bottom: 10px; }
+.lekseday-subject .lekseday-head { font-size: 13px; color: var(--text); font-weight: 700; }
+.lekseday-subject .lekseday-row { padding-left: 10px; }
+.lekseday-subject .lekseday-label { min-width: 44px; font-variant-numeric: tabular-nums; }
 
 /* ── Taught-classes picker + Kontaktlærer star ─────────────── */
 .class-picker { display: flex; flex-direction: column; gap: 12px; padding-top: 6px; }
@@ -601,13 +606,22 @@
 /* Per-subject checklist: subject name on the left, status on the right. */
 .hjem-checklist { display: flex; flex-direction: column; }
 .hjem-subj {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  display: flex; align-items: center; justify-content: flex-start; gap: 8px;
   padding: 7px 0; border-top: 1px solid var(--border);
 }
 .hjem-subj:first-child { border-top: none; }
 .hjem-subj-name { font-size: 14px; font-weight: 600; color: var(--text); }
 .hjem-subj-name.is-done { color: var(--text-muted); font-weight: 500; }
-.hjem-subj-status { display: flex; align-items: center; gap: 8px; }
+.hjem-subj-status { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+/* Pin toggle: faded/greyed when idle, full colour when pinned. */
+.hjem-pin {
+  margin-left: auto; appearance: none; background: transparent; border: none; cursor: pointer;
+  font-size: 14px; line-height: 1; padding: 2px 4px; border-radius: var(--radius-btn);
+  opacity: .3; filter: grayscale(1); transition: opacity var(--transition);
+}
+.hjem-pin.pinned { opacity: 1; filter: none; }
+@media (hover: hover) { .hjem-pin:hover { opacity: .75; } .hjem-pin.pinned:hover { opacity: 1; } }
+.hjem-pin-sm { margin-left: 0; font-size: 12px; padding: 0 2px; }
 .hjem-done-tag { font-size: 12px; font-weight: 700; color: var(--success); white-space: nowrap; }
 .hjem-task {
   font-family: var(--font); font-size: 12.5px; font-weight: 700; white-space: nowrap;
