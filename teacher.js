@@ -2941,6 +2941,24 @@ function buildModalClassBtns() {
       }
       wrap.appendChild(btn);
     });
+    if (!editingElement) {   // per-grade «Velg alle» (class selection is locked when editing)
+      const allOn = group.classes.every(c => modalClasses.includes(c));
+      const gBtn = document.createElement('button');
+      gBtn.type = 'button';
+      gBtn.className = 'link-btn class-selectall-grade';
+      gBtn.textContent = allOn ? 'Fjern alle' : 'Velg alle';
+      gBtn.addEventListener('click', () => {
+        const on = !allOn;
+        group.classes.forEach(c => {
+          const has = modalClasses.includes(c);
+          if (on && !has) modalClasses.push(c);
+          if (!on && has) modalClasses = modalClasses.filter(x => x !== c);
+        });
+        buildModalClassBtns();
+        refreshConflicts();
+      });
+      wrap.appendChild(gBtn);
+    }
     grid.appendChild(wrap);
   });
 }
