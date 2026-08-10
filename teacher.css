@@ -414,8 +414,8 @@
 @media (max-width: 640px) { .drag-handle { display: none; } }
 
 /* ── Profile modal: tabbed sections ────────────────────────────── */
-.profile-modal { width: 520px; }
-.profile-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin: 14px 0 16px; }
+.profile-modal { width: 640px; }
+.profile-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin: 14px 0 0; }
 .profile-tab {
   appearance: none; background: transparent; border: none; cursor: pointer;
   font-family: var(--font); font-size: 13.5px; font-weight: 600; color: var(--text-muted);
@@ -424,8 +424,13 @@
 }
 @media (hover: hover) { .profile-tab:hover { color: var(--text); } }
 .profile-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+/* Fixed-height body so switching tabs never resizes the modal (short tabs just
+   leave space; the tall Fag & klasser tab scrolls within). */
+.profile-body { height: 46vh; min-height: 320px; overflow-y: auto; padding: 16px 2px 2px; }
 .profile-pane[hidden] { display: none; }
 .profile-pane .form-row:last-child { margin-bottom: 0; }
+#profileSaveBtn:disabled { opacity: .5; cursor: default; }
+#profileSaveBtn.has-changes { box-shadow: 0 0 0 3px var(--primary-light); }
 
 /* ── Mine fag picker (compact: chosen chips + «Legg til fag») ───── */
 .mysubj-chosen { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }

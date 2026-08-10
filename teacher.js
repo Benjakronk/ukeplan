@@ -426,39 +426,54 @@ function updateKontaktTab() {
 
 // Debounced push of name + preferences to the server (called by saveSettings,
 // the name/theme/class change handlers).
+// While the profile modal is open, server persistence is DEFERRED so we don't
+// hit the backend on every click – local state + localStorage still update
+// immediately (the UI stays live), and a single "Lagre" (or a safety flush on
+// close) writes the changes once. `profileOpen` gates the three savers below;
+// the granular `dirty*` flags say which of the three payloads actually changed.
+let profileOpen = false;
+let profileDirty = false;
+let dirtyPrefs = false, dirtyClasses = false, dirtyMatrix = false;
+function markProfileDirty() { profileDirty = true; updateProfileSaveBtn(); }
+
 let profileSaveTimer = null;
+function profilePreferences() {
+  return {
+    confirmDelete:   settings.confirmDelete !== false,
+    defaultSubject:  settings.defaultSubject || '',
+    mySubjects:      Array.isArray(settings.mySubjects) ? settings.mySubjects : [],
+    subjectOrder:    Array.isArray(settings.subjectOrder) ? settings.subjectOrder : [],
+    viewMode:        settings.viewMode || 'mine',
+    viewSubjects:    Array.isArray(settings.viewSubjects) ? settings.viewSubjects : [],
+    lekseDays:       settings.lekseDays || { default: [], bySubject: {} },
+    onboardedAt:     settings.onboardedAt || '',
+    theme:           window.UPTheme ? UPTheme.get() : 'auto',
+    lastClass:       (!variantCode && selectedClass) || '',
+  };
+}
+function doSaveProfile() {
+  return api('profile', { name: teacherName, preferences: JSON.stringify(profilePreferences()) });
+}
 function saveProfileToServer() {
   if (!loggedIn) return;
+  if (profileOpen) { dirtyPrefs = true; markProfileDirty(); return; }
   clearTimeout(profileSaveTimer);
-  profileSaveTimer = setTimeout(() => {
-    const preferences = {
-      confirmDelete:   settings.confirmDelete !== false,
-      defaultSubject:  settings.defaultSubject || '',
-      mySubjects:      Array.isArray(settings.mySubjects) ? settings.mySubjects : [],
-      subjectOrder:    Array.isArray(settings.subjectOrder) ? settings.subjectOrder : [],
-      viewMode:        settings.viewMode || 'mine',
-      viewSubjects:    Array.isArray(settings.viewSubjects) ? settings.viewSubjects : [],
-      lekseDays:       settings.lekseDays || { default: [], bySubject: {} },
-      onboardedAt:     settings.onboardedAt || '',
-      theme:           window.UPTheme ? UPTheme.get() : 'auto',
-      lastClass:       (!variantCode && selectedClass) || '',
-    };
-    api('profile', { name: teacherName, preferences: JSON.stringify(preferences) }).catch(() => {});
-  }, 600);
+  profileSaveTimer = setTimeout(() => { doSaveProfile().catch(() => {}); }, 600);
 }
 
 // Persist the taught classes + Kontaktlærer subset (server relation, debounced).
 // Routes through api() so it inherits Unauthorized stash/replay handling; the
 // echoed response is the source of truth (server enforces kontakt ⊆ classes).
 let classesSaveTimer = null;
+function doSaveClasses() {
+  return api('setclasses', { classes: classesTaught.join(','), kontakt: kontaktClasses.join(',') })
+    .then(r => { if (r && Array.isArray(r.classes)) { classesTaught = r.classes; kontaktClasses = r.kontakt || []; updateKontaktTab(); } });
+}
 function saveClassesToServer() {
   if (!loggedIn) return;
+  if (profileOpen) { dirtyClasses = true; markProfileDirty(); return; }
   clearTimeout(classesSaveTimer);
-  classesSaveTimer = setTimeout(() => {
-    api('setclasses', { classes: classesTaught.join(','), kontakt: kontaktClasses.join(',') })
-      .then(r => { if (r && Array.isArray(r.classes)) { classesTaught = r.classes; kontaktClasses = r.kontakt || []; updateKontaktTab(); } })
-      .catch(() => {});
-  }, 600);
+  classesSaveTimer = setTimeout(() => { doSaveClasses().catch(() => {}); }, 600);
 }
 
 // ── Subject×class matrix (which classes each subject is taught in) ────────────
@@ -500,14 +515,53 @@ function setSubjectClasses(subject, list, on) {
   saveSubjectClassesToServer();
 }
 let subjectClassesSaveTimer = null;
+function doSaveSubjectClasses() {
+  return api('setsubjectclasses', { matrix: JSON.stringify(subjectClasses) })
+    .then(r => { if (r && r.subjectClasses) subjectClasses = sanitizeMatrix(r.subjectClasses); });
+}
 function saveSubjectClassesToServer() {
   if (!loggedIn) return;
+  if (profileOpen) { dirtyMatrix = true; markProfileDirty(); return; }
   clearTimeout(subjectClassesSaveTimer);
-  subjectClassesSaveTimer = setTimeout(() => {
-    api('setsubjectclasses', { matrix: JSON.stringify(subjectClasses) })
-      .then(r => { if (r && r.subjectClasses) subjectClasses = sanitizeMatrix(r.subjectClasses); })
-      .catch(() => {});
-  }, 600);
+  subjectClassesSaveTimer = setTimeout(() => { doSaveSubjectClasses().catch(() => {}); }, 600);
+}
+
+// Flush whatever changed in the open profile modal in one go (only the changed
+// payloads). Used by the "Lagre" button and as a safety net on modal close.
+// Resolves to true when every issued save succeeded.
+function flushProfileSaves() {
+  clearTimeout(profileSaveTimer); clearTimeout(classesSaveTimer); clearTimeout(subjectClassesSaveTimer);
+  const tasks = [];
+  if (dirtyPrefs)   tasks.push(['prefs',   doSaveProfile()]);
+  if (dirtyClasses) tasks.push(['classes', doSaveClasses()]);
+  if (dirtyMatrix)  tasks.push(['matrix',  doSaveSubjectClasses()]);
+  return Promise.allSettled(tasks.map(t => t[1])).then(rs => {
+    let allOk = true;
+    rs.forEach((r, i) => {
+      if (r.status === 'fulfilled') {          // clear only what actually saved,
+        const key = tasks[i][0];                // so a failed one stays dirty for retry
+        if (key === 'prefs') dirtyPrefs = false;
+        else if (key === 'classes') dirtyClasses = false;
+        else dirtyMatrix = false;
+      } else allOk = false;
+    });
+    return allOk;
+  });
+}
+// Reflect unsaved-changes state on the Lagre button.
+function updateProfileSaveBtn(justSaved) {
+  const btn = document.getElementById('profileSaveBtn');
+  if (!btn) return;
+  if (profileDirty && !justSaved) { btn.disabled = false; btn.textContent = 'Lagre'; btn.classList.add('has-changes'); }
+  else { btn.disabled = true; btn.textContent = 'Lagret ✓'; btn.classList.remove('has-changes'); }
+}
+async function saveProfileNow() {
+  if (!profileDirty) return;
+  const btn = document.getElementById('profileSaveBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Lagrer…'; btn.classList.remove('has-changes'); }
+  const ok = await flushProfileSaves();
+  if (ok) { profileDirty = false; updateProfileSaveBtn(true); }
+  else { showToast('Kunne ikke lagre alt – prøv igjen.'); updateProfileSaveBtn(); }   // still dirty → button re-enables
 }
 
 function updateAdminButton() {
@@ -982,11 +1036,14 @@ function openProfileModal() {
   document.getElementById('setConfirmDelete').checked = settings.confirmDelete !== false;
   fillSubjectSelect(document.getElementById('setDefaultSubject'), '(velg hver gang)');
   document.getElementById('setDefaultSubject').value = SUBJECTS.includes(settings.defaultSubject) ? settings.defaultSubject : '';
+  profileOpen = true;   // defer server writes until "Lagre" (or a flush on close)
+  profileDirty = false; dirtyPrefs = dirtyClasses = dirtyMatrix = false;
   buildMySubjectChips();
   buildLekseDaySettings();
   buildProfileClasses();
   syncThemeSeg();
   setProfileTab('fag');   // always open on the first tab
+  updateProfileSaveBtn();
   document.getElementById('profileOverlay').classList.add('open');
   document.getElementById('profileModal').classList.add('open');
   document.body.classList.add('scroll-locked');
@@ -1008,6 +1065,9 @@ function closeProfileModal() {
   // An emptied name field falls back to the last saved name – entries should
   // never be saved with teacher ''.
   document.getElementById('teacherName').value = teacherName;
+  profileOpen = false;
+  // Safety net: never lose work if they close without pressing Lagre.
+  if (profileDirty) { flushProfileSaves(); profileDirty = false; updateProfileSaveBtn(); }
   document.getElementById('profileOverlay').classList.remove('open');
   document.getElementById('profileModal').classList.remove('open');
   document.body.classList.remove('scroll-locked');
@@ -1940,6 +2000,7 @@ function setupDashboardListeners() {
   document.getElementById('profileClose').addEventListener('click', closeProfileModal);
   document.getElementById('profileOverlay').addEventListener('click', closeProfileModal);
   document.getElementById('profileDone').addEventListener('click', closeProfileModal);
+  document.getElementById('profileSaveBtn').addEventListener('click', saveProfileNow);
   document.getElementById('logoutBtn2').addEventListener('click', () => { closeProfileModal(); handleLogout(); });
   document.getElementById('adminPanelBtn').addEventListener('click', openAdminModal);
   document.getElementById('adminClose').addEventListener('click', closeAdminModal);
