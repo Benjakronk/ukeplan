@@ -141,7 +141,9 @@ let allPlanTs    = 0;
 let ovFrom       = null;       // week range filter (progresjon)
 let ovTo         = null;
 
-let modalInitialDesc = '';     // descInput value when the modal opened (dirty check)
+let modalInitialDesc = '';     // description value when the modal opened (dirty check)
+let modalDescEd    = null;     // the modal's rich editor (null while the plain textarea is active)
+let modalPendingDesc = null;   // description to seed into the editor on the next selectModalType
 
 // ─── Local settings (profile modal) ───────────────────────────
 const SETTINGS_KEY = 'up_settings';
@@ -2734,7 +2736,7 @@ function openAddModal(preset = {}) {
   modalDays      = preset.days ? preset.days.slice() : [];
   modalWeekFrom  = preset.weekFrom || weekMonday;
   modalWeekTo    = preset.weekTo || modalWeekFrom;
-  document.getElementById('descInput').value = '';
+  modalPendingDesc = '';
   modalInitialDesc = '';
   document.getElementById('vurdTeacherInput').value = preset.teacher || teacherName;
   fillSubjectSelect(document.getElementById('subjectSelect'), '(uten fag)');   // reflect current Mine fag
@@ -2762,7 +2764,7 @@ function openElementEdit(el) {
   modalDays      = parseDays(el.day);
   modalWeekFrom  = weekStringToMonday(el.week);
   modalWeekTo    = weekStringToMonday(el.weekTo || el.week);
-  document.getElementById('descInput').value = el.description || '';
+  modalPendingDesc = el.description || '';
   modalInitialDesc = el.description || '';
   document.getElementById('vurdTeacherInput').value = el.teacher || teacherName;
   document.getElementById('subjectSelect').value = SUBJECTS.includes(el.subject) ? el.subject : '';
@@ -2793,7 +2795,7 @@ function openVurdEdit(v) {
   modalDays = [];
   modalWeekFrom = v.date ? mondayOf(isoToDate(v.date)) : weekMonday;
   modalWeekTo   = modalWeekFrom;
-  document.getElementById('descInput').value = v.description || v.notes || '';
+  modalPendingDesc = v.description || v.notes || '';
   modalInitialDesc = v.description || v.notes || '';
   document.getElementById('vurdTeacherInput').value = v.teacher || teacherName;
   document.getElementById('subjectSelect').value = SUBJECTS.includes(v.subject) ? v.subject : modalDefaultSubject('vurdering');
@@ -2813,7 +2815,7 @@ function showModal() {
   document.getElementById('modalOverlay').classList.add('open');
   document.getElementById('addModal').classList.add('open');
   document.body.classList.add('scroll-locked');
-  setTimeout(() => document.getElementById('descInput').focus(), 60);
+  setTimeout(() => (modalDescEd || document.getElementById('descInput')).focus(), 60);
 }
 
 // Date picker (vurdering): free choice within the school year. Weekends and
@@ -2860,8 +2862,8 @@ function buildModalWeekOptions() {
 // text; programmatic closes after a successful save pass { force: true }.
 function closeAddModal(opts = {}) {
   if (!opts.force) {
-    const cur = document.getElementById('descInput').value.trim();
-    if (cur && cur !== modalInitialDesc.trim()) {
+    const cur = modalDescGet().text;
+    if (cur && cur !== modalHtmlToText(modalInitialDesc).trim()) {
       uiConfirm('Du har ikke lagret. Lukke og forkaste det du har skrevet?', {
         title: 'Forkaste endringer?', okText: 'Forkast', danger: true,
       }).then(ok => { if (ok) reallyCloseAddModal(); });
@@ -2876,8 +2878,47 @@ function reallyCloseAddModal() {
   document.body.classList.remove('scroll-locked');
 }
 
+// Plan elements support rich text (like the board); vurderinger stay plain.
+function modalHtmlToText(html) {
+  const d = document.createElement('div');
+  d.innerHTML = sanitizeHtml(html || '');
+  return d.textContent || '';
+}
+// Build the modal's description editor for the current type, seeded with `seed`.
+function buildModalDescEditor(seed) {
+  const ta = document.getElementById('descInput');
+  const box = document.getElementById('descRich');
+  if (modalType !== 'vurdering') {          // rich
+    box.innerHTML = '';
+    modalDescEd = createRichField({
+      value: seed || '',
+      placeholder: 'Skriv innhold… (merk tekst for fet / understrek / lenke)',
+      className: 'modal-rich',
+      onCommit: () => {},                    // read on Save, not on blur
+    });
+    box.appendChild(modalDescEd);
+    box.hidden = false; ta.hidden = true;
+  } else {                                   // plain (assessments stay plain text)
+    ta.value = modalHtmlToText(seed);
+    ta.hidden = false; box.hidden = true; box.innerHTML = '';
+    modalDescEd = null;
+  }
+}
+// { value: what to save, text: plain text for empty/dirty checks }.
+function modalDescGet() {
+  if (modalDescEd) {
+    return { value: sanitizeHtml(modalDescEd.innerHTML).trim(), text: (modalDescEd.textContent || '').trim() };
+  }
+  const v = document.getElementById('descInput').value.trim();
+  return { value: v, text: v };
+}
+
 function selectModalType(t) {
+  // Preserve what's typed across a type switch; on open, seed from modalPendingDesc.
+  const seed = (modalPendingDesc !== null) ? modalPendingDesc : modalDescGet().value;
+  modalPendingDesc = null;
   modalType = t;
+  buildModalDescEditor(seed);
   document.querySelectorAll('#typeBtns .type-btn').forEach(b => b.classList.toggle('active', b.dataset.type === t));
   const isVurd = t === 'vurdering';
   const hasDay = t === 'lekse' || GENERAL_TYPES.includes(t); // lekse + general types
@@ -2969,8 +3010,9 @@ function syncDayBtns() {
 
 async function saveFromModal() {
   if (modalSaving) return;   // a save is already running – ignore extra clicks
-  const desc = document.getElementById('descInput').value.trim();
-  if (!desc) { showToast('Skriv inn innhold først.'); return; }
+  const d = modalDescGet();
+  const desc = d.value;      // rich HTML for plan elements, plain text for vurdering
+  if (!d.text) { showToast('Skriv inn innhold først.'); return; }
   if (modalClasses.length === 0) { showToast('Velg minst én klasse.'); return; }
 
   const subject = document.getElementById('subjectSelect').value;
