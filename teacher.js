@@ -132,6 +132,10 @@ let oversiktData = [];         // all-classes plan elements for the oversikt wee
 let oversiktWeek = null;
 let hjemData     = [];         // all-classes plan elements for the dashboard's viewed week
 let hjemWeek     = null;       // the week hjemData is for (cache guard; null = stale)
+let kontaktViewClass = null;   // which of the teacher's kontaktlærer classes is shown
+let kontaktTeam  = null;       // last class_team result { class, kontakt, subjects }
+let kontaktWeekData = [];      // all-classes plan elements for the coverage week
+let kontaktWeek  = null;       // the week kontaktWeekData is for (cache guard)
 let allPlanData  = [];         // all plan elements (progresjon mode)
 let allPlanTs    = 0;
 let ovFrom       = null;       // week range filter (progresjon)
@@ -406,6 +410,16 @@ function applyProfile(profile) {
   document.getElementById('teacherName').value = teacherName;
   updateProfileButton();
   updateAdminButton();
+  updateKontaktTab();
+}
+
+// Show the Kontaktlærer tab only if the teacher is kontaktlærer for ≥1 class.
+function updateKontaktTab() {
+  const btn = document.getElementById('tTabKontakt');
+  if (!btn) return;
+  const show = kontaktClasses.length > 0;
+  btn.hidden = !show;
+  if (!show && teacherTab === 'kontakt') setTeacherTab('hjem');
 }
 
 // Debounced push of name + preferences to the server (called by saveSettings,
@@ -440,7 +454,7 @@ function saveClassesToServer() {
   clearTimeout(classesSaveTimer);
   classesSaveTimer = setTimeout(() => {
     api('setclasses', { classes: classesTaught.join(','), kontakt: kontaktClasses.join(',') })
-      .then(r => { if (r && Array.isArray(r.classes)) { classesTaught = r.classes; kontaktClasses = r.kontakt || []; } })
+      .then(r => { if (r && Array.isArray(r.classes)) { classesTaught = r.classes; kontaktClasses = r.kontakt || []; updateKontaktTab(); } })
       .catch(() => {});
   }, 600);
 }
@@ -1096,6 +1110,7 @@ function toggleKontaktClass(cls) {
     ? kontaktClasses.filter(c => c !== cls)
     : kontaktClasses.concat(cls);
   saveClassesToServer();
+  updateKontaktTab();
 }
 
 // Bulk (de)select taught classes (used by the "Velg alle" controls). One save.
@@ -1724,6 +1739,7 @@ function changeWeek(delta) {
   weekMonday = addDays(weekMonday, delta * 7);
   updateWeekLabel();
   if (teacherTab === 'hjem') { loadHjem(); return; }
+  if (teacherTab === 'kontakt') { loadKontakt(); return; }
   if (!selectedClass) return;
   if (teacherTab === 'oversikt') refreshOversikt(); else loadData();
 }
@@ -1731,6 +1747,7 @@ function jumpToThisWeek() {
   weekMonday = mondayOf(new Date());
   updateWeekLabel();
   if (teacherTab === 'hjem') { loadHjem(); return; }
+  if (teacherTab === 'kontakt') { loadKontakt(); return; }
   if (!selectedClass) return;
   if (teacherTab === 'oversikt') refreshOversikt(); else loadData();
 }
@@ -1754,6 +1771,7 @@ async function openWeekPicker() {
   weekMonday = mondayOf(isoToDate(chosen));
   updateWeekLabel();
   if (teacherTab === 'hjem') { loadHjem(); return; }
+  if (teacherTab === 'kontakt') { loadKontakt(); return; }
   if (!selectedClass) return;
   if (teacherTab === 'oversikt') refreshOversikt(); else loadData();
 }
@@ -1790,6 +1808,7 @@ function setupDashboardListeners() {
   document.getElementById('tTabUkeplan').addEventListener('click', () => setTeacherTab('ukeplan'));
   document.getElementById('tTabVurd').addEventListener('click', () => setTeacherTab('vurd'));
   document.getElementById('tTabOversikt').addEventListener('click', () => setTeacherTab('oversikt'));
+  document.getElementById('tTabKontakt').addEventListener('click', () => setTeacherTab('kontakt'));
   document.getElementById('addVurdBtn').addEventListener('click', () => openAddModal({ type: 'vurdering' }));
 
   // Vurderinger tab: view toggle + column-header filter modal
@@ -2049,6 +2068,7 @@ function deferIfEditing() {
 
 function render() {
   if (teacherTab === 'hjem') { renderHjem(); return; }   // keys off classesTaught, not selectedClass
+  if (teacherTab === 'kontakt') { renderKontakt(); return; }   // keys off kontaktClasses
   if (!selectedClass) return;
   if (deferIfEditing()) return;
   renderDeferred = false;
@@ -3352,7 +3372,7 @@ async function cloneFromBaseClass() {
 
 function setTeacherTab(tab) {
   teacherTab = tab;
-  [['hjem', 'tTabHjem', 'paneHjem'], ['ukeplan', 'tTabUkeplan', 'paneUkeplan'], ['vurd', 'tTabVurd', 'paneVurd'], ['oversikt', 'tTabOversikt', 'paneOversikt']]
+  [['hjem', 'tTabHjem', 'paneHjem'], ['ukeplan', 'tTabUkeplan', 'paneUkeplan'], ['vurd', 'tTabVurd', 'paneVurd'], ['oversikt', 'tTabOversikt', 'paneOversikt'], ['kontakt', 'tTabKontakt', 'paneKontakt']]
     .forEach(([t, btnId, paneId]) => {
       const btn = document.getElementById(btnId);
       btn.classList.toggle('active', t === tab);
@@ -3364,6 +3384,7 @@ function setTeacherTab(tab) {
   document.querySelector('.week-nav').style.visibility = tab === 'vurd' ? 'hidden' : 'visible';
   if (tab === 'hjem') { loadHjem(); startHjemPoll(); return; }   // keys off classesTaught, not selectedClass
   stopHjemPoll();
+  if (tab === 'kontakt') { loadKontakt(); return; }   // keys off kontaktClasses
   if (!selectedClass) return;
   if (tab === 'vurd') renderVurd();
   else if (tab === 'oversikt') refreshOversikt();
@@ -3394,9 +3415,10 @@ function refreshOversikt() {
 // Reload the right surface after a create/update/delete from the modal.
 function refreshAfterChange() {
   allPlanTs = 0; // invalidate progresjon cache
-  hjemWeek = null;   // invalidate the dashboard's week snapshot
+  hjemWeek = null; kontaktWeek = null;   // invalidate the dashboard/kontakt snapshots
   if (teacherTab === 'oversikt') refreshOversikt();
   else if (teacherTab === 'hjem') loadHjem({ force: true });
+  else if (teacherTab === 'kontakt') loadKontakt({ force: true });
   else loadData({ background: true, skipCache: true });
 }
 
@@ -3685,7 +3707,9 @@ function renderVurdCalendar() {
   }
 }
 
-function buildVurdMonthCard(monthDate, byDate) {
+function buildVurdMonthCard(monthDate, byDate, opts = {}) {
+  const scopeSel = opts.scope || '#vurdCalWrap';           // where to clear the selected cell
+  const onDay = opts.onDay || showVurdDayDetail;           // day-click handler (target detail box)
   const year = monthDate.getFullYear();
   const month = monthDate.getMonth();
   const card = document.createElement('section');
@@ -3761,9 +3785,9 @@ function buildVurdMonthCard(monthDate, byDate) {
         td.tabIndex = 0;
         td.setAttribute('role', 'button');
         const openDay = () => {
-          document.querySelectorAll('#vurdCalWrap .cal-table td.selected').forEach(c => c.classList.remove('selected'));
+          document.querySelectorAll(scopeSel + ' .cal-table td.selected').forEach(c => c.classList.remove('selected'));
           cell.classList.add('selected');
-          showVurdDayDetail(snap, snapItems);
+          onDay(snap, snapItems);
         };
         td.addEventListener('click', openDay);
         td.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDay(); } });
@@ -4132,6 +4156,231 @@ function hjemGoto(cls, subject, type) {
     row.querySelectorAll('.rich-field').forEach(f => { if (f.dataset.type === type) field = f; });
     (field || row.querySelector('.rich-field'))?.focus();
   }, 350);
+}
+
+// ─── Kontaktlærer tab (class-workload overview for the team) ──
+// Shown only if the teacher is kontaktlærer for ≥1 class. Per selected class:
+// the team + fag→lærer staffing (class_team), the class's assessment load/
+// calendar (all subjects), and this week's tema/lekse coverage attributed to each
+// teacher. Roster/coverage are only as complete as staff have registered.
+const KONTAKT_LOAD_FLAG = 3;   // ≥ this many vurderinger in a week = flagged
+
+async function loadKontakt(opts = {}) {
+  const mine = CLASSES.filter(c => kontaktClasses.includes(c));
+  if (!mine.length) { renderKontakt(); return; }
+  if (!kontaktViewClass || !mine.includes(kontaktViewClass)) kontaktViewClass = mine[0];
+  const cls = kontaktViewClass;
+  const week = dateToWeek(weekMonday);
+  loadAssessments(opts.force ? { force: true } : {});
+  showBgLoading();
+  try {
+    const reqs = [fetch(`${SCRIPT_URL}?action=class_team&class=${encodeURIComponent(cls)}`, { credentials: 'include' })];
+    const needWeek = opts.force || kontaktWeek !== week;
+    if (needWeek) reqs.push(fetch(`${SCRIPT_URL}?action=week&week=${encodeURIComponent(week)}`));
+    const res = await Promise.all(reqs);
+    const team = await res[0].json();
+    kontaktTeam = (team && !team.error) ? team : { class: cls, kontakt: [], subjects: {} };
+    if (needWeek) { const wd = await res[1].json(); kontaktWeekData = Array.isArray(wd) ? wd : []; kontaktWeek = week; }
+  } catch { kontaktTeam = kontaktTeam || { class: cls, kontakt: [], subjects: {} }; }
+  hideBgLoading();
+  if (teacherTab === 'kontakt') renderKontakt();
+}
+
+function renderKontakt() {
+  const pane = document.getElementById('paneKontakt');
+  if (!pane) return;
+  pane.innerHTML = '';
+  const mine = CLASSES.filter(c => kontaktClasses.includes(c));
+  if (!mine.length) { return; }   // tab shouldn't be visible, but guard anyway
+  const cls = kontaktViewClass && mine.includes(kontaktViewClass) ? kontaktViewClass : mine[0];
+  const team = (kontaktTeam && kontaktTeam.class === cls) ? kontaktTeam : { kontakt: [], subjects: {} };
+
+  // Header + class switcher
+  const head = document.createElement('div');
+  head.className = 'kontakt-head';
+  const h = document.createElement('h2');
+  h.className = 'kontakt-title';
+  h.textContent = 'Kontaktlærer – ' + cls;
+  head.appendChild(h);
+  if (mine.length > 1) {
+    const sw = document.createElement('div');
+    sw.className = 'kontakt-switch';
+    mine.forEach(c => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'kontakt-switch-btn' + (c === cls ? ' active' : '');
+      b.textContent = c;
+      b.addEventListener('click', () => { kontaktViewClass = c; loadKontakt(); });
+      sw.appendChild(b);
+    });
+    head.appendChild(sw);
+  }
+  pane.appendChild(head);
+
+  const note = document.createElement('p');
+  note.className = 'kontakt-note';
+  note.textContent = 'Oversikten er basert på det lærerne har registrert (fag, klasser og innhold).';
+  pane.appendChild(note);
+
+  // A · Klasseteam
+  const secA = kontaktSection('Klasseteam');
+  const kont = document.createElement('p');
+  kont.className = 'kontakt-line';
+  kont.innerHTML = '';
+  kont.append('Kontaktlærere: ');
+  const kk = (team.kontakt || []).map(t => t.name);
+  const strong = document.createElement('strong');
+  strong.textContent = kk.length ? kk.join(', ') : 'ingen registrert';
+  kont.appendChild(strong);
+  secA.appendChild(kont);
+  const subjKeys = Object.keys(team.subjects || {}).sort((a, b) => a.localeCompare(b, 'no'));
+  if (subjKeys.length) {
+    const list = document.createElement('div');
+    list.className = 'kontakt-staff';
+    subjKeys.forEach(s => {
+      const row = document.createElement('div');
+      row.className = 'kontakt-staff-row';
+      const sn = document.createElement('span'); sn.className = 'kontakt-staff-subj'; sn.textContent = s;
+      const tn = document.createElement('span'); tn.className = 'kontakt-staff-teacher'; tn.textContent = team.subjects[s].join(', ');
+      row.appendChild(sn); row.appendChild(tn);
+      list.appendChild(row);
+    });
+    secA.appendChild(list);
+  } else {
+    const p = document.createElement('p'); p.className = 'kontakt-empty';
+    p.textContent = 'Ingen lærere har registrert fag i denne klassen ennå.';
+    secA.appendChild(p);
+  }
+  pane.appendChild(secA);
+
+  // B · Vurderingsbelastning
+  const secB = kontaktSection('Vurderingsbelastning');
+  const classVurd = vurdData.filter(v => v.date && classMatches(v.classes, cls));
+  // Flagged weeks (from today forward) with too many assessments.
+  const byWeek = {};
+  const todayW = dateToWeek(mondayOf(new Date()));
+  classVurd.forEach(v => { const w = dateToWeek(isoToDate(v.date)); if (w >= todayW) byWeek[w] = (byWeek[w] || 0) + 1; });
+  const flagged = Object.keys(byWeek).filter(w => byWeek[w] >= KONTAKT_LOAD_FLAG).sort();
+  if (flagged.length) {
+    const warn = document.createElement('div');
+    warn.className = 'kontakt-flags';
+    flagged.forEach(w => {
+      const line = document.createElement('p');
+      line.className = 'kontakt-flag';
+      line.textContent = '⚠ Uke ' + w.slice(6) + ': ' + byWeek[w] + ' vurderinger – vurder å spre dem.';
+      warn.appendChild(line);
+    });
+    secB.appendChild(warn);
+  } else {
+    const ok = document.createElement('p'); ok.className = 'kontakt-empty';
+    ok.textContent = classVurd.length ? 'Ingen uker med uvanlig mange vurderinger framover.' : 'Ingen vurderinger registrert for klassen.';
+    secB.appendChild(ok);
+  }
+  // Calendar (reuse the vurd month card, class-filtered, read-only day detail).
+  const calWrap = document.createElement('div');
+  calWrap.id = 'kontaktCalWrap';
+  calWrap.className = 'kontakt-cal';
+  const detail = document.createElement('div');
+  detail.id = 'kontaktDayDetail';
+  detail.className = 'vurd-detail';
+  calWrap.appendChild(detail);
+  const byDate = {};
+  classVurd.forEach(v => { (byDate[v.date] = byDate[v.date] || []).push(v); });
+  const today = new Date();
+  let cursor = new Date(today.getFullYear(), today.getMonth(), 1);
+  const endMonth = new Date(today.getFullYear(), today.getMonth() + 2, 1);
+  const calOpts = { scope: '#kontaktCalWrap', onDay: showKontaktDayDetail };
+  while (cursor <= endMonth) {
+    calWrap.appendChild(buildVurdMonthCard(cursor, byDate, calOpts));
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+  }
+  secB.appendChild(calWrap);
+  pane.appendChild(secB);
+
+  // C · Dekning denne uka
+  const secC = kontaktSection('Dekning denne uka (uke ' + getWeekNumber(weekMonday) + ')');
+  const week = dateToWeek(weekMonday);
+  const has = (subject, type) => kontaktWeekData.some(p => p.type === type && p.subject === subject && p.description && classMatches(p.classes, cls));
+  const teacherFor = subject => (team.subjects && team.subjects[subject]) ? team.subjects[subject].join(', ') : '';
+  // Subjects: registered in the class, plus any that actually have content this week.
+  const withContent = [...new Set(kontaktWeekData.filter(p => p.subject && classMatches(p.classes, cls)).map(p => p.subject))];
+  const subjects = [...new Set([...subjKeys, ...withContent])].sort((a, b) => a.localeCompare(b, 'no'));
+  if (!subjects.length) {
+    const p = document.createElement('p'); p.className = 'kontakt-empty';
+    p.textContent = 'Ingen fag registrert eller planlagt for klassen denne uka.';
+    secC.appendChild(p);
+  } else {
+    const list = document.createElement('div');
+    list.className = 'kontakt-coverage';
+    subjects.forEach(s => {
+      const row = document.createElement('div');
+      row.className = 'kontakt-cov-row';
+      const left = document.createElement('span');
+      left.className = 'kontakt-cov-subj';
+      const who = teacherFor(s);
+      left.textContent = s + (who ? ' (' + who + ')' : ' (ukjent lærer)');
+      const right = document.createElement('span');
+      right.className = 'kontakt-cov-status';
+      const tema = has(s, 'læringsmål');
+      const lekse = has(s, 'lekse');
+      if (tema) {
+        const t = document.createElement('span'); t.className = 'kontakt-cov-ok'; t.textContent = '✓ tema';
+        right.appendChild(t);
+        if (!lekse) { const l = document.createElement('span'); l.className = 'kontakt-cov-warn'; l.textContent = 'mangler lekser'; right.appendChild(l); }
+      } else {
+        const m = document.createElement('span'); m.className = 'kontakt-cov-miss'; m.textContent = 'mangler tema';
+        right.appendChild(m);
+      }
+      row.appendChild(left); row.appendChild(right);
+      list.appendChild(row);
+    });
+    secC.appendChild(list);
+  }
+  pane.appendChild(secC);
+}
+
+function kontaktSection(titleText) {
+  const sec = document.createElement('section');
+  sec.className = 'kontakt-section';
+  const h = document.createElement('h3');
+  h.className = 'kontakt-section-title';
+  h.textContent = titleText;
+  sec.appendChild(h);
+  return sec;
+}
+
+// Read-only day detail for the kontaktlærer calendar (no edit/add).
+function showKontaktDayDetail(date, items) {
+  const box = document.getElementById('kontaktDayDetail');
+  if (!box) return;
+  box.innerHTML = '';
+  const iso = toISODate(date);
+  const h = document.createElement('h3');
+  h.className = 'vurd-detail-title';
+  h.textContent = formatDateLong(date);
+  box.appendChild(h);
+  const sch = schoolDays[iso];
+  if (sch) {
+    const p = document.createElement('p'); p.className = 'school-day-summary'; p.textContent = sch.summaries.join(', ');
+    box.appendChild(p);
+  }
+  if (!items.length) {
+    const p = document.createElement('p'); p.className = 'panel-empty'; p.textContent = 'Ingen vurderinger denne dagen.';
+    box.appendChild(p);
+  }
+  items.slice().sort((a, b) => (a.subject || '').localeCompare(b.subject || '', 'no')).forEach(v => {
+    const card = document.createElement('div');
+    card.className = 'assessment-card vurd-detail-card';
+    const meta = document.createElement('span'); meta.className = 'vurd-detail-meta';
+    meta.textContent = (v.classes || '') + (v.subject ? ' · ' + v.subject : '');
+    card.appendChild(meta);
+    const desc = document.createElement('p'); desc.className = 'vurd-detail-desc'; desc.textContent = v.description || v.notes || '';
+    card.appendChild(desc);
+    if (v.teacher) { const who = document.createElement('p'); who.className = 'vurd-detail-teacher'; who.textContent = 'Lagt inn av ' + v.teacher; card.appendChild(who); }
+    box.appendChild(card);
+  });
+  box.classList.add('active');
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 // ─── Oversikt tab (compare classes for a subject, this week) ──

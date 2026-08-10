@@ -587,3 +587,35 @@
 .copy-section-label:first-child { margin-top: 0; }
 .copy-kinds { display: flex; flex-wrap: wrap; gap: 6px; }
 .copy-quick { display: inline-block; margin-bottom: 8px; font-size: 13px; }
+
+/* ── Kontaktlærer tab ──────────────────────────────────────── */
+.kontakt-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+.kontakt-title { font-family: var(--font-display); font-size: 22px; font-weight: 700; color: var(--text); }
+.kontakt-switch { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-btn); overflow: hidden; }
+.kontakt-switch-btn {
+  background: var(--surface); border: none; padding: 6px 13px;
+  font-family: var(--font); font-size: 13px; font-weight: 600; color: var(--text-muted); cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.kontakt-switch-btn + .kontakt-switch-btn { border-left: 1px solid var(--border); }
+.kontakt-switch-btn.active { background: var(--primary); color: var(--on-accent); }
+.kontakt-note { font-size: 12px; color: var(--text-muted); margin-bottom: 16px; }
+.kontakt-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); padding: 16px 18px; margin-bottom: 16px; }
+.kontakt-section-title { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 10px; }
+.kontakt-line { font-size: 14px; color: var(--text); }
+.kontakt-empty { font-size: 13px; color: var(--text-muted); }
+.kontakt-staff { display: flex; flex-direction: column; margin-top: 8px; }
+.kontakt-staff-row { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-top: 1px solid var(--border); }
+.kontakt-staff-subj { font-weight: 600; color: var(--text); }
+.kontakt-staff-teacher { color: var(--text-muted); }
+.kontakt-flags { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.kontakt-flag { font-size: 13px; font-weight: 600; color: var(--vurd); }
+.kontakt-cal { margin-top: 4px; }
+.kontakt-coverage { display: flex; flex-direction: column; }
+.kontakt-cov-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; border-top: 1px solid var(--border); }
+.kontakt-cov-row:first-child { border-top: none; }
+.kontakt-cov-subj { font-size: 14px; color: var(--text); }
+.kontakt-cov-status { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.kontakt-cov-ok { font-size: 12px; font-weight: 700; color: var(--success); }
+.kontakt-cov-warn { font-size: 12px; color: var(--text-muted); }
+.kontakt-cov-miss { font-size: 12px; font-weight: 700; color: var(--vurd); }
