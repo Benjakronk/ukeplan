@@ -562,6 +562,9 @@ async function api(action, params = {}) {
     }
     throw new Error(data.error);
   }
+  // Any plan-element write makes the dashboard's week snapshot stale (inline
+  // board commits don't go through refreshAfterChange).
+  if (['create', 'update', 'delete', 'clone'].includes(action)) hjemWeek = null;
   return data;
 }
 
