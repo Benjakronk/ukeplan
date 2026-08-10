@@ -2212,16 +2212,16 @@ function renderBoard() {
   const vurdBySubject = {};
   weekVurd.forEach(v => { (vurdBySubject[v.subject || 'Annet'] = vurdBySubject[v.subject || 'Annet'] || []).push(v); });
 
-  // Board visibility – three modes. Content is never hidden: any subject with
-  // content this week always shows, whatever the mode.
+  // Board visibility – three modes. «Mine fag» / «Valgte fag» show exactly the
+  // curated set (a subject you didn't select – even one a colleague has filled
+  // for this class – only appears under «Alle fag»). Empty Mine fag → show all.
   const my = mySubjects();
   const chosen = viewSubjects();
   const mode = settings.viewMode || 'mine';
-  const hasRowContent = s => SUBJECT_TYPES.some(t => (map[s + '||' + t] || []).length) || (vurdBySubject[s] || []).length > 0;
   let base;
   if (mode === 'alle')         base = SUBJECTS.slice();
-  else if (mode === 'valgte')  base = SUBJECTS.filter(s => chosen.includes(s) || hasRowContent(s));
-  else                         base = my.length ? SUBJECTS.filter(s => my.includes(s) || hasRowContent(s)) : SUBJECTS.slice();
+  else if (mode === 'valgte')  base = SUBJECTS.filter(s => chosen.includes(s));
+  else                         base = my.length ? SUBJECTS.filter(s => my.includes(s)) : SUBJECTS.slice();
   const rows = orderedSubjects(base);
   boardVisibleRows = rows;
 
