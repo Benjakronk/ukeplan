@@ -2666,10 +2666,21 @@ async function createVariantForClass(cls) {
 }
 
 async function deleteVariantPlan(code, cls, container, kontakt) {
-  const ok = await uiConfirm(
-    'Slette den tilpassede planen ' + variantSuffix(code) + '? Alt innhold i den slettes også. Dette kan ikke angres.',
+  // Only a kontaktlærer for the class may delete (server-enforced via isKontakt;
+  // the button is hidden for others – this guard is belt-and-suspenders).
+  if (!kontakt) { await uiAlert('Bare kontaktlæreren for klassen kan slette en tilpasset plan.'); return; }
+  const label = variantLabels()[code];
+  const who = label ? '«' + label + '» (' + variantSuffix(code) + ')' : variantSuffix(code);
+  const ok1 = await uiConfirm(
+    'Slette den tilpassede planen ' + who + '? Alt innhold i den slettes også. Dette kan ikke angres.',
     { title: 'Slett tilpasset plan', okText: 'Slett', danger: true });
-  if (!ok) return;
+  if (!ok1) return;
+  // Second, deliberate confirmation – deleting a pupil's plan is irreversible.
+  const ok2 = await uiConfirm(
+    'Helt sikker? Planen' + (label ? ' for «' + label + '»' : ' ' + variantSuffix(code)) +
+    ' og alt innholdet slettes permanent. Kontroller at det er riktig elev.',
+    { title: 'Bekreft sletting', okText: 'Slett for godt', danger: true });
+  if (!ok2) return;
   const r = await api('variant_delete', { code });
   if (r && r.error) { await uiAlert(translateError(r.error)); return; }
   if (variantCode === code) { pickClass(cls); return; }   // was editing it → back to the regular plan
