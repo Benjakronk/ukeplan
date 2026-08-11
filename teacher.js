@@ -255,7 +255,7 @@ function migrateSettings(s) {
   if (!Array.isArray(s.pinnedClasses)) s.pinnedClasses = [];
   if (!Array.isArray(s.pinnedSubjects)) s.pinnedSubjects = [];
   if (typeof s.onboardedAt !== 'string') s.onboardedAt = '';
-  if (!['hjem', 'ukeplan', 'last'].includes(s.landing)) s.landing = 'hjem';   // startside
+  if (!['hjem', 'ukeplan', 'last'].includes(s.landing)) s.landing = 'last';   // startside (default: continue where you were)
   return s;
 }
 // The teacher's preferred board order (persisted). Subjects not listed fall back
@@ -476,7 +476,7 @@ function enterDashboard(profile) {
   }
   // Startside preference decides where to land: a fixed tab, or 'last' = wherever
   // they were (up_teacher_tab). Guarded so it never lands on an unusable tab.
-  const landing = settings.landing || 'hjem';
+  const landing = settings.landing || 'last';
   let tab = 'hjem';
   if (landing === 'ukeplan') tab = 'ukeplan';
   else if (landing === 'last') {
@@ -578,7 +578,7 @@ function profilePreferences() {
     pinnedClasses:   Array.isArray(settings.pinnedClasses) ? settings.pinnedClasses : [],
     pinnedSubjects:  Array.isArray(settings.pinnedSubjects) ? settings.pinnedSubjects : [],
     onboardedAt:     settings.onboardedAt || '',
-    landing:         settings.landing || 'hjem',
+    landing:         settings.landing || 'last',
     theme:           window.UPTheme ? UPTheme.get() : 'auto',
     lastClass:       (!variantCode && selectedClass) || '',
   };
@@ -1027,7 +1027,7 @@ function syncThemeSeg() {
 }
 // Reflect the Startside preference on its segmented control.
 function syncLandingSeg() {
-  const pref = ['hjem', 'ukeplan', 'last'].includes(settings.landing) ? settings.landing : 'hjem';
+  const pref = ['hjem', 'ukeplan', 'last'].includes(settings.landing) ? settings.landing : 'last';
   document.querySelectorAll('#teacherLandingSeg .theme-seg-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.landing === pref);
   });
