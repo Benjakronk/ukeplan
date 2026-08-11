@@ -615,13 +615,10 @@ body.scroll-locked { overflow: hidden; }
 .dash-deck-arrow {
   width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface);
   color: var(--text); font-size: 18px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center;
-  transition: border-color var(--transition), color var(--transition);
+  transition: border-color var(--transition), color var(--transition); flex: none;
 }
 .dash-deck-arrow:hover { border-color: var(--primary); color: var(--primary); }
-.dash-deck-dots { display: flex; gap: 6px; align-items: center; }
-.dash-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--surface-2); transition: transform var(--transition), background var(--transition); }
-.dash-dot.active { background: var(--primary); transform: scale(1.35); }
-.dash-deck-counter { font-size: 13px; font-weight: 600; color: var(--text-muted); min-width: 46px; text-align: center; }
+.dash-deck-counter { font-size: 13px; font-weight: 600; color: var(--text-muted); min-width: 54px; text-align: center; font-variant-numeric: tabular-nums; }
 
 .dash-deck-allclear {
   display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 700; color: var(--success);

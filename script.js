@@ -1071,7 +1071,8 @@ function buildLekseCard(el) {
   return card;
 }
 
-// Cycle controls: ‹ › with dots (≤6 remaining) or an "n / m" counter.
+// Cycle controls: static ‹ › with a fixed "n / m" counter between (no per-task
+// dots – those would change count and drift the arrows as tasks are completed).
 function buildDeckNav(count) {
   const nav = document.createElement('div'); nav.className = 'dash-deck-nav';
   const mk = (txt, label, delta) => {
@@ -1082,14 +1083,8 @@ function buildDeckNav(count) {
     return b;
   };
   nav.appendChild(mk('‹', 'Forrige lekse', -1));
-  if (count <= 6) {
-    const dots = document.createElement('div'); dots.className = 'dash-deck-dots';
-    for (let i = 0; i < count; i++) { const s = document.createElement('span'); s.className = 'dash-dot' + (i === dashLekseIdx ? ' active' : ''); dots.appendChild(s); }
-    nav.appendChild(dots);
-  } else {
-    const c = document.createElement('span'); c.className = 'dash-deck-counter'; c.textContent = (dashLekseIdx + 1) + ' / ' + count;
-    nav.appendChild(c);
-  }
+  const c = document.createElement('span'); c.className = 'dash-deck-counter'; c.textContent = (dashLekseIdx + 1) + ' / ' + count;
+  nav.appendChild(c);
   nav.appendChild(mk('›', 'Neste lekse', 1));
   return nav;
 }
