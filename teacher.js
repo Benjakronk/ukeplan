@@ -2646,7 +2646,7 @@ function render() {
   if (!selectedClass) return;
   if (deferIfEditing()) return;
   renderDeferred = false;
-  if (teacherTab === 'ukeplan') { renderEventsSection(); renderGeneral(); renderBoard(); }
+  if (teacherTab === 'ukeplan') { renderGeneral(); renderBoard(); }
   else if (teacherTab === 'vurd') renderVurd();
   else if (teacherTab === 'oversikt') renderOversiktActive();
 }
@@ -2658,14 +2658,6 @@ function renderOversiktActive() {
 
 // Class-wide elements (beskjeder etc.) as editable cards.
 // Upcoming events for the viewed class, at the top of the Ukeplan tab.
-function renderEventsSection() {
-  const sec = document.getElementById('eventsSection');
-  if (!sec) return;
-  sec.innerHTML = '';
-  const panel = buildUpcomingEvents(h => hendMatchesClass(h, selectedClass), { title: 'Hendelser', clickable: true });
-  if (panel) sec.appendChild(panel);
-}
-
 function renderGeneral() {
   const section = document.getElementById('generalSection');
   section.innerHTML = '';
@@ -2676,6 +2668,11 @@ function renderGeneral() {
   head.className = 'general-head';
   head.textContent = 'Beskjeder og praktisk info';
   section.appendChild(head);
+
+  // Upcoming calendar events (hendelser) live inside this section – shown even
+  // when there are no beskjeder this week.
+  const events = buildUpcomingEvents(h => hendMatchesClass(h, selectedClass), { title: 'Hendelser', clickable: true });
+  if (events) section.appendChild(events);
 
   if (general.length === 0) {
     const empty = document.createElement('p');

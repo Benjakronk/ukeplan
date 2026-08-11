@@ -1509,13 +1509,9 @@ function buildDayDetail(i, weekVurd) {
   const sch = schoolDays[iso];
   if (sch) wrap.appendChild(buildSchoolDayCard(sch));
 
-  // Calendar events this day (idrettsdag, leirskole …) – shown up top.
+  // Calendar events this day (idrettsdag, leirskole …) – folded into the
+  // "Beskjeder og praktisk" section below.
   const dayEvents = eventsOnDate(iso);
-  if (dayEvents.length) {
-    const sec = daySection('Hendelser');
-    dayEvents.forEach(ev => sec.appendChild(buildEventCard(ev)));
-    wrap.appendChild(sec);
-  }
 
   // Vurderinger that day
   const dayVurd = weekVurd.filter(v => v.day === dayKey);
@@ -1556,13 +1552,22 @@ function buildDayDetail(i, weekVurd) {
   // Don't repeat an item that's already shown as today's (multi-day elements).
   preview = preview.filter(p => !p.id || !shownIds.has(p.id));
 
-  // This day's own beskjeder in the normal section; next-school-day items in a
-  // muted, clearly-separated "Til i morgen" block so they don't read as today's.
+  // One "Beskjeder og praktisk" section holding this day's calendar events
+  // (idrettsdag …) up top, then the day's own beskjeder, then next-school-day
+  // items in a muted, clearly-separated "Til i morgen" block.
   let sec = null;
-  const gsToday = buildGeneralSection(dayGeneral);
-  if (gsToday) { sec = daySection('Beskjeder og praktisk'); sec.appendChild(gsToday); wrap.appendChild(sec); }
-  if (preview.length) {
+  const ensureBeskjedSec = () => {
     if (!sec) { sec = daySection('Beskjeder og praktisk'); wrap.appendChild(sec); }
+    return sec;
+  };
+  if (dayEvents.length) {
+    ensureBeskjedSec();
+    dayEvents.forEach(ev => sec.appendChild(buildEventCard(ev)));
+  }
+  const gsToday = buildGeneralSection(dayGeneral);
+  if (gsToday) { ensureBeskjedSec(); sec.appendChild(gsToday); }
+  if (preview.length) {
+    ensureBeskjedSec();
     const box = document.createElement('div');
     box.className = 'day-heads-up';
     const lab = document.createElement('div');
