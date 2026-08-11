@@ -813,6 +813,8 @@ function renderDashboard() {
 
   const bstep = buildBeskjedStepper();
   if (bstep) view.appendChild(bstep);
+  const barch = buildBeskjedArchive();
+  if (barch) view.appendChild(barch);
   view.appendChild(buildLekseDeck());
   const vwrap = buildDashVurd();
   if (vwrap) view.appendChild(vwrap);
@@ -884,6 +886,36 @@ function buildBeskjedStepper() {
   actions.appendChild(ok);
   card.appendChild(actions);
   return card;
+}
+
+// Beskjeder dismissed this week, tucked into a collapsible so they can be found
+// – or un-dismissed – again (mirrors the "✓ N gjort" lekse drawer).
+function buildBeskjedArchive() {
+  const acked = readJSON(ACK_BESKJED_KEY);
+  const dismissed = weekBeskjeder().filter(p => acked[beskjedKey(p)]);
+  if (!dismissed.length) return null;
+  const det = document.createElement('details'); det.className = 'dash-beskjed-archive';
+  const sum = document.createElement('summary'); sum.className = 'dash-archive-sum';
+  sum.textContent = 'Tidligere beskjeder (' + dismissed.length + ')';
+  det.appendChild(sum);
+  dismissed.forEach(el => {
+    const row = document.createElement('div'); row.className = 'dash-archive-item';
+    const icon = document.createElement('span'); icon.className = 'dash-archive-icon';
+    icon.textContent = GENERAL_ICON[el.type] || '📌';
+    const body = document.createElement('div'); body.className = 'dash-archive-body rich-content';
+    body.innerHTML = generalPrefix(el) + sanitizeHtml(el.description);
+    const undo = document.createElement('button');
+    undo.type = 'button'; undo.className = 'link-btn dash-archive-undo';
+    undo.textContent = 'Vis igjen';
+    undo.title = 'Flytt beskjeden tilbake øverst';
+    undo.addEventListener('click', () => {
+      const a = readJSON(ACK_BESKJED_KEY); delete a[beskjedKey(el)]; writeJSON(ACK_BESKJED_KEY, a);
+      dashBeskjedIdx = 0; renderDashboard();
+    });
+    row.appendChild(icon); row.appendChild(body); row.appendChild(undo);
+    det.appendChild(row);
+  });
+  return det;
 }
 
 // The lekse deck: one remaining task at a time with a progress ring, cycle it

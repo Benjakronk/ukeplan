@@ -563,6 +563,17 @@ body.scroll-locked { overflow: hidden; }
 .dash-beskjed-count { font-size: 12px; font-weight: 700; color: var(--text-muted); }
 .dash-beskjed-body { font-size: 15px; line-height: 1.5; color: var(--text); }
 .dash-beskjed-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 2px; }
+/* Dismissed-beskjeder archive (collapsible) */
+.dash-beskjed-archive { border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface); padding: 10px 14px; }
+.dash-archive-sum { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-muted); list-style: none; }
+.dash-archive-sum::-webkit-details-marker { display: none; }
+.dash-archive-sum::before { content: '▸ '; }
+.dash-beskjed-archive[open] .dash-archive-sum::before { content: '▾ '; }
+.dash-beskjed-archive[open] .dash-archive-sum { margin-bottom: 8px; }
+.dash-archive-item { display: flex; align-items: baseline; gap: 8px; padding: 7px 0; border-top: 1px solid var(--border); }
+.dash-archive-icon { flex: none; }
+.dash-archive-body { flex: 1; font-size: 14px; line-height: 1.45; color: var(--text); }
+.dash-archive-undo { flex: none; font-size: 12px; }
 /* Progress meter */
 .dash-progress { display: flex; flex-direction: column; gap: 6px; }
 .dash-progress-label { font-size: 14px; font-weight: 600; color: var(--text); }
