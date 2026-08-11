@@ -3068,17 +3068,13 @@ function buildAdaptToggle(subject) {
 }
 
 async function toggleAdaptSubject(subject, on) {
-  // Switching a subject back to «Følger klassen» hides its tilpasset content
-  // (kept dormant server-side – restored if switched back). If there IS content,
-  // warn first so it isn't hidden by an accidental click.
-  if (!on) {
-    const hasOwn = planData.some(p => classMatches(p.classes, variantCode) &&
-      SUBJECT_TYPES.includes(p.type) && p.description && p.subject === subject);
-    if (hasOwn && !await uiConfirm(
-      '«' + subject + '» har eget tilpasset innhold. Bytter du til «Følger klassen» skjules det tilpassede innholdet (for alle uker). Det slettes ikke – du får det tilbake ved å bytte til «Tilpasset» igjen. Fortsette?',
-      { title: 'Bytt til «Følger klassen»?', okText: 'Bytt', danger: true })) {
-      return;   // cancelled – nothing changed, board already shows «Tilpasset»
-    }
+  // Switching a subject back to «Følger klassen» hides any tilpasset content in
+  // it (kept dormant server-side – restored if switched back). Always confirm,
+  // since content may exist in weeks other than the one on screen.
+  if (!on && !await uiConfirm(
+    'Bytte «' + subject + '» til «Følger klassen»? Eventuelt tilpasset innhold i faget skjules (for alle uker). Det slettes ikke – du får det tilbake ved å bytte til «Tilpasset» igjen.',
+    { title: 'Bytt til «Følger klassen»?', okText: 'Bytt' })) {
+    return;   // cancelled – nothing changed, board already shows «Tilpasset»
   }
   const next = variantAdapted.filter(s => s !== subject);
   if (on) next.push(subject);
