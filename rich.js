@@ -429,3 +429,82 @@ function createRichField(opts) {
   }
   window.UPTheme = { get, set, effective, cycle };
 })();
+
+// ─── UPJourney: the onboarding "journey" progress bar ──────────────────────────
+// A self-contained isometric SVG progress bar (zig-zag coin nodes with a raised
+// underside, a flagged destination node, and a gliding map-pin marker with a
+// victory hop). Shared by the teacher + student onboarding wizards; driven purely
+// by a node set + a (filled, pointer) pair, no page-specific coupling.
+//   build(container, nodes)   nodes = an [[x,y],…] array OR an integer node count
+//                             (evenly-spaced zig-zag is computed). Stashes the
+//                             coords on the container for update().
+//   update(container, filled, pointer)   1-based: colour up to `filled`, park the
+//                             pin above node `pointer`.
+//   victory(container)        replay the pin's little hop (on the final step).
+(function () {
+  function computeNodes(n) {
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const x = n <= 1 ? 160 : Math.round((18 + i * (280 / (n - 1))) * 10) / 10;
+      out.push([x, i % 2 ? 16 : 32]);
+    }
+    return out;
+  }
+  function build(container, nodesOrCount) {
+    if (!container) return;
+    const nodes = Array.isArray(nodesOrCount) ? nodesOrCount : computeNodes(nodesOrCount);
+    container._journeyNodes = nodes;
+    container.hidden = false;
+    let segs = '', ns = '';
+    for (let j = 0; j < nodes.length - 1; j++) {
+      const [ax, ay] = nodes[j], [bx, by] = nodes[j + 1];
+      segs += `<g class="oseg" data-j="${j}">`
+        + `<line class="oseg-base" x1="${ax}" y1="${ay + 3}" x2="${bx}" y2="${by + 3}"/>`
+        + `<line class="oseg-face" x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}"/></g>`;
+    }
+    nodes.forEach(([x, y], i) => {
+      const goal = i === nodes.length - 1;
+      const rx = goal ? 8.5 : 6, ry = goal ? 7 : 5;
+      let g = `<g class="onode${goal ? ' onode-goal' : ''}" data-i="${i}">`
+        + `<ellipse class="onode-base" cx="${x}" cy="${y + 3}" rx="${rx}" ry="${ry}"/>`
+        + `<ellipse class="onode-face" cx="${x}" cy="${y}" rx="${rx}" ry="${ry}"/>`;
+      if (goal) {   // a little flag marks the destination
+        g += `<line class="onode-flagpole" x1="${x}" y1="${y - 1}" x2="${x}" y2="${y - 13}"/>`
+          + `<path class="onode-flag" d="M ${x} ${y - 13} l 7 2.3 l -7 2.3 z"/>`;
+      } else {
+        g += `<ellipse class="onode-hi" cx="${x - 1.7}" cy="${y - 1.6}" rx="1.9" ry="1.4"/>`;
+      }
+      ns += g + '</g>';
+    });
+    const pin = '<g class="opointer"><g class="opointer-bob">'
+      + '<path class="opointer-body" d="M0 0 C -3 -5 -6 -7.5 -6 -11 A 6 6 0 1 1 6 -11 C 6 -7.5 3 -5 0 0 Z"/>'
+      + '<circle class="opointer-hole" cx="0" cy="-11" r="2.4"/></g></g>';
+    container.innerHTML = `<svg class="onboard-journey" viewBox="0 -14 320 58" role="img" aria-label="Fremdrift i oppsett">${segs}${ns}${pin}</svg>`;
+  }
+  function update(container, filled, pointerNode) {
+    if (!container) return;
+    const nodes = container._journeyNodes || [];
+    container.querySelectorAll('.onode').forEach(c => {
+      const n = +c.dataset.i + 1;
+      c.classList.toggle('done', n <= filled);
+      c.classList.toggle('current', n === pointerNode && n > filled);
+    });
+    // Colour a segment when both ends are done, or when it's the leg into the pin.
+    container.querySelectorAll('.oseg').forEach(s => {
+      const far = +s.dataset.j + 2;
+      s.classList.toggle('done', far <= filled || far === pointerNode);
+    });
+    const p = container.querySelector('.opointer');
+    const node = nodes[pointerNode - 1];
+    if (p && node) p.style.transform = `translate(${node[0]}px, ${node[1] - 10}px)`;
+  }
+  function victory(container) {
+    const bob = container && container.querySelector('.opointer-bob');
+    if (!bob) return;
+    bob.classList.remove('opointer-victory');
+    void bob.offsetWidth;
+    bob.classList.add('opointer-victory');
+    bob.addEventListener('animationend', () => bob.classList.remove('opointer-victory'), { once: true });
+  }
+  window.UPJourney = { build, update, victory };
+})();

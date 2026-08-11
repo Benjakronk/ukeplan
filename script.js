@@ -15,6 +15,8 @@ const DONE_KEY       = 'up_done';            // { elementId: true } – locally 
 const ALL_CACHE_KEY  = 'up_all';             // all plan elements (for fag-progresjon)
 const ALL_TS_KEY     = 'up_all_ts';
 const VARIANT_KEY    = 'up_variant';         // personal/adapted-plan code, e.g. "8A-K7X9M"
+const NAME_KEY       = 'up_name';            // student display name (personalization)
+const ONBOARDED_KEY  = 'up_onboarded';       // '1' once the first-run wizard is finished
 const CACHE_TTL      = 60 * 60 * 1000;       // 1 hour
 
 const SCHOOL_CAL_URL    = 'https://sspkalender.prokom.no/api/iCalTidspunkt/?Kunde=nesakskoleruta&Id=0&Categories=438,439';
@@ -83,8 +85,10 @@ let ukeplanView      = 'uke';      // 'uke' | 'dag'
 let selectedDayIndex = 0;          // 0..4 (Mon..Fri), for the day view
 let allPlanData      = [];         // all plan elements (fag-progresjon)
 let electives        = null;       // chosen elective subjects (null = not chosen yet → show all)
-let modalClass       = null;       // class tentatively picked in the class modal
-let modalElectives   = [];         // electives tentatively picked in the class modal
+let studentName      = localStorage.getItem(NAME_KEY) || '';   // display name (personalization)
+let modalClass       = null;       // class tentatively picked in the profile/onboarding
+let modalElectives   = [];         // electives tentatively picked in the profile/onboarding
+let modalName        = '';         // name tentatively typed in the profile/onboarding
 let fagFrom          = null;       // week range filter for the Fag tab
 let fagTo            = null;
 let calStart         = null;       // date range for the Vurderingskalender tab
@@ -118,7 +122,10 @@ async function init() {
 
   if (!selectedClass) {
     hideOverlay();
-    showClassModal();
+    // A brand-new visitor gets the guided onboarding; a returning one who somehow
+    // cleared their class just gets the profile modal to re-pick.
+    if (!localStorage.getItem(ONBOARDED_KEY)) showStudentOnboarding();
+    else showClassModal();
     return;
   }
   await loadWeek();
@@ -137,24 +144,28 @@ function setupListeners() {
     loadAssessments({ skipCache: true });
   });
 
-  // Theme toggle (footer): cycles Auto → Lyst → Mørkt, saved per device.
-  const themeBtn = document.getElementById('themeToggle');
-  if (themeBtn && window.UPTheme) {
-    const ICON  = { auto: '🖥️', light: '☀', dark: '☾' };
-    const LABEL = { auto: 'Tema: Auto', light: 'Tema: Lyst', dark: 'Tema: Mørkt' };
-    const syncThemeBtn = () => {
-      const p = UPTheme.get();
-      themeBtn.querySelector('.theme-toggle-icon').textContent = ICON[p];
-      themeBtn.querySelector('.theme-toggle-label').textContent = LABEL[p];
-    };
-    themeBtn.addEventListener('click', () => { UPTheme.cycle(); syncThemeBtn(); });
-    syncThemeBtn();
+  // Theme lives in the profile modal now (segmented Auto/Lyst/Mørkt, live).
+  const themeSeg = document.getElementById('studentThemeSeg');
+  if (themeSeg && window.UPTheme) {
+    themeSeg.addEventListener('click', e => {
+      const btn = e.target.closest('.theme-seg-btn'); if (!btn) return;
+      UPTheme.set(btn.dataset.themePref);
+      syncThemeSeg(themeSeg);
+    });
   }
 
+  // Profile modal (name · class · valgfag · tema) – opened by the class pill AND
+  // the Profil button; the wizard reruns from inside it.
   document.getElementById('classBtn').addEventListener('click', showClassModal);
+  document.getElementById('profileBtn').addEventListener('click', showClassModal);
   document.getElementById('classModalClose').addEventListener('click', () => closeClassModal());
   document.getElementById('classModalOverlay').addEventListener('click', () => closeClassModal());
   document.getElementById('classConfirm').addEventListener('click', confirmClassModal);
+  document.getElementById('rerunOnboardBtn').addEventListener('click', () => { closeClassModal(); showStudentOnboarding(); });
+
+  // Onboarding wizard nav.
+  document.getElementById('sOnboardNext').addEventListener('click', sNext);
+  document.getElementById('sOnboardBack').addEventListener('click', sBack);
 
   document.getElementById('tabUkeplan').addEventListener('click', () => setTab('ukeplan'));
   document.getElementById('tabFag').addEventListener('click', () => setTab('fag'));
@@ -171,19 +182,22 @@ function setupListeners() {
   document.getElementById('fagTo').addEventListener('change', e => { fagTo = e.target.value; renderFag(); });
 
   document.addEventListener('keydown', e => {
+    const classOpen   = document.getElementById('classModal').classList.contains('open');
+    const onboardOpen = document.getElementById('sOnboardModal').classList.contains('open');
     if (e.key === 'Escape') {
-      if (document.getElementById('classModal').classList.contains('open')) closeClassModal();
+      if (classOpen) closeClassModal();
+      else if (onboardOpen) closeStudentOnboarding();
       return;
     }
     if (e.key === 'Tab') {
-      const modal = document.getElementById('classModal');
-      if (modal.classList.contains('open')) trapFocus(modal, e);
+      if (classOpen) trapFocus(document.getElementById('classModal'), e);
+      else if (onboardOpen) trapFocus(document.getElementById('sOnboardModal'), e);
     }
     // Week navigation with arrow keys (only in the Ukeplan tab, no modal/dialog
     // open, and not while typing in a field).
     const ae = document.activeElement;
     const typing = ae && (ae.isContentEditable || /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName));
-    if (!document.getElementById('classModal').classList.contains('open') &&
+    if (!classOpen && !onboardOpen &&
         !document.querySelector('.ui-dialog') && !typing &&
         selectedClass && currentTab === 'ukeplan') {
       if (e.key === 'ArrowLeft')  changeWeek(-1);
@@ -397,11 +411,9 @@ function populateFagSubjects() {
   if ([...sel.options].some(o => o.value === current)) sel.value = current;
 }
 
-function showClassModal() {
-  modalClass = selectedClass;
-  modalElectives = electives ? electives.slice() : [];
-
-  const grid = document.getElementById('classModalGrid');
+// Grade-grouped single-select class grid, bound to `modalClass`; `onPick` fires
+// after a selection. Shared by the profile modal + the onboarding class step.
+function buildClassGridInto(grid, onPick) {
   grid.innerHTML = '';
   CLASS_GRADES.forEach(group => {
     const wrap = document.createElement('div');
@@ -412,36 +424,51 @@ function showClassModal() {
     wrap.appendChild(lbl);
     group.classes.forEach(cls => {
       const btn = document.createElement('button');
-      btn.type        = 'button';
-      btn.className   = 'class-modal-btn';
+      btn.type = 'button';
+      btn.className = 'class-modal-btn' + (cls === modalClass ? ' active' : '');
       btn.textContent = cls;
-      if (cls === modalClass) btn.classList.add('active');
       btn.addEventListener('click', () => {
         modalClass = cls;
         grid.querySelectorAll('.class-modal-btn').forEach(b => b.classList.toggle('active', b === btn));
-        document.getElementById('variantError').hidden = true;
-        updateClassConfirm();
+        if (onPick) onPick();
       });
       wrap.appendChild(btn);
     });
     grid.appendChild(wrap);
   });
-
-  const eg = document.getElementById('electiveGrid');
-  eg.innerHTML = '';
+}
+// Multi-select elective grid toggling into `modalElectives`. Shared too.
+function buildElectiveGridInto(grid) {
+  grid.innerHTML = '';
   ELECTIVE_SUBJECTS.forEach(sub => {
     const btn = document.createElement('button');
-    btn.type        = 'button';
-    btn.className   = 'class-modal-btn';
+    btn.type = 'button';
+    btn.className = 'class-modal-btn' + (modalElectives.includes(sub) ? ' active' : '');
     btn.textContent = sub;
-    if (modalElectives.includes(sub)) btn.classList.add('active');
     btn.addEventListener('click', () => {
       if (modalElectives.includes(sub)) modalElectives = modalElectives.filter(s => s !== sub);
       else modalElectives.push(sub);
       btn.classList.toggle('active');
     });
-    eg.appendChild(btn);
+    grid.appendChild(btn);
   });
+}
+// Reflect the current theme on a segmented Auto/Lyst/Mørkt control.
+function syncThemeSeg(container) {
+  if (!container || !window.UPTheme) return;
+  const p = UPTheme.get();
+  container.querySelectorAll('.theme-seg-btn').forEach(b => b.classList.toggle('active', b.dataset.themePref === p));
+}
+
+// The profile/settings modal (name · class · valgfag · tema). Opened by the class
+// pill + the Profil button; the class modal's markup is reused for it.
+function showClassModal() {
+  modalClass = selectedClass;
+  modalElectives = electives ? electives.slice() : [];
+  document.getElementById('studentName').value = studentName;
+  buildClassGridInto(document.getElementById('classModalGrid'),
+    () => { document.getElementById('variantError').hidden = true; updateClassConfirm(); });
+  buildElectiveGridInto(document.getElementById('electiveGrid'));
 
   const vInput = document.getElementById('variantInput');
   vInput.value = variantSuffix(variantCode);
@@ -449,12 +476,13 @@ function showClassModal() {
   document.querySelector('.variant-box').open = !!variantCode;
   vInput.oninput = () => { document.getElementById('variantError').hidden = true; };
 
+  syncThemeSeg(document.getElementById('studentThemeSeg'));
   updateClassConfirm();
   rememberFocus();
   document.getElementById('classModalOverlay').classList.add('open');
   document.getElementById('classModal').classList.add('open');
   document.body.classList.add('scroll-locked');
-  setTimeout(() => grid.querySelector('.class-modal-btn.active, .class-modal-btn')?.focus(), 60);
+  setTimeout(() => document.getElementById('studentName').focus(), 60);
 }
 
 function updateClassConfirm() {
@@ -484,6 +512,8 @@ function confirmClassModal() {
   localStorage.setItem(CLASS_KEY, selectedClass);
   electives = modalElectives.slice();
   localStorage.setItem(ELECTIVE_KEY, JSON.stringify(electives));
+  studentName = document.getElementById('studentName').value.trim();
+  if (studentName) localStorage.setItem(NAME_KEY, studentName); else localStorage.removeItem(NAME_KEY);
   planData = [];           // drop any previous plan so the new one is fetched fresh
   previewWeekKey = null;
   updateClassLabel();
@@ -498,6 +528,107 @@ function closeClassModal() {
   document.body.classList.remove('scroll-locked');
   restoreFocus();
 }
+
+// ─── First-run onboarding wizard (velkommen · navn · klasse · valgfag · mål) ───
+// Mirrors the teacher journey (shared UPJourney bar + slide anim); localStorage
+// only. Tentative choices live in modalClass/modalElectives/modalName until the
+// finish step commits them (same keys the profile modal writes).
+let sStep = 0, sDir = 'next';
+const S_NODES = 5;
+const S_PROGRESS = { 0: [1, 1], 1: [1, 2], 2: [2, 3], 3: [3, 4], 4: [5, 5] };
+function sPara(cls, text) { const p = document.createElement('p'); p.className = cls; p.textContent = text; return p; }
+
+function showStudentOnboarding() {
+  sStep = 0; sDir = 'next';
+  modalClass = selectedClass || null;
+  modalElectives = electives ? electives.slice() : [];
+  modalName = studentName || '';
+  UPJourney.build(document.getElementById('sOnboardProgress'), S_NODES);
+  rememberFocus();
+  document.getElementById('sOnboardOverlay').classList.add('open');
+  document.getElementById('sOnboardModal').classList.add('open');
+  document.body.classList.add('scroll-locked');
+  renderSStep();
+}
+function renderSStep() {
+  const title = document.getElementById('sOnboardTitle');
+  const body  = document.getElementById('sOnboardBody');
+  const back  = document.getElementById('sOnboardBack');
+  const next  = document.getElementById('sOnboardNext');
+  body.innerHTML = '';
+  back.disabled = sStep === 0;
+  next.textContent = 'Neste';
+  next.disabled = false;
+  UPJourney.update(document.getElementById('sOnboardProgress'), S_PROGRESS[sStep][0], S_PROGRESS[sStep][1]);
+
+  if (sStep === 0) {
+    title.textContent = 'Velkommen til Ukeportalen!';
+    body.appendChild(sPara('onboard-lead', 'Her ser du ukeplanen for klassen din – tema, lekser og vurderinger. Vi setter opp profilen din på noen få steg.'));
+  } else if (sStep === 1) {
+    title.textContent = 'Hva heter du?';
+    body.appendChild(sPara('class-modal-hint', 'Navnet vises bare på din egen enhet – det sendes ingen steder. Du kan hoppe over.'));
+    const inp = document.createElement('input');
+    inp.type = 'text'; inp.className = 'input'; inp.placeholder = 'Navnet ditt'; inp.value = modalName;
+    inp.addEventListener('input', () => { modalName = inp.value; });
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') sNext(); });
+    body.appendChild(inp);
+    setTimeout(() => inp.focus(), 80);
+  } else if (sStep === 2) {
+    title.textContent = 'Hvilken klasse går du i?';
+    const grid = document.createElement('div'); grid.className = 'class-modal-grid';
+    body.appendChild(grid);
+    buildClassGridInto(grid, () => { next.disabled = !modalClass; });
+    next.disabled = !modalClass;   // class is required to continue
+  } else if (sStep === 3) {
+    title.textContent = 'Har du valgfag eller tilvalgsfag?';
+    body.appendChild(sPara('class-modal-hint', 'Huk av fagene du har, så viser vi bare dine. Hopp over hvis du ikke har noen.'));
+    const grid = document.createElement('div'); grid.className = 'class-modal-grid elective-grid';
+    body.appendChild(grid);
+    buildElectiveGridInto(grid);
+  } else if (sStep === 4) {
+    title.textContent = 'Alt klart!';
+    const nm = (modalName || '').trim();
+    body.appendChild(sPara('onboard-lead onboard-celebrate', '🎉 Klar' + (nm ? ', ' + nm : '') + '! Ukeplanen din er satt opp.'));
+    next.textContent = 'Åpne ukeplanen';
+    playSVictory();
+  }
+  playSEnter();
+}
+function sNext() {
+  if (sStep >= 4) { completeStudentOnboarding(); return; }
+  if (sStep === 2 && !modalClass) return;   // class required
+  sDir = 'next'; sStep++; renderSStep();
+}
+function sBack() { if (sStep === 0) return; sDir = 'back'; sStep--; renderSStep(); }
+function completeStudentOnboarding() {
+  studentName = (modalName || '').trim();
+  if (studentName) localStorage.setItem(NAME_KEY, studentName); else localStorage.removeItem(NAME_KEY);
+  localStorage.setItem(ONBOARDED_KEY, '1');
+  selectedClass = modalClass;
+  variantCode = null; localStorage.removeItem(VARIANT_KEY);   // codes are entered later via the profile
+  localStorage.setItem(CLASS_KEY, selectedClass);
+  electives = modalElectives.slice();
+  localStorage.setItem(ELECTIVE_KEY, JSON.stringify(electives));
+  planData = []; previewWeekKey = null;
+  updateClassLabel();
+  populateFagSubjects();
+  closeStudentOnboarding();
+  loadWeek();
+}
+function closeStudentOnboarding() {
+  document.getElementById('sOnboardOverlay').classList.remove('open');
+  document.getElementById('sOnboardModal').classList.remove('open');
+  document.body.classList.remove('scroll-locked');
+  restoreFocus();
+}
+function playSEnter() {
+  const b = document.getElementById('sOnboardBody');
+  b.style.setProperty('--enter-x', sDir === 'back' ? '-22px' : '22px');
+  b.classList.remove('onboard-anim');
+  void b.offsetWidth;             // reflow so the animation replays each step
+  b.classList.add('onboard-anim');
+}
+function playSVictory() { UPJourney.victory(document.getElementById('sOnboardProgress')); }
 
 // ─── Rendering ────────────────────────────────────────────────
 

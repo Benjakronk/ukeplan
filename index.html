@@ -30,14 +30,18 @@
     </div>
   </div>
 
-  <!-- Class selection modal (single choice) -->
+  <!-- Student profile / settings modal (name · class · valgfag · tema) -->
   <div id="classModalOverlay" class="class-modal-overlay"></div>
   <div id="classModal" class="class-modal" role="dialog" aria-modal="true" aria-labelledby="classModalTitle">
     <div class="class-modal-header">
-      <h2 id="classModalTitle" class="class-modal-title">Velg klassen din</h2>
+      <h2 id="classModalTitle" class="class-modal-title">Din profil</h2>
       <button id="classModalClose" class="panel-close" aria-label="Lukk">&times;</button>
     </div>
-    <p class="class-modal-hint">Velg klassen du går i. Du kan bytte senere.</p>
+
+    <label class="class-modal-hint" for="studentName">Navnet ditt</label>
+    <input type="text" id="studentName" class="input" placeholder="Navnet ditt" autocomplete="off">
+
+    <p class="class-modal-hint" style="margin-top:16px">Klassen du går i:</p>
     <div id="classModalGrid" class="class-modal-grid"></div>
 
     <p class="class-modal-hint" style="margin-top:16px">Valgfag og tilvalgsfag du har (huk av):</p>
@@ -50,8 +54,30 @@
       <p id="variantError" class="variant-error" hidden></p>
     </details>
 
+    <p class="class-modal-hint" style="margin-top:16px">Fargetema</p>
+    <div id="studentThemeSeg" class="theme-seg" role="group" aria-label="Fargetema">
+      <button type="button" class="theme-seg-btn" data-theme-pref="auto">Auto</button>
+      <button type="button" class="theme-seg-btn" data-theme-pref="light">Lyst</button>
+      <button type="button" class="theme-seg-btn" data-theme-pref="dark">Mørkt</button>
+    </div>
+
+    <p style="margin-top:16px"><button type="button" id="rerunOnboardBtn" class="link-btn">Kjør introduksjonen på nytt</button></p>
+
     <div class="class-modal-actions">
-      <button id="classConfirm" class="btn btn-primary" disabled>Bekreft</button>
+      <button id="classConfirm" class="btn btn-primary" disabled>Lagre</button>
+    </div>
+  </div>
+
+  <!-- First-run onboarding wizard: velkommen · navn · klasse · valgfag · mål -->
+  <div id="sOnboardOverlay" class="class-modal-overlay"></div>
+  <div id="sOnboardModal" class="class-modal onboard-modal" role="dialog" aria-modal="true" aria-labelledby="sOnboardTitle">
+    <div id="sOnboardProgress" class="onboard-progress"></div>
+    <h2 id="sOnboardTitle" class="class-modal-title"></h2>
+    <div id="sOnboardBody" class="onboard-body"></div>
+    <div class="class-modal-actions onboard-actions">
+      <button id="sOnboardBack" class="btn btn-ghost" type="button">Tilbake</button>
+      <span style="flex:1"></span>
+      <button id="sOnboardNext" class="btn btn-primary" type="button">Neste</button>
     </div>
   </div>
 
@@ -74,6 +100,7 @@
           </div>
 
           <div class="controls-actions">
+            <button id="profileBtn" class="btn btn-ghost btn-tiny" title="Profil og innstillinger">&#128100; Profil</button>
             <button id="jumpTodayBtn" class="btn btn-ghost btn-tiny" title="Gå til denne uka">Denne uka</button>
             <button id="refreshBtn" class="btn btn-ghost btn-tiny" title="Hent ferske data">&#8635;</button>
             <span id="bgLoading" class="bg-loading" role="status" aria-live="polite">
@@ -123,10 +150,6 @@
       <p class="footer-app">Uke<span class="wm">portalen</span> · Runni ungdomsskole</p>
       <p id="lastUpdated" class="last-updated"></p>
       <p class="copyright">Copyright Benjamin Ensrud 2026</p>
-      <button id="themeToggle" class="theme-toggle" type="button" aria-label="Bytt fargetema">
-        <span class="theme-toggle-icon" aria-hidden="true"></span>
-        <span class="theme-toggle-label"></span>
-      </button>
     </footer>
   </div>
 

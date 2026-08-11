@@ -428,6 +428,8 @@ body.scroll-locked { overflow: hidden; }
 .class-modal-grid { display: flex; flex-direction: column; gap: 14px; }
 .elective-grid { flex-direction: row; flex-wrap: wrap; gap: 6px; }
 .class-modal-actions { display: flex; justify-content: flex-end; margin-top: 18px; }
+.link-btn { background: transparent; border: none; color: var(--primary); font-weight: 600; cursor: pointer; font-family: var(--font); font-size: 13px; padding: 0; }
+.link-btn:hover { text-decoration: underline; }
 .class-modal-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .class-grade-label { width: 28px; flex-shrink: 0; font-weight: 700; color: var(--text-muted); }
 .class-modal-btn {
@@ -480,6 +482,61 @@ body.scroll-locked { overflow: hidden; }
 }
 .theme-toggle:hover { border-color: var(--primary); color: var(--text); }
 .theme-toggle-icon { font-size: 14px; line-height: 1; }
+
+/* ── Onboarding wizard (shared: teacher + student) ─────────────
+   Shell + the isometric "journey" progress bar (rendered by UPJourney in
+   rich.js). Teacher-only extras (kontakt chip, summary step) stay in teacher.css. */
+.onboard-modal { width: 620px; }
+/* Fixed body size across steps so the modal never jumps (sized to the tallest
+   step). Shorter steps just leave breathing room. */
+.onboard-body { height: 296px; overflow-y: auto; margin: 6px 0 4px; --enter-x: 22px; }
+.onboard-lead { font-size: 15px; line-height: 1.55; color: var(--text); }
+.onboard-hint { margin: 0 0 12px; }
+.onboard-empty { font-size: 14px; color: var(--text-muted); }
+.onboard-celebrate { font-size: 20px; font-weight: 700; text-align: center; padding: 44px 0; }
+.onboard-actions { justify-content: flex-start; align-items: center; gap: 8px; }
+.onboard-skip { color: var(--text-muted); }
+/* Step transition: new content slides in + fades (direction set per next/back). */
+.onboard-anim { animation: onboard-enter .24s ease-out; }
+@keyframes onboard-enter {
+  from { opacity: 0; transform: translateX(var(--enter-x, 22px)); }
+  to   { opacity: 1; transform: none; }
+}
+/* Journey progress bar: isometric zig-zag nodes (raised "coins" with an offset
+   underside + highlight) and a gliding map pin. */
+.onboard-progress { overflow: visible; padding: 12px 0 4px; }
+.onboard-journey { display: block; width: 100%; max-width: 320px; height: auto; margin: 0 auto; overflow: visible; }
+.oseg-base { stroke: var(--primary-dark); stroke-width: 3; stroke-linecap: round; opacity: 0; transition: opacity .35s ease; }
+.oseg.done .oseg-base { opacity: 1; }
+.oseg-face { stroke: var(--border); stroke-width: 3; stroke-linecap: round; transition: stroke .35s ease; }
+.oseg.done .oseg-face { stroke: var(--primary); }
+.onode-base { fill: var(--primary-dark); opacity: 0; transition: opacity .35s ease; }
+.onode.done .onode-base { opacity: 1; }
+.onode-face { fill: var(--surface); stroke: var(--border); stroke-width: 2.5; transition: fill .35s ease, stroke .35s ease; }
+.onode.done .onode-face { fill: var(--primary); stroke: var(--primary); }
+.onode.current .onode-face { stroke: var(--primary); }
+.onode-hi { fill: #fff; opacity: 0; transition: opacity .35s ease; }
+.onode.done .onode-hi { opacity: .4; }
+.onode-goal .onode-face { stroke-width: 3; }
+.onode-flagpole { stroke: var(--primary-dark); stroke-width: 1.6; stroke-linecap: round; }
+.onode-flag { fill: var(--vurd); }
+.opointer { fill: var(--vurd); transition: transform .4s cubic-bezier(.34, 1.4, .5, 1); filter: drop-shadow(0 2px 1.5px rgba(0,0,0,.32)); }
+.opointer-hole { fill: var(--surface); }
+.opointer-bob { transform-box: fill-box; transform-origin: bottom center; animation: opointer-bob 1.7s ease-in-out infinite; }
+@keyframes opointer-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2.5px); } }
+.opointer-bob.opointer-victory { animation: opointer-victory .8s cubic-bezier(.3, 1.5, .5, 1); }
+@keyframes opointer-victory {
+  0%   { transform: translateY(0) scale(1); }
+  22%  { transform: translateY(-12px) scale(1.18); }
+  46%  { transform: translateY(0) scale(1); }
+  64%  { transform: translateY(-6px) scale(1.08); }
+  100% { transform: translateY(0) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .onboard-anim { animation: none; }
+  .opointer { transition: none; }
+  .opointer-bob, .opointer-bob.opointer-victory { animation: none; }
+}
 
 /* ── Toast ─────────────────────────────────────────────────── */
 .toast {
