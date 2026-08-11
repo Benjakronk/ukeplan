@@ -538,6 +538,58 @@ body.scroll-locked { overflow: hidden; }
   .opointer-bob, .opointer-bob.opointer-victory { animation: none; }
 }
 
+/* ── Min uke (student dashboard) ───────────────────────────────── */
+.dashboard { display: flex; flex-direction: column; gap: 18px; }
+.dash-header { margin: 2px 0 0; }
+.dash-greeting { font-family: var(--font-display); font-size: 24px; font-weight: 700; color: var(--text); }
+.dash-week { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+.dash-loading { color: var(--text-muted); }
+.dash-section { display: flex; flex-direction: column; gap: 12px; }
+.dash-section-title { font-size: 15px; font-weight: 700; color: var(--text); }
+/* Tab badge: unread-beskjed count */
+.dash-badge {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px;
+  padding: 0 5px; margin-left: 4px; border-radius: 999px; background: var(--vurd); color: var(--on-accent);
+  font-size: 11px; font-weight: 700; vertical-align: middle;
+}
+/* Beskjed stepper */
+.dash-beskjed {
+  border: 1px solid var(--border); border-left: 3px solid var(--vurd); border-radius: var(--radius-card);
+  background: var(--surface); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px;
+}
+.dash-beskjed-head { display: flex; align-items: center; gap: 8px; }
+.dash-beskjed-icon { font-size: 18px; line-height: 1; }
+.dash-beskjed-count { font-size: 12px; font-weight: 700; color: var(--text-muted); }
+.dash-beskjed-body { font-size: 15px; line-height: 1.5; color: var(--text); }
+.dash-beskjed-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 2px; }
+/* Progress meter */
+.dash-progress { display: flex; flex-direction: column; gap: 6px; }
+.dash-progress-label { font-size: 14px; font-weight: 600; color: var(--text); }
+.dash-bar { height: 10px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.dash-bar-fill { height: 100%; background: var(--primary); border-radius: 999px; transition: width var(--transition); }
+.dash-nolekser { font-size: 16px; font-weight: 600; color: var(--text); }
+.dash-allclear { font-size: 14px; font-weight: 700; color: var(--success); }
+.dash-new { font-size: 13px; font-weight: 600; color: var(--vurd); }
+/* Lekse checklist (reuses .homework-list / .hw-check / .homework-item.done) */
+.dash-lekser { display: flex; flex-direction: column; gap: 10px; }
+.dash-lekse-day { font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 2px; }
+.homework-item.is-new { position: relative; }
+.homework-item.is-new::after {
+  content: 'nytt'; margin-left: 6px; padding: 1px 6px; border-radius: 999px;
+  background: var(--vurd); color: var(--on-accent); font-size: 10px; font-weight: 700; vertical-align: middle;
+}
+/* Celebration confetti (JS-spawned; reduced-motion → none) */
+.celebrate-layer { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 400; }
+.confetti {
+  position: absolute; top: -14px; left: var(--x, 50%); width: 9px; height: 9px; border-radius: 2px; opacity: 0;
+  animation: confetti-fall var(--dur, 1.1s) ease-in var(--delay, 0s) forwards;
+}
+@keyframes confetti-fall {
+  0%   { opacity: 1; transform: translate(0, -12px) rotate(0deg); }
+  100% { opacity: 0; transform: translate(var(--dx, 0), 78vh) rotate(var(--rot, 200deg)); }
+}
+@media (prefers-reduced-motion: reduce) { .confetti { animation: none; display: none; } }
+
 /* ── Toast ─────────────────────────────────────────────────── */
 .toast {
   position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px);

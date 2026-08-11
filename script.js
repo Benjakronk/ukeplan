@@ -17,6 +17,10 @@ const ALL_TS_KEY     = 'up_all_ts';
 const VARIANT_KEY    = 'up_variant';         // personal/adapted-plan code, e.g. "8A-K7X9M"
 const NAME_KEY       = 'up_name';            // student display name (personalization)
 const ONBOARDED_KEY  = 'up_onboarded';       // '1' once the first-run wizard is finished
+const LANDING_KEY    = 'up_landing';         // startside: 'hjem' | 'ukeplan' (default hjem)
+const ACK_BESKJED_KEY = 'up_ack_beskjed';    // { [beskjedKey]: true } – acknowledged beskjeder
+const SEEN_LEKSER_KEY = 'up_seen_lekser';    // { "<planKey>|<week>": [lekseKeys] } – new-lekse baseline
+const CELEBRATED_KEY = 'up_celebrated';      // { "<planKey>|<week>": { milestone: 1 } } – fired celebrations
 const CACHE_TTL      = 60 * 60 * 1000;       // 1 hour
 
 const SCHOOL_CAL_URL    = 'https://sspkalender.prokom.no/api/iCalTidspunkt/?Kunde=nesakskoleruta&Id=0&Categories=438,439';
@@ -80,9 +84,14 @@ let vurdData      = [];                 // all assessments (filtered client-side
 let lastFocusedEl = null;
 let schoolDays    = loadCachedSchoolDays() || {}; // ISO date -> { type, summaries }
 
-let currentTab       = 'ukeplan';  // 'ukeplan' | 'fag' | 'vurd'
+let currentTab       = (localStorage.getItem(LANDING_KEY) === 'ukeplan') ? 'ukeplan' : 'hjem';  // 'hjem' | 'ukeplan' | 'fag' | 'vurd'
 let ukeplanView      = 'uke';      // 'uke' | 'dag'
 let selectedDayIndex = 0;          // 0..4 (Mon..Fri), for the day view
+let planDataKey      = null;       // "<planKey>|<week>" that planData currently holds
+let dashBeskjedIdx   = 0;          // which unacknowledged beskjed the stepper shows
+let newLekseKeys     = [];         // lekser added since the last dashboard review (this week)
+let dashReviewedKey  = null;       // "<planKey>|<week>" the new-lekse review last ran for
+let modalLanding     = null;       // startside tentatively picked in the profile
 let allPlanData      = [];         // all plan elements (fag-progresjon)
 let electives        = null;       // chosen elective subjects (null = not chosen yet → show all)
 let studentName      = localStorage.getItem(NAME_KEY) || '';   // display name (personalization)
@@ -128,6 +137,7 @@ async function init() {
     else showClassModal();
     return;
   }
+  setTab(currentTab);   // land on the student's Startside (default «Min uke»)
   await loadWeek();
 }
 
@@ -153,6 +163,15 @@ function setupListeners() {
       syncThemeSeg(themeSeg);
     });
   }
+  // Startside preference (Min uke / Ukeplan) – tentative until Lagre.
+  const landingSeg = document.getElementById('studentLandingSeg');
+  if (landingSeg) {
+    landingSeg.addEventListener('click', e => {
+      const btn = e.target.closest('.theme-seg-btn'); if (!btn) return;
+      modalLanding = btn.dataset.landing;
+      landingSeg.querySelectorAll('.theme-seg-btn').forEach(b => b.classList.toggle('active', b === btn));
+    });
+  }
 
   // Profile modal (name · class · valgfag · tema) – opened by the class pill AND
   // the Profil button; the wizard reruns from inside it.
@@ -167,6 +186,7 @@ function setupListeners() {
   document.getElementById('sOnboardNext').addEventListener('click', sNext);
   document.getElementById('sOnboardBack').addEventListener('click', sBack);
 
+  document.getElementById('tabHjem').addEventListener('click', () => setTab('hjem'));
   document.getElementById('tabUkeplan').addEventListener('click', () => setTab('ukeplan'));
   document.getElementById('tabFag').addEventListener('click', () => setTab('fag'));
   document.getElementById('tabVurd').addEventListener('click', () => setTab('vurd'));
@@ -210,17 +230,20 @@ function setupListeners() {
 
 function setTab(tab) {
   currentTab = tab;
-  [['tabUkeplan', 'ukeplan'], ['tabFag', 'fag'], ['tabVurd', 'vurd']].forEach(([id, t]) => {
+  [['tabHjem', 'hjem'], ['tabUkeplan', 'ukeplan'], ['tabFag', 'fag'], ['tabVurd', 'vurd']].forEach(([id, t]) => {
     const btn = document.getElementById(id);
     const on = tab === t;
     btn.classList.toggle('active', on);
     btn.setAttribute('aria-selected', on ? 'true' : 'false');
   });
-  const isUke = tab === 'ukeplan';
+  // Week-nav follows both the dashboard and Ukeplan (both are week-scoped); the
+  // uke/dag view-toggle is Ukeplan-only.
+  const showNav = tab === 'ukeplan' || tab === 'hjem';
   // visibility (not display) so the controls-row keeps a constant size across tabs
-  document.querySelector('.week-nav').style.visibility     = isUke ? 'visible' : 'hidden';
-  document.getElementById('jumpTodayBtn').style.visibility = isUke ? 'visible' : 'hidden';
-  document.getElementById('viewToggle').style.display      = isUke ? '' : 'none';
+  document.querySelector('.week-nav').style.visibility     = showNav ? 'visible' : 'hidden';
+  document.getElementById('jumpTodayBtn').style.visibility = showNav ? 'visible' : 'hidden';
+  document.getElementById('viewToggle').style.display      = tab === 'ukeplan' ? '' : 'none';
+  document.getElementById('dashboardView').hidden = tab !== 'hjem';
   document.getElementById('board').hidden      = tab !== 'ukeplan';
   document.getElementById('fagView').hidden    = tab !== 'fag';
   document.getElementById('calControls').hidden = tab !== 'vurd';
@@ -299,6 +322,7 @@ async function loadWeek(opts = {}) {
     const cached = getCachedWeek(key, week);
     if (cached) {
       planData = cached;
+      planDataKey = key + '|' + week;
       render();
       hideOverlay();
       // refresh in the background
@@ -322,6 +346,7 @@ async function fetchWeek(cls, week, opts = {}) {
     // Only adopt if still the active plan+week (user may have navigated away).
     if (cls === planKey() && week === dateToWeek(weekMonday)) {
       planData = data;
+      planDataKey = cls + '|' + week;
       render();
     }
     setCachedWeek(cls, week, data);
@@ -459,6 +484,8 @@ function syncThemeSeg(container) {
   const p = UPTheme.get();
   container.querySelectorAll('.theme-seg-btn').forEach(b => b.classList.toggle('active', b.dataset.themePref === p));
 }
+// Startside preference: 'hjem' (default) or 'ukeplan'.
+function getLanding() { return localStorage.getItem(LANDING_KEY) === 'ukeplan' ? 'ukeplan' : 'hjem'; }
 
 // The profile/settings modal (name · class · valgfag · tema). Opened by the class
 // pill + the Profil button; the class modal's markup is reused for it.
@@ -477,6 +504,9 @@ function showClassModal() {
   vInput.oninput = () => { document.getElementById('variantError').hidden = true; };
 
   syncThemeSeg(document.getElementById('studentThemeSeg'));
+  modalLanding = getLanding();
+  document.getElementById('studentLandingSeg').querySelectorAll('.theme-seg-btn')
+    .forEach(b => b.classList.toggle('active', b.dataset.landing === modalLanding));
   updateClassConfirm();
   rememberFocus();
   document.getElementById('classModalOverlay').classList.add('open');
@@ -514,7 +544,9 @@ function confirmClassModal() {
   localStorage.setItem(ELECTIVE_KEY, JSON.stringify(electives));
   studentName = document.getElementById('studentName').value.trim();
   if (studentName) localStorage.setItem(NAME_KEY, studentName); else localStorage.removeItem(NAME_KEY);
+  if (modalLanding === 'ukeplan') localStorage.setItem(LANDING_KEY, 'ukeplan'); else localStorage.removeItem(LANDING_KEY);
   planData = [];           // drop any previous plan so the new one is fetched fresh
+  planDataKey = null; dashReviewedKey = null;
   previewWeekKey = null;
   updateClassLabel();
   populateFagSubjects();
@@ -610,10 +642,11 @@ function completeStudentOnboarding() {
   localStorage.setItem(CLASS_KEY, selectedClass);
   electives = modalElectives.slice();
   localStorage.setItem(ELECTIVE_KEY, JSON.stringify(electives));
-  planData = []; previewWeekKey = null;
+  planData = []; previewWeekKey = null; planDataKey = null; dashReviewedKey = null;
   updateClassLabel();
   populateFagSubjects();
   closeStudentOnboarding();
+  setTab(getLanding());
   loadWeek();
 }
 function closeStudentOnboarding() {
@@ -635,10 +668,259 @@ function playSVictory() { UPJourney.victory(document.getElementById('sOnboardPro
 
 function render() {
   if (!selectedClass) return;
+  updateDashBadge();
+  if (currentTab === 'hjem') { renderDashboard(); return; }
   if (currentTab === 'fag')  { renderFag(); return; }
   if (currentTab === 'vurd') { renderCalendar(); return; }
   if (ukeplanView === 'dag') renderDayView();
   else renderWeekView();
+}
+
+// ─── Min uke (student dashboard) ──────────────────────────────
+// A focused landing that tracks the week: a zero-safe lekse-completion meter with
+// day/subject/week milestone celebrations, beskjeder stepped through one at a time
+// (acknowledged in up_ack_beskjed), a "nytt denne uka" notice for lekser added since
+// the last dashboard review (up_seen_lekser baseline), and this week's vurderinger.
+
+function weekKey() { return planKey() + '|' + dateToWeek(weekMonday); }
+function readJSON(key) { try { return JSON.parse(localStorage.getItem(key)) || {}; } catch { return {}; } }
+function writeJSON(key, obj) { try { localStorage.setItem(key, JSON.stringify(obj)); } catch {} }
+function prefersReducedMotion() { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
+
+// Visible lekser for the viewed week (each element = one checkable item).
+function weekLekser() { return planData.filter(p => p.type === 'lekse' && p.description && subjectVisible(p.subject)); }
+// This week's beskjeder (general elements). A stable key per element.
+function weekBeskjeder() { return planData.filter(p => GENERAL_TYPES.includes(p.type) && p.description && subjectVisible(p.subject)); }
+function beskjedKey(el) { return el.id || ('b:' + (el.type || '') + ':' + (el.subject || '') + ':' + (el.day || '') + ':' + el.description); }
+function unreadBeskjeder() { const acked = readJSON(ACK_BESKJED_KEY); return weekBeskjeder().filter(p => !acked[beskjedKey(p)]); }
+
+function updateDashBadge() {
+  const b = document.getElementById('dashBadge');
+  if (!b) return;
+  const n = selectedClass ? unreadBeskjeder().length : 0;
+  b.textContent = n; b.hidden = n === 0;
+}
+
+// Diff the week's lekser against the stored "seen" baseline, once per week-load.
+function reviewNewLekser() {
+  const key = weekKey();
+  if (planDataKey !== key) { newLekseKeys = []; return; }   // data for this week not loaded yet
+  if (dashReviewedKey === key) return;                      // already reviewed this load
+  dashReviewedKey = key;
+  const cur = weekLekser().map(doneKey);
+  const store = readJSON(SEEN_LEKSER_KEY);
+  const seen = Array.isArray(store[key]) ? store[key] : null;
+  newLekseKeys = seen ? cur.filter(k => !seen.includes(k)) : [];   // first visit → nothing is "new"
+  store[key] = seen ? [...new Set(seen.concat(cur))] : cur;
+  writeJSON(SEEN_LEKSER_KEY, store);
+}
+
+function renderDashboard() {
+  reviewNewLekser();
+  updateDashBadge();
+  const view = document.getElementById('dashboardView');
+  view.innerHTML = '';
+
+  const header = document.createElement('div');
+  header.className = 'dash-header';
+  const h = document.createElement('h2'); h.className = 'dash-greeting';
+  h.textContent = 'Hei' + (studentName ? ', ' + studentName : '') + '!';
+  const wk = document.createElement('p'); wk.className = 'dash-week';
+  const thisWeek = dateToWeek(weekMonday) === dateToWeek(mondayOf(new Date()));
+  wk.textContent = 'Uke ' + getWeekNumber(weekMonday) + (thisWeek ? ' – denne uka' : '');
+  header.appendChild(h); header.appendChild(wk);
+  view.appendChild(header);
+
+  if (planDataKey !== weekKey()) {   // still loading this week's data
+    const p = document.createElement('p'); p.className = 'dash-loading'; p.textContent = 'Laster …';
+    view.appendChild(p);
+    return;
+  }
+
+  const bstep = buildBeskjedStepper();
+  if (bstep) view.appendChild(bstep);
+  view.appendChild(buildLekseProgress());
+  const vwrap = buildDashVurd();
+  if (vwrap) view.appendChild(vwrap);
+
+  checkMilestones();
+}
+
+// One beskjed at a time, with Neste (cycle) + Skjønner (acknowledge).
+function buildBeskjedStepper() {
+  const unread = unreadBeskjeder();
+  if (!unread.length) return null;
+  if (dashBeskjedIdx >= unread.length) dashBeskjedIdx = 0;
+  const el = unread[dashBeskjedIdx];
+  const card = document.createElement('div');
+  card.className = 'dash-beskjed';
+  const head = document.createElement('div'); head.className = 'dash-beskjed-head';
+  const icon = document.createElement('span'); icon.className = 'dash-beskjed-icon'; icon.textContent = GENERAL_ICON[el.type] || '📌';
+  const count = document.createElement('span'); count.className = 'dash-beskjed-count';
+  count.textContent = 'Beskjed ' + (dashBeskjedIdx + 1) + ' av ' + unread.length;
+  head.appendChild(icon); head.appendChild(count);
+  card.appendChild(head);
+  const body = document.createElement('div'); body.className = 'dash-beskjed-body rich-content';
+  body.innerHTML = generalPrefix(el) + sanitizeHtml(el.description);
+  card.appendChild(body);
+  const actions = document.createElement('div'); actions.className = 'dash-beskjed-actions';
+  if (unread.length > 1) {
+    const next = document.createElement('button');
+    next.type = 'button'; next.className = 'btn btn-ghost btn-tiny';
+    next.textContent = 'Neste ›';
+    next.addEventListener('click', () => { dashBeskjedIdx = (dashBeskjedIdx + 1) % unread.length; renderDashboard(); });
+    actions.appendChild(next);
+  }
+  const ok = document.createElement('button');
+  ok.type = 'button'; ok.className = 'btn btn-primary btn-tiny';
+  ok.textContent = 'Skjønner';
+  ok.addEventListener('click', () => {
+    const acked = readJSON(ACK_BESKJED_KEY); acked[beskjedKey(el)] = true; writeJSON(ACK_BESKJED_KEY, acked);
+    dashBeskjedIdx = 0; renderDashboard();
+  });
+  actions.appendChild(ok);
+  card.appendChild(actions);
+  return card;
+}
+
+// Progress meter (zero-safe) + "nytt denne uka" notice + the lekse checklist.
+function buildLekseProgress() {
+  const wrap = document.createElement('div');
+  wrap.className = 'dash-section';
+  const lekser = weekLekser();
+  const done = getDoneSet();
+  const total = lekser.length;
+  const doneN = lekser.filter(el => done[doneKey(el)]).length;
+
+  if (total === 0) {
+    const p = document.createElement('p');
+    p.className = 'dash-nolekser';
+    p.textContent = 'Ingen lekser denne uka 🎉';
+    wrap.appendChild(p);
+    return wrap;
+  }
+
+  const prog = document.createElement('div'); prog.className = 'dash-progress';
+  const label = document.createElement('div'); label.className = 'dash-progress-label';
+  label.textContent = doneN + ' av ' + total + ' lekser gjort';
+  const bar = document.createElement('div'); bar.className = 'dash-bar';
+  const fill = document.createElement('div'); fill.className = 'dash-bar-fill';
+  fill.style.width = Math.round(doneN / total * 100) + '%';
+  bar.appendChild(fill);
+  prog.appendChild(label); prog.appendChild(bar);
+  wrap.appendChild(prog);
+
+  if (doneN === total) {
+    const clear = document.createElement('p'); clear.className = 'dash-allclear';
+    clear.textContent = '✓ Alt gjort denne uka!';
+    wrap.appendChild(clear);
+  }
+  if (newLekseKeys.length) {
+    const notice = document.createElement('p'); notice.className = 'dash-new';
+    notice.textContent = '🆕 ' + newLekseKeys.length + (newLekseKeys.length === 1 ? ' ny lekse' : ' nye lekser') + ' er lagt til siden sist.';
+    wrap.appendChild(notice);
+  }
+
+  wrap.appendChild(buildDashLekseList(lekser));
+  return wrap;
+}
+
+// Lekse checklist grouped by (first) day; each check-off re-renders the dashboard
+// so the meter + milestone celebrations update live.
+function buildDashLekseList(lekser) {
+  const done = getDoneSet();
+  const newSet = new Set(newLekseKeys);
+  const byDay = {};
+  lekser.forEach(el => { const d = parseDays(el.day)[0] || ''; (byDay[d] = byDay[d] || []).push(el); });
+  const groups = [];
+  DAYS.forEach(d => { if (byDay[d]) groups.push([DAY_LABEL[d], byDay[d]]); });
+  if (byDay['']) groups.push(['Hele uka', byDay['']]);
+
+  const wrap = document.createElement('div'); wrap.className = 'dash-lekser';
+  groups.forEach(([label, items]) => {
+    const g = document.createElement('div'); g.className = 'dash-lekse-group';
+    const gh = document.createElement('div'); gh.className = 'dash-lekse-day'; gh.textContent = label;
+    g.appendChild(gh);
+    const ul = document.createElement('ul'); ul.className = 'homework-list';
+    items.forEach(el => {
+      const id = doneKey(el);
+      const li = document.createElement('li');
+      li.className = 'homework-item' + (done[id] ? ' done' : '') + (newSet.has(id) ? ' is-new' : '');
+      const lbl = document.createElement('label'); lbl.className = 'hw-label';
+      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.className = 'hw-check'; cb.checked = !!done[id];
+      cb.addEventListener('change', () => { toggleDone(id, cb.checked); renderDashboard(); });
+      const span = document.createElement('span'); span.className = 'hw-text rich-content';
+      const pre = el.subject ? '<strong>' + escapeHtml(el.subject) + ':</strong> ' : '';
+      span.innerHTML = pre + sanitizeHtml(el.description || '');
+      lbl.appendChild(cb); lbl.appendChild(span); li.appendChild(lbl); ul.appendChild(li);
+    });
+    g.appendChild(ul); wrap.appendChild(g);
+  });
+  return wrap;
+}
+
+function buildDashVurd() {
+  const vs = currentWeekVurd();
+  if (!vs.length) return null;
+  const wrap = document.createElement('div'); wrap.className = 'dash-section dash-vurd';
+  const h = document.createElement('h3'); h.className = 'dash-section-title'; h.textContent = 'Vurderinger denne uka';
+  wrap.appendChild(h);
+  vs.forEach(v => wrap.appendChild(buildAssessmentCard(v)));
+  return wrap;
+}
+
+// Fire a celebration once per completed milestone (day/subject/week). A milestone
+// that becomes incomplete again (e.g. a new lekse added) is un-marked so it can
+// re-fire when re-completed. Only the biggest newly-completed level animates.
+function checkMilestones() {
+  const lekser = weekLekser();
+  if (!lekser.length) return;
+  const done = getDoneSet();
+  const isDone = el => !!done[doneKey(el)];
+  const milestones = [];   // [id, complete, level]
+  milestones.push(['week', lekser.every(isDone), 'week']);
+  [...new Set(lekser.map(l => l.subject).filter(Boolean))].forEach(s => {
+    const items = lekser.filter(l => l.subject === s);
+    milestones.push(['subj:' + s, items.every(isDone), 'small']);
+  });
+  DAYS.forEach(d => {
+    const items = lekser.filter(l => (parseDays(l.day)[0] || '') === d);
+    if (items.length) milestones.push(['day:' + d, items.every(isDone), 'small']);
+  });
+
+  const key = weekKey();
+  const store = readJSON(CELEBRATED_KEY);
+  const cel = store[key] || {};
+  let fired = null;
+  milestones.forEach(([id, complete, level]) => {
+    if (complete && !cel[id]) { cel[id] = 1; if (!fired || level === 'week') fired = level; }
+    else if (!complete && cel[id]) { delete cel[id]; }
+  });
+  store[key] = cel; writeJSON(CELEBRATED_KEY, store);
+  if (fired) playCelebration(fired);
+}
+
+// A small confetti burst (bigger for the whole-week finish). Reduced-motion → none
+// (the "✓ Alt gjort" line already gives static feedback).
+function playCelebration(level) {
+  if (prefersReducedMotion()) return;
+  const layer = document.createElement('div');
+  layer.className = 'celebrate-layer';
+  const n = level === 'week' ? 30 : 14;
+  const colors = ['#1e5c55', '#b5502f', '#f4c04e', '#4f9d8e', '#e88b5a'];
+  for (let i = 0; i < n; i++) {
+    const p = document.createElement('span');
+    p.className = 'confetti';
+    p.style.setProperty('--x', (Math.random() * 100) + 'vw');
+    p.style.setProperty('--dx', (Math.random() * 160 - 80) + 'px');
+    p.style.setProperty('--rot', (Math.random() * 720 - 360) + 'deg');
+    p.style.setProperty('--delay', (Math.random() * 0.15).toFixed(2) + 's');
+    p.style.setProperty('--dur', (0.9 + Math.random() * 0.7).toFixed(2) + 's');
+    p.style.background = colors[i % colors.length];
+    layer.appendChild(p);
+  }
+  document.body.appendChild(layer);
+  setTimeout(() => layer.remove(), level === 'week' ? 2100 : 1600);
 }
 
 // ─── Fag-progresjon tab (one subject, week by week) ───────────
