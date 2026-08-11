@@ -3052,7 +3052,7 @@ function buildAdaptToggle(subject) {
     b.addEventListener('click', () => { if (on !== adapted) toggleAdaptSubject(subject, on); });
     return b;
   };
-  seg.appendChild(mk(false, 'Som klassen', 'Eleven følger klassens vanlige plan i ' + subject));
+  seg.appendChild(mk(false, 'Følger klassen', 'Eleven følger klassens vanlige plan i ' + subject));
   seg.appendChild(mk(true, 'Tilpasset', 'Eleven har egen, tilpasset plan i ' + subject));
   wrap.appendChild(seg);
   if (adapted) {
@@ -3068,6 +3068,18 @@ function buildAdaptToggle(subject) {
 }
 
 async function toggleAdaptSubject(subject, on) {
+  // Switching a subject back to «Følger klassen» hides its tilpasset content
+  // (kept dormant server-side – restored if switched back). If there IS content,
+  // warn first so it isn't hidden by an accidental click.
+  if (!on) {
+    const hasOwn = planData.some(p => classMatches(p.classes, variantCode) &&
+      SUBJECT_TYPES.includes(p.type) && p.description && p.subject === subject);
+    if (hasOwn && !await uiConfirm(
+      '«' + subject + '» har eget tilpasset innhold. Bytter du til «Følger klassen» skjules det tilpassede innholdet (for alle uker). Det slettes ikke – du får det tilbake ved å bytte til «Tilpasset» igjen. Fortsette?',
+      { title: 'Bytt til «Følger klassen»?', okText: 'Bytt', danger: true })) {
+      return;   // cancelled – nothing changed, board already shows «Tilpasset»
+    }
+  }
   const next = variantAdapted.filter(s => s !== subject);
   if (on) next.push(subject);
   await setVariantAdapted(next);
