@@ -52,6 +52,7 @@ const ELECTIVE_SUBJECTS = [
   'Spansk','Fransk','Tysk','Engelsk fordypning',
   'Arbeidslivsfag (ALF)','Fysisk aktivitet og helse (Fysak)','Friluftsliv',
   'Innsats for andre','Programmering','Teknologi og design','Design og redesign',
+  'Matematikk 1T','Medier og kommunikasjon',
 ];
 const SUBJECTS = [...CORE_SUBJECTS, ...ELECTIVE_SUBJECTS];
 // Alphabetical (Norwegian) order for the dropdown menus. The board rows keep the
@@ -3251,6 +3252,9 @@ function selectModalType(t) {
   // two classes on one row (the other classes have their own separate rows) (B5).
   const editNote = document.getElementById('editClassNote');
   if (editNote) editNote.hidden = !(editingElement && !variantPlan);
+  // Intern: offer one shared entry for all ticked classes vs one per class (create only).
+  const internRow = document.getElementById('internCombineRow');
+  if (internRow) internRow.hidden = !(t === 'intern' && !editingElement && !variantPlan);
   refreshConflicts();
   updateDateInfo();
 }
@@ -3373,9 +3377,11 @@ async function saveFromModal() {
         recordUpdate(editingElement.id, before, after, 'endring');
       } else {
         const creates = [];
-        // Electives are a year unit → one element per grade-year (classes = the
-        // whole year); other subjects → one element per selected class.
-        for (const classes of electiveWriteGroups(subject, modalClasses)) {
+        // Intern (combine on) → ONE shared entry for all ticked classes; electives →
+        // one element per grade-year (whole year); everything else → one per class.
+        const internCombine = modalType === 'intern' && document.getElementById('internCombine').checked && modalClasses.length;
+        const classGroups = internCombine ? [modalClasses.join(' ')] : electiveWriteGroups(subject, modalClasses);
+        for (const classes of classGroups) {
           const params = { type: modalType, classes, week: weekFrom, weekTo, day, subject, description: desc, teacher };
           const r = await api('create', params);
           creates.push({ params, id: r && r.id });

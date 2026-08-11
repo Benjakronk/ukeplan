@@ -44,6 +44,7 @@ const ELECTIVE_SUBJECTS = [
   'Spansk','Fransk','Tysk','Engelsk fordypning',
   'Arbeidslivsfag (ALF)','Fysisk aktivitet og helse (Fysak)','Friluftsliv',
   'Innsats for andre','Programmering','Teknologi og design','Design og redesign',
+  'Matematikk 1T','Medier og kommunikasjon',
 ];
 const SUBJECTS = [...CORE_SUBJECTS, ...ELECTIVE_SUBJECTS];
 // Alphabetical (Norwegian) order for the Fag dropdown; the board keeps the
