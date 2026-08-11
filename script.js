@@ -20,6 +20,8 @@ const VARIANT_KEY    = 'up_variant';         // personal/adapted-plan code, e.g.
 const NAME_KEY       = 'up_name';            // student display name (personalization)
 const ONBOARDED_KEY  = 'up_onboarded';       // '1' once the first-run wizard is finished
 const LANDING_KEY    = 'up_landing';         // startside: 'hjem' | 'ukeplan' (default hjem)
+const TAB_KEY        = 'up_last_tab';         // last-visited tab, restored on reload
+const HIDE_BE_KEY    = 'up_hide_be';          // beskjeder+hendelser block collapsed?
 const ACK_BESKJED_KEY = 'up_ack_beskjed';    // { [beskjedKey]: true } – acknowledged beskjeder
 const SEEN_LEKSER_KEY = 'up_seen_lekser';    // { "<planKey>|<week>": [lekseKeys] } – new-lekse baseline
 const CELEBRATED_KEY = 'up_celebrated';      // { "<planKey>|<week>": { milestone: 1 } } – fired celebrations
@@ -133,7 +135,13 @@ let hendData      = [];                 // all calendar events (filtered client-
 let lastFocusedEl = null;
 let schoolDays    = loadCachedSchoolDays() || {}; // ISO date -> { type, summaries }
 
-let currentTab       = (localStorage.getItem(LANDING_KEY) === 'ukeplan') ? 'ukeplan' : 'hjem';  // 'hjem' | 'ukeplan' | 'fag' | 'vurd'
+// Restore the last-visited tab on reload (continue where they left off); fall
+// back to the Startside preference on a first visit.
+let currentTab       = (() => {
+  const last = localStorage.getItem(TAB_KEY);
+  if (last && ['hjem', 'ukeplan', 'fag', 'vurd'].includes(last)) return last;
+  return localStorage.getItem(LANDING_KEY) === 'ukeplan' ? 'ukeplan' : 'hjem';
+})();
 let ukeplanView      = 'uke';      // 'uke' | 'dag'
 let selectedDayIndex = 0;          // 0..4 (Mon..Fri), for the day view
 let planDataKey      = null;       // "<planKey>|<week>" that planData currently holds
@@ -286,6 +294,7 @@ function setupListeners() {
 
 function setTab(tab) {
   currentTab = tab;
+  localStorage.setItem(TAB_KEY, tab);   // restore where they were on next reload
   [['tabHjem', 'hjem'], ['tabUkeplan', 'ukeplan'], ['tabFag', 'fag'], ['tabVurd', 'vurd']].forEach(([id, t]) => {
     const btn = document.getElementById(id);
     const on = tab === t;
@@ -872,10 +881,8 @@ function renderDashboard() {
     return;
   }
 
-  const dev = buildDashEvents();
-  if (dev) view.appendChild(dev);
-  const bstep = buildBeskjedStepper();
-  if (bstep) view.appendChild(bstep);
+  const be = buildDashBeskjedEvents();
+  if (be) view.appendChild(be);
   const barch = buildBeskjedArchive();
   if (barch) view.appendChild(barch);
   view.appendChild(buildLekseDeck());
@@ -1241,17 +1248,6 @@ function appendEventRows(wrap, rows) {
   det.appendChild(sum);
   senere.forEach(r => det.appendChild(buildEventRow(r)));
   wrap.appendChild(det);
-}
-// Upcoming events pinned at the top of Min uke, tiered by urgency (today/tomorrow
-// → this week → next week → senere). Anchored to TODAY (rolling look-ahead).
-function buildDashEvents() {
-  const rows = [];
-  hendData.forEach(h => { if (hendForStudent(h)) { const u = eventUrgency(h); if (u) rows.push(Object.assign({ ev: h }, u)); } });
-  if (!rows.length) return null;
-  rows.sort((a, b) => a.rank - b.rank || a.day.localeCompare(b.day));
-  const wrap = document.createElement('div'); wrap.className = 'dash-section events-panel';
-  appendEventRows(wrap, rows);
-  return wrap;
 }
 
 // Progress milestones over the week's total lekser: first done, halfway, and all
@@ -1670,6 +1666,17 @@ function buildWeekStrip(weekVurd) {
       cell.appendChild(dot);
     }
 
+    // ★ marks a day with a calendar event, so a hendelse in the viewed week is
+    // visible on the strip and its day view (idrettsdag, leirskole …).
+    const dayEvents = eventsOnDate(iso);
+    if (dayEvents.length) {
+      const ev = document.createElement('span');
+      ev.className = 'strip-day-event';
+      ev.textContent = '★';
+      ev.title = dayEvents.map(e => e.description || 'Hendelse').join(', ');
+      cell.appendChild(ev);
+    }
+
     cell.tabIndex = 0;
     cell.setAttribute('role', 'button');
     cell.setAttribute('aria-label', 'Vis ' + DAY_LABEL[dayKey] + ' ' + date.getDate() + '.');
@@ -1689,21 +1696,20 @@ function buildBanner() {
   return buildGeneralSection(general);
 }
 
-// Combined "Beskjeder og praktisk info | Hendelser" two-column section for the
-// week view: beskjeder on the left, upcoming events on the right (mirrors the
-// teacher Ukeplan tab). Returns null when there's nothing to show; a single
-// present column spans full width.
-function buildBeskjedEvents() {
-  const beskjed = buildBanner();   // null if no beskjeder this week
-
+// The rolling upcoming-events panel body (anchored to today, tiered), or null.
+function buildStudentEventsPanel() {
   const rows = [];
   hendData.forEach(h => { if (hendForStudent(h)) { const u = eventUrgency(h); if (u) rows.push(Object.assign({ ev: h }, u)); } });
+  if (!rows.length) return null;
   rows.sort((a, b) => a.rank - b.rank || a.day.localeCompare(b.day));
-  let events = null;
-  if (rows.length) { events = document.createElement('div'); events.className = 'events-panel'; appendEventRows(events, rows); }
-
-  if (!beskjed && !events) return null;
-
+  const panel = document.createElement('div'); panel.className = 'events-panel';
+  appendEventRows(panel, rows);
+  return panel;
+}
+// Two-column "Beskjeder og praktisk info | Hendelser" grid from a beskjeder node
+// + events node (either may be null; a lone column spans full width).
+function studentBeGrid(beskjedNode, eventsNode) {
+  if (!beskjedNode && !eventsNode) return null;
   const grid = document.createElement('div');
   grid.className = 'be-grid';
   const col = (title, content) => {
@@ -1711,10 +1717,30 @@ function buildBeskjedEvents() {
     const h = document.createElement('h3'); h.className = 'be-head'; h.textContent = title; c.appendChild(h);
     c.appendChild(content); grid.appendChild(c);
   };
-  if (beskjed) col('Beskjeder og praktisk info', beskjed);
-  if (events)  col('Hendelser', events);
+  if (beskjedNode) col('Beskjeder og praktisk info', beskjedNode);
+  if (eventsNode)  col('Hendelser', eventsNode);
   if (grid.children.length === 1) grid.classList.add('be-grid-single');
   return grid;
+}
+// Combined section for the week view (beskjeder banner + events), wrapped in a
+// persisted show/hide toggle. Returns null when there's nothing to show.
+function buildBeskjedEvents() {
+  const grid = studentBeGrid(buildBanner(), buildStudentEventsPanel());
+  if (!grid) return null;
+  const wrap = document.createElement('div');
+  const collapsed = localStorage.getItem(HIDE_BE_KEY) === '1';
+  const toggle = document.createElement('button');
+  toggle.type = 'button'; toggle.className = 'be-toggle';
+  toggle.textContent = (collapsed ? '▸ Vis' : '▾ Skjul') + ' beskjeder og hendelser';
+  toggle.addEventListener('click', () => { localStorage.setItem(HIDE_BE_KEY, collapsed ? '0' : '1'); render(); });
+  wrap.appendChild(toggle);
+  if (!collapsed) wrap.appendChild(grid);
+  return wrap;
+}
+// Min uke: the same beskjeder+hendelser combination, with the beskjed stepper as
+// the beskjeder column (no hide toggle here – it's the landing focus view).
+function buildDashBeskjedEvents() {
+  return studentBeGrid(buildBeskjedStepper(), buildStudentEventsPanel());
 }
 
 // Label prefix for a general element. Day is bold; day + fag are combined into

@@ -8,6 +8,8 @@ const SCRIPT_URL = 'https://api.ukeportalen.no';
 // The frontend never holds the token; it just sends `credentials: 'include'` and
 // asks `?action=me` on load. These localStorage keys are a cache of the profile.
 const CLASS_KEY   = 'up_teacher_class';
+const TAB_KEY     = 'up_teacher_tab';        // last-visited tab, restored on reload
+const HIDE_BE_KEY = 'up_teacher_hide_be';    // beskjeder+hendelser block collapsed?
 const TNAME_KEY   = 'up_teacher_name';
 const UNAME_KEY   = 'up_teacher_username';   // last username, prefilled on the login screen
 const VARIANT_KEY = 'up_teacher_variant';   // adapted-plan code being edited, e.g. "8A-K7X9M"
@@ -470,7 +472,14 @@ function enterDashboard(profile) {
     localStorage.setItem(CLASS_KEY, selectedClass);
     updateClassLabel();
   }
-  setTeacherTab('hjem');   // land on the dashboard, not the board/class modal
+  // Restore the tab they were last on (so a reload continues where they left off);
+  // fall back to Hjem, and never land on a tab that isn't available/usable.
+  let tab = localStorage.getItem(TAB_KEY);
+  const valid = ['hjem', 'ukeplan', 'vurd', 'oversikt', 'kontakt'];
+  if (!valid.includes(tab)) tab = 'hjem';
+  if (tab === 'kontakt' && !kontaktClasses.length) tab = 'hjem';
+  if ((tab === 'ukeplan' || tab === 'vurd' || tab === 'oversikt') && !selectedClass) tab = 'hjem';
+  setTeacherTab(tab);
 }
 
 async function handleLogout() {
@@ -2215,6 +2224,46 @@ function buildUpcomingEvents(matchFn, opts = {}) {
   return wrap;
 }
 
+// A container of general-type "beskjed" cards (one per present type), or null if
+// none. Shared by the Ukeplan board and Hjem (Hjem passes {readonly, showClass}).
+function buildBeskjedCards(elements, opts = {}) {
+  const present = GENERAL_TYPES.filter(type => elements.some(p => p.type === type));
+  if (!present.length) return null;
+  const box = document.createElement('div');
+  present.forEach(type => {
+    const items = elements.filter(p => p.type === type);
+    const card = document.createElement('div');
+    card.className = 'general-card banner-' + type;
+    const meta = document.createElement('div');
+    meta.className = 'general-meta';
+    const icon = document.createElement('span'); icon.textContent = GENERAL_ICON[type] || '📌'; meta.appendChild(icon);
+    const badge = document.createElement('span'); badge.className = 'general-badge'; badge.textContent = TYPE_LABEL[type]; meta.appendChild(badge);
+    card.appendChild(meta);
+    const list = document.createElement('div'); list.className = 'general-list';
+    items.forEach(el => list.appendChild(buildGeneralLine(el, opts)));
+    card.appendChild(list);
+    box.appendChild(card);
+  });
+  return box;
+}
+
+// The two-column "Beskjeder og praktisk info | Hendelser" grid. Both columns
+// always render (with an "Ingen …" placeholder when empty); pass a pre-built
+// beskjeder node + events node (either may be null).
+function beskjedEventsGrid(beskjedNode, eventsNode) {
+  const grid = document.createElement('div');
+  grid.className = 'be-grid';
+  const emptyP = txt => { const p = document.createElement('p'); p.className = 'general-empty'; p.textContent = txt; return p; };
+  const col = (title, content) => {
+    const c = document.createElement('div'); c.className = 'be-col';
+    const h = document.createElement('h3'); h.className = 'be-head'; h.textContent = title; c.appendChild(h);
+    c.appendChild(content); grid.appendChild(c);
+  };
+  col('Beskjeder og praktisk info', beskjedNode || emptyP('Ingen beskjeder denne uka.'));
+  col('Hendelser', eventsNode || emptyP('Ingen hendelser fremover.'));
+  return grid;
+}
+
 // ─── Week navigation ──────────────────────────────────────────
 
 function changeWeek(delta) {
@@ -2661,55 +2710,26 @@ function renderOversiktActive() {
 function renderGeneral() {
   const section = document.getElementById('generalSection');
   section.innerHTML = '';
-  section.className = 'general-section be-grid';
+  section.className = 'general-section';
+
+  // Show/hide toggle (persisted) – the whole beskjeder+hendelser block collapses.
+  const collapsed = localStorage.getItem(HIDE_BE_KEY) === '1';
+  const toggle = document.createElement('button');
+  toggle.type = 'button'; toggle.className = 'be-toggle';
+  toggle.textContent = (collapsed ? '▸ Vis' : '▾ Skjul') + ' beskjeder og hendelser';
+  toggle.addEventListener('click', () => { localStorage.setItem(HIDE_BE_KEY, collapsed ? '0' : '1'); renderGeneral(); });
+  section.appendChild(toggle);
+  if (collapsed) return;
 
   const general = planData.filter(p => GENERAL_TYPES.includes(p.type) && p.description);
-
-  // Left column: Beskjeder og praktisk info.
-  const left = document.createElement('div');
-  left.className = 'be-col';
-  const lh = document.createElement('h3'); lh.className = 'be-head'; lh.textContent = 'Beskjeder og praktisk info';
-  left.appendChild(lh);
-  if (general.length === 0) {
-    const empty = document.createElement('p');
-    empty.className = 'general-empty';
-    empty.textContent = 'Ingen beskjeder denne uka. Bruk «+ Legg til».';
-    left.appendChild(empty);
-  } else {
-    // One box per type; each item a clickable line (edit via modal).
-    GENERAL_TYPES.forEach(type => {
-      const items = general.filter(p => p.type === type);
-      if (!items.length) return;
-      const box = document.createElement('div');
-      box.className = 'general-card banner-' + type;
-      const meta = document.createElement('div');
-      meta.className = 'general-meta';
-      const icon = document.createElement('span'); icon.textContent = GENERAL_ICON[type] || '📌'; meta.appendChild(icon);
-      const badge = document.createElement('span'); badge.className = 'general-badge'; badge.textContent = TYPE_LABEL[type]; meta.appendChild(badge);
-      box.appendChild(meta);
-      const list = document.createElement('div'); list.className = 'general-list';
-      items.forEach(el => list.appendChild(buildGeneralLine(el)));
-      box.appendChild(list);
-      left.appendChild(box);
-    });
+  let beskjed = buildBeskjedCards(general);
+  if (!beskjed) {
+    beskjed = document.createElement('p');
+    beskjed.className = 'general-empty';
+    beskjed.textContent = 'Ingen beskjeder denne uka. Bruk «+ Legg til».';
   }
-  section.appendChild(left);
-
-  // Right column: Hendelser (upcoming events; the column head is the title, so
-  // buildUpcomingEvents is called without its own title to avoid a clashing one).
-  const right = document.createElement('div');
-  right.className = 'be-col';
-  const rh = document.createElement('h3'); rh.className = 'be-head'; rh.textContent = 'Hendelser';
-  right.appendChild(rh);
   const events = buildUpcomingEvents(h => hendMatchesClass(h, selectedClass), { clickable: true });
-  if (events) right.appendChild(events);
-  else {
-    const none = document.createElement('p');
-    none.className = 'general-empty';
-    none.textContent = 'Ingen hendelser fremover.';
-    right.appendChild(none);
-  }
-  section.appendChild(right);
+  section.appendChild(beskjedEventsGrid(beskjed, events));
 }
 
 function buildGeneralLine(el, opts = {}) {
@@ -2718,6 +2738,8 @@ function buildGeneralLine(el, opts = {}) {
   // Day is bold; day + fag combine into one label when both are set.
   const dl = daysLabel(el.day);
   let prefix = '';
+  // Hjem aggregates several classes, so tag each line with its class(es).
+  if (opts.showClass && el.classes) prefix += '<span class="general-line-class">' + escapeHtml(el.classes) + '</span> ';
   if (dl && el.subject) prefix += '<strong>' + escapeHtml(dl) + ' · ' + escapeHtml(el.subject) + ':</strong> ';
   else if (el.subject)  prefix += '<strong>' + escapeHtml(el.subject) + ':</strong> ';
   else if (dl)          prefix += '<strong>' + escapeHtml(dl) + ':</strong> ';
@@ -4374,6 +4396,7 @@ async function cloneFromBaseClass() {
 
 function setTeacherTab(tab) {
   teacherTab = tab;
+  localStorage.setItem(TAB_KEY, tab);   // restore where they were on next reload
   [['hjem', 'tTabHjem', 'paneHjem'], ['ukeplan', 'tTabUkeplan', 'paneUkeplan'], ['vurd', 'tTabVurd', 'paneVurd'], ['oversikt', 'tTabOversikt', 'paneOversikt'], ['kontakt', 'tTabKontakt', 'paneKontakt']]
     .forEach(([t, btnId, paneId]) => {
       const btn = document.getElementById(btnId);
@@ -5112,9 +5135,6 @@ function renderHjem() {
   const intern = buildInternBanner(week);   // teacher-only reminders, front of mind
   if (intern) pane.appendChild(intern);
 
-  const evPanel = buildUpcomingEvents(hendForTeacher, { title: 'Hendelser', clickable: true });
-  if (evPanel) pane.appendChild(evPanel);
-
   const my = mySubjects();
   const classes = hjemClasses();
   if (!my.length || !classes.length) {
@@ -5156,6 +5176,19 @@ function renderHjem() {
   classes.filter(cls => hjemSubjectsFor(cls).length).forEach(cls => grid.appendChild(buildHjemCard(cls, week)));
   hjemElectiveYears().forEach(g => grid.appendChild(buildValgfagCard(g, week)));   // electives once per year
   pane.appendChild(grid);
+
+  // Combined Beskjeder og praktisk info | Hendelser, below the tasks. Beskjeder
+  // are aggregated across taught classes (class-tagged, read-only overview);
+  // intern reminders keep their own banner up top.
+  const beHead = document.createElement('h3');
+  beHead.className = 'hjem-section-title';
+  beHead.textContent = 'Beskjeder og hendelser';
+  pane.appendChild(beHead);
+  const hjemGeneral = hjemData.filter(p => GENERAL_TYPES.includes(p.type) && p.type !== 'intern'
+    && p.description && classesTaught.some(c => classMatches(p.classes, c)));
+  const beskjed = buildBeskjedCards(hjemGeneral, { readonly: true, showClass: true });
+  const events = buildUpcomingEvents(hendForTeacher, { clickable: true });
+  pane.appendChild(beskjedEventsGrid(beskjed, events));
 }
 
 // Progress bar ("X av Y fag har tema").

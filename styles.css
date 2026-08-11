@@ -301,6 +301,7 @@ body.scroll-locked { overflow: hidden; }
 .strip-day-num  { font-size: 15px; font-weight: 700; }
 .strip-day-tag  { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; flex-basis: 100%; }
 .strip-day-dot  { width: 7px; height: 7px; border-radius: 50%; background: var(--vurd); align-self: center; }
+.strip-day-event { color: var(--event); font-size: 11px; line-height: 1; align-self: center; }
 .strip-day.today { background: var(--today-bg); border-color: var(--today-border); }
 .strip-day.school-off { background: var(--off-bg); color: var(--off-text); }
 .strip-day.school-off .strip-day-num { color: var(--off-text); }
@@ -835,12 +836,18 @@ button.event-item:hover { border-color: var(--event); }
 .be-head { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--text-muted); margin: 0 0 8px; }
 .be-col .banner, .be-col .events-panel { margin-bottom: 0; }
 @media (max-width: 640px) { .be-grid { grid-template-columns: 1fr; } }
+/* Slim show/hide toggle for the combined section (Ukeplan tabs) */
+.be-toggle { display: block; margin: 0 0 8px; padding: 2px 0; background: none; border: none;
+  font-family: inherit; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em;
+  color: var(--text-muted); cursor: pointer; }
+.be-toggle:hover { color: var(--text); }
 
 /* Min uke: a uniform thick border in each element's accent colour (all sides,
    not just a left stripe). */
 #dashboardView .event-item { border: 2px solid var(--event); }
 #dashboardView .assessment-card { border: 2px solid var(--vurd); }
 #dashboardView .dash-lekse-card { border: 2px solid var(--subj, var(--primary)); }
+#dashboardView .dash-beskjed { border: 2px solid var(--primary); }
 
 /* Teacher calendar day-detail: event card + the +Vurdering / +Hendelse row */
 .event-detail-card { border-left-color: var(--event) !important; }
