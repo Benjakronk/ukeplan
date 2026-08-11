@@ -565,6 +565,8 @@ body.scroll-locked { overflow: hidden; }
   border: 1px solid var(--border); border-left: 3px solid var(--vurd); border-radius: var(--radius-card);
   background: var(--surface); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px;
 }
+/* Min uke beskjeder column: the stepper + the "Tidligere beskjeder" archive */
+.dash-beskjed-col { display: flex; flex-direction: column; gap: 12px; }
 .dash-beskjed-head { display: flex; align-items: center; gap: 8px; }
 .dash-beskjed-icon { font-size: 18px; line-height: 1; }
 .dash-beskjed-count { font-size: 12px; font-weight: 700; color: var(--text-muted); }

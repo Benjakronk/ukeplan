@@ -173,6 +173,7 @@ function genSuffix() {
   return s;
 }
 let teacherName   = localStorage.getItem(TNAME_KEY) || '';
+let teacherUsername = localStorage.getItem(UNAME_KEY) || '';   // login username (shown in Konto)
 let weekMonday    = mondayOf(new Date());
 let planData      = [];
 let vurdData      = [];
@@ -254,6 +255,7 @@ function migrateSettings(s) {
   if (!Array.isArray(s.pinnedClasses)) s.pinnedClasses = [];
   if (!Array.isArray(s.pinnedSubjects)) s.pinnedSubjects = [];
   if (typeof s.onboardedAt !== 'string') s.onboardedAt = '';
+  if (!['hjem', 'ukeplan', 'last'].includes(s.landing)) s.landing = 'hjem';   // startside
   return s;
 }
 // The teacher's preferred board order (persisted). Subjects not listed fall back
@@ -472,11 +474,15 @@ function enterDashboard(profile) {
     localStorage.setItem(CLASS_KEY, selectedClass);
     updateClassLabel();
   }
-  // Restore the tab they were last on (so a reload continues where they left off);
-  // fall back to Hjem, and never land on a tab that isn't available/usable.
-  let tab = localStorage.getItem(TAB_KEY);
-  const valid = ['hjem', 'ukeplan', 'vurd', 'oversikt', 'kontakt'];
-  if (!valid.includes(tab)) tab = 'hjem';
+  // Startside preference decides where to land: a fixed tab, or 'last' = wherever
+  // they were (up_teacher_tab). Guarded so it never lands on an unusable tab.
+  const landing = settings.landing || 'hjem';
+  let tab = 'hjem';
+  if (landing === 'ukeplan') tab = 'ukeplan';
+  else if (landing === 'last') {
+    const saved = localStorage.getItem(TAB_KEY);
+    if (['hjem', 'ukeplan', 'vurd', 'oversikt', 'kontakt'].includes(saved)) tab = saved;
+  }
   if (tab === 'kontakt' && !kontaktClasses.length) tab = 'hjem';
   if ((tab === 'ukeplan' || tab === 'vurd' || tab === 'oversikt') && !selectedClass) tab = 'hjem';
   setTeacherTab(tab);
@@ -503,8 +509,10 @@ function onSessionLost() {
 function applyProfile(profile) {
   isAdmin = !!profile.isAdmin;
   if (profile.name) { teacherName = profile.name; localStorage.setItem(TNAME_KEY, teacherName); }
+  if (profile.username) { teacherUsername = profile.username; localStorage.setItem(UNAME_KEY, teacherUsername); }
   const p = profile.preferences || {};
   settings = migrateSettings({
+    landing:         p.landing,               // startside: 'hjem' | 'ukeplan' | 'last'
     confirmDelete:   p.confirmDelete !== false,                                  // default true
     mySubjects:      Array.isArray(p.mySubjects) ? p.mySubjects : [],
     subjectOrder:    Array.isArray(p.subjectOrder) ? p.subjectOrder : [],
@@ -570,6 +578,7 @@ function profilePreferences() {
     pinnedClasses:   Array.isArray(settings.pinnedClasses) ? settings.pinnedClasses : [],
     pinnedSubjects:  Array.isArray(settings.pinnedSubjects) ? settings.pinnedSubjects : [],
     onboardedAt:     settings.onboardedAt || '',
+    landing:         settings.landing || 'hjem',
     theme:           window.UPTheme ? UPTheme.get() : 'auto',
     lastClass:       (!variantCode && selectedClass) || '',
   };
@@ -1016,6 +1025,13 @@ function syncThemeSeg() {
     b.classList.toggle('active', b.dataset.themePref === pref);
   });
 }
+// Reflect the Startside preference on its segmented control.
+function syncLandingSeg() {
+  const pref = ['hjem', 'ukeplan', 'last'].includes(settings.landing) ? settings.landing : 'hjem';
+  document.querySelectorAll('#teacherLandingSeg .theme-seg-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.landing === pref);
+  });
+}
 
 // ─── Admin panel (administrators only) ────────────────────────
 let adminTeachers = [];   // last-fetched full teacher list (for client-side search)
@@ -1225,7 +1241,9 @@ function buildLekseDayRows(container, subject) {
 
 function openProfileModal() {
   document.getElementById('teacherName').value = teacherName;
+  document.getElementById('profileUsername').textContent = teacherUsername ? '@' + teacherUsername : '–';
   document.getElementById('setConfirmDelete').checked = settings.confirmDelete !== false;
+  syncLandingSeg();
   profileOpen = true;   // transactional: nothing is committed until "Lagre"
   profileDirty = false; dirtyPrefs = dirtyClasses = dirtyMatrix = false;
   profileSnapshot = snapshotProfileState();   // to revert on discard
@@ -2403,6 +2421,13 @@ function setupDashboardListeners() {
   document.getElementById('pwChangeBtn').addEventListener('click', changeOwnPassword);
   document.getElementById('setConfirmDelete').addEventListener('change', e => {
     settings.confirmDelete = e.target.checked;
+    saveSettings();
+  });
+  document.getElementById('teacherLandingSeg').addEventListener('click', e => {
+    const btn = e.target.closest('.theme-seg-btn');
+    if (!btn) return;
+    settings.landing = btn.dataset.landing;
+    syncLandingSeg();
     saveSettings();
   });
   document.getElementById('themeSeg').addEventListener('click', e => {

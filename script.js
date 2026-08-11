@@ -890,8 +890,6 @@ function renderDashboard() {
 
   const be = buildDashBeskjedEvents();
   if (be) view.appendChild(be);
-  const barch = buildBeskjedArchive();
-  if (barch) view.appendChild(barch);
   view.appendChild(buildLekseDeck());
   const vwrap = buildDashVurd();
   if (vwrap) view.appendChild(vwrap);
@@ -1744,10 +1742,20 @@ function buildBeskjedEvents() {
   if (!collapsed) wrap.appendChild(grid);
   return wrap;
 }
-// Min uke: the same beskjeder+hendelser combination, with the beskjed stepper as
-// the beskjeder column (no hide toggle here – it's the landing focus view).
+// Min uke: the same beskjeder+hendelser combination. The beskjeder column holds
+// the stepper (unread) + the "Tidligere beskjeder" archive below it; the events
+// column holds upcoming hendelser. (No hide toggle – it's the landing focus.)
 function buildDashBeskjedEvents() {
-  return studentBeGrid(buildBeskjedStepper(), buildStudentEventsPanel());
+  const stepper = buildBeskjedStepper();
+  const archive = buildBeskjedArchive();
+  let beskjed = null;
+  if (stepper || archive) {
+    beskjed = document.createElement('div');
+    beskjed.className = 'dash-beskjed-col';
+    if (stepper) beskjed.appendChild(stepper);
+    if (archive) beskjed.appendChild(archive);
+  }
+  return studentBeGrid(beskjed, buildStudentEventsPanel());
 }
 
 // Label prefix for a general element. Day is bold; day + fag are combined into

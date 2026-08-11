@@ -619,6 +619,9 @@
 .onboard-sum-val { flex: 1; color: var(--text); }
 .onboard-sum-empty { color: var(--text-muted); font-style: italic; }
 
+/* Read-only username line in the profile «Konto» tab */
+.profile-username { margin: 0; font-size: 15px; font-weight: 700; color: var(--text); }
+
 /* «Dine klasser» shortcut atop the class chooser: a heading + one row per
    grade-year (taught classes only), laid out like the «Alle klasser» grid so
    the grade labels align. */

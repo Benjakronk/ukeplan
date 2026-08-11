@@ -383,6 +383,16 @@
       </div>
 
       <div class="form-row">
+        <label class="form-label">Startside</label>
+        <div id="teacherLandingSeg" class="theme-seg" role="group" aria-label="Startside">
+          <button type="button" class="theme-seg-btn" data-landing="hjem">Hjem</button>
+          <button type="button" class="theme-seg-btn" data-landing="ukeplan">Ukeplan</button>
+          <button type="button" class="theme-seg-btn" data-landing="last">Sist besøkt</button>
+        </div>
+        <p class="form-hint">Hvilken fane som åpnes når du laster inn siden. «Sist besøkt» fortsetter der du var.</p>
+      </div>
+
+      <div class="form-row">
         <label class="form-label">Sletting</label>
         <label class="settings-toggle">
           <input type="checkbox" id="setConfirmDelete">
@@ -393,6 +403,12 @@
 
     <!-- Tab: Konto -->
     <div id="ppaneKonto" class="profile-pane" role="tabpanel" aria-labelledby="ptabKonto" hidden>
+      <div class="form-row">
+        <label class="form-label">Brukernavn</label>
+        <p id="profileUsername" class="profile-username">–</p>
+        <p class="form-hint">Brukernavnet du logger inn med. Kan ikke endres.</p>
+      </div>
+
       <div class="form-row">
         <label class="form-label" for="teacherName">Navnet ditt</label>
         <input type="text" id="teacherName" class="input" placeholder="Navnet ditt" autocomplete="off">
