@@ -1479,8 +1479,8 @@ function renderWeekView() {
   board.innerHTML = '';
   const weekVurd = currentWeekVurd();
   board.appendChild(buildWeekStrip(weekVurd));
-  const banner = buildBanner();
-  if (banner) board.appendChild(banner);
+  const be = buildBeskjedEvents();
+  if (be) board.appendChild(be);
   board.appendChild(buildSubjectBoard(weekVurd));
 }
 
@@ -1687,6 +1687,34 @@ function buildWeekStrip(weekVurd) {
 function buildBanner() {
   const general = planData.filter(p => GENERAL_TYPES.includes(p.type) && p.description && subjectVisible(p.subject));
   return buildGeneralSection(general);
+}
+
+// Combined "Beskjeder og praktisk info | Hendelser" two-column section for the
+// week view: beskjeder on the left, upcoming events on the right (mirrors the
+// teacher Ukeplan tab). Returns null when there's nothing to show; a single
+// present column spans full width.
+function buildBeskjedEvents() {
+  const beskjed = buildBanner();   // null if no beskjeder this week
+
+  const rows = [];
+  hendData.forEach(h => { if (hendForStudent(h)) { const u = eventUrgency(h); if (u) rows.push(Object.assign({ ev: h }, u)); } });
+  rows.sort((a, b) => a.rank - b.rank || a.day.localeCompare(b.day));
+  let events = null;
+  if (rows.length) { events = document.createElement('div'); events.className = 'events-panel'; appendEventRows(events, rows); }
+
+  if (!beskjed && !events) return null;
+
+  const grid = document.createElement('div');
+  grid.className = 'be-grid';
+  const col = (title, content) => {
+    const c = document.createElement('div'); c.className = 'be-col';
+    const h = document.createElement('h3'); h.className = 'be-head'; h.textContent = title; c.appendChild(h);
+    c.appendChild(content); grid.appendChild(c);
+  };
+  if (beskjed) col('Beskjeder og praktisk info', beskjed);
+  if (events)  col('Hendelser', events);
+  if (grid.children.length === 1) grid.classList.add('be-grid-single');
+  return grid;
 }
 
 // Label prefix for a general element. Day is bold; day + fag are combined into

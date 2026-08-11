@@ -800,8 +800,9 @@ body.scroll-locked { overflow: hidden; }
 /* Calendar events (hendelser): tinted cell + a ★ marker (top-left, opposite the P badge) */
 .cal-table td.has-event { background: var(--event-bg); }
 .cal-event-badge { position: absolute; top: 1px; left: 3px; font-size: 10px; line-height: 1; color: var(--event); }
-/* Event cards (student calendar detail + day view) */
-.event-card { border-left-color: var(--event) !important; }
+/* Event cards (student calendar detail + day view): uniform event-coloured
+   border, no thick left stripe. */
+.event-card { border: 1px solid var(--event) !important; }
 .event-card-head { font-size: 12px; font-weight: 700; color: var(--event); display: flex; align-items: center; gap: 8px; }
 .event-card-range { font-weight: 600; color: var(--text-muted); }
 .event-card-desc { font-size: 14px; color: var(--text); margin-top: 3px; }
@@ -811,13 +812,13 @@ body.scroll-locked { overflow: hidden; }
 .events-section { margin-bottom: 14px; }
 .events-section:empty { display: none; margin: 0; }
 .event-item { display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left; font-family: inherit;
-  border: 1px solid var(--border); border-left: 3px solid var(--event); border-radius: var(--radius-btn);
+  border: 1px solid var(--border); border-radius: var(--radius-btn);
   background: var(--surface); color: var(--text); padding: 10px 12px; font-size: 15px; }
 button.event-item { cursor: pointer; transition: border-color var(--transition); }
 button.event-item:hover { border-color: var(--event); }
 .event-item-star { color: var(--event); flex: none; }
 .event-item-body { line-height: 1.4; }
-.event-item.tier-now { background: var(--event-bg); border-left-width: 5px; font-size: 16px; font-weight: 600; }
+.event-item.tier-now { background: var(--event-bg); font-size: 16px; font-weight: 600; }
 .event-item.tier-coming { opacity: .68; font-size: 13px; padding: 8px 12px; }
 .event-item.tier-senere { opacity: .5; font-size: 12px; padding: 7px 12px; }
 /* Collapsible "Senere" group when there are many far-off events */
@@ -826,6 +827,21 @@ button.event-item:hover { border-color: var(--event); }
 .events-senere-sum::-webkit-details-marker { display: none; }
 .events-senere-sum::before { content: '▸ '; }
 .events-senere[open] .events-senere-sum::before { content: '▾ '; }
+/* Combined "Beskjeder og praktisk info | Hendelser" two-column section
+   (teacher Ukeplan tab + student week view). Stacks on narrow screens. */
+.be-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; align-items: start; margin-bottom: 16px; }
+.be-grid.be-grid-single { grid-template-columns: 1fr; }
+.be-col { min-width: 0; }
+.be-head { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--text-muted); margin: 0 0 8px; }
+.be-col .banner, .be-col .events-panel { margin-bottom: 0; }
+@media (max-width: 640px) { .be-grid { grid-template-columns: 1fr; } }
+
+/* Min uke: a uniform thick border in each element's accent colour (all sides,
+   not just a left stripe). */
+#dashboardView .event-item { border: 2px solid var(--event); }
+#dashboardView .assessment-card { border: 2px solid var(--vurd); }
+#dashboardView .dash-lekse-card { border: 2px solid var(--subj, var(--primary)); }
+
 /* Teacher calendar day-detail: event card + the +Vurdering / +Hendelse row */
 .event-detail-card { border-left-color: var(--event) !important; }
 .event-detail-card .vurd-detail-meta { color: var(--event); }

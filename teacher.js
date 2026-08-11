@@ -2661,43 +2661,55 @@ function renderOversiktActive() {
 function renderGeneral() {
   const section = document.getElementById('generalSection');
   section.innerHTML = '';
+  section.className = 'general-section be-grid';
 
   const general = planData.filter(p => GENERAL_TYPES.includes(p.type) && p.description);
 
-  const head = document.createElement('div');
-  head.className = 'general-head';
-  head.textContent = 'Beskjeder og praktisk info';
-  section.appendChild(head);
-
-  // Upcoming calendar events (hendelser) live inside this section – shown even
-  // when there are no beskjeder this week.
-  const events = buildUpcomingEvents(h => hendMatchesClass(h, selectedClass), { title: 'Hendelser', clickable: true });
-  if (events) section.appendChild(events);
-
+  // Left column: Beskjeder og praktisk info.
+  const left = document.createElement('div');
+  left.className = 'be-col';
+  const lh = document.createElement('h3'); lh.className = 'be-head'; lh.textContent = 'Beskjeder og praktisk info';
+  left.appendChild(lh);
   if (general.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'general-empty';
     empty.textContent = 'Ingen beskjeder denne uka. Bruk «+ Legg til».';
-    section.appendChild(empty);
-    return;
+    left.appendChild(empty);
+  } else {
+    // One box per type; each item a clickable line (edit via modal).
+    GENERAL_TYPES.forEach(type => {
+      const items = general.filter(p => p.type === type);
+      if (!items.length) return;
+      const box = document.createElement('div');
+      box.className = 'general-card banner-' + type;
+      const meta = document.createElement('div');
+      meta.className = 'general-meta';
+      const icon = document.createElement('span'); icon.textContent = GENERAL_ICON[type] || '📌'; meta.appendChild(icon);
+      const badge = document.createElement('span'); badge.className = 'general-badge'; badge.textContent = TYPE_LABEL[type]; meta.appendChild(badge);
+      box.appendChild(meta);
+      const list = document.createElement('div'); list.className = 'general-list';
+      items.forEach(el => list.appendChild(buildGeneralLine(el)));
+      box.appendChild(list);
+      left.appendChild(box);
+    });
   }
+  section.appendChild(left);
 
-  // One box per type; each item a clickable line (edit via modal).
-  GENERAL_TYPES.forEach(type => {
-    const items = general.filter(p => p.type === type);
-    if (!items.length) return;
-    const box = document.createElement('div');
-    box.className = 'general-card banner-' + type;
-    const meta = document.createElement('div');
-    meta.className = 'general-meta';
-    const icon = document.createElement('span'); icon.textContent = GENERAL_ICON[type] || '📌'; meta.appendChild(icon);
-    const badge = document.createElement('span'); badge.className = 'general-badge'; badge.textContent = TYPE_LABEL[type]; meta.appendChild(badge);
-    box.appendChild(meta);
-    const list = document.createElement('div'); list.className = 'general-list';
-    items.forEach(el => list.appendChild(buildGeneralLine(el)));
-    box.appendChild(list);
-    section.appendChild(box);
-  });
+  // Right column: Hendelser (upcoming events; the column head is the title, so
+  // buildUpcomingEvents is called without its own title to avoid a clashing one).
+  const right = document.createElement('div');
+  right.className = 'be-col';
+  const rh = document.createElement('h3'); rh.className = 'be-head'; rh.textContent = 'Hendelser';
+  right.appendChild(rh);
+  const events = buildUpcomingEvents(h => hendMatchesClass(h, selectedClass), { clickable: true });
+  if (events) right.appendChild(events);
+  else {
+    const none = document.createElement('p');
+    none.className = 'general-empty';
+    none.textContent = 'Ingen hendelser fremover.';
+    right.appendChild(none);
+  }
+  section.appendChild(right);
 }
 
 function buildGeneralLine(el, opts = {}) {
