@@ -57,6 +57,7 @@ const SUBJECTS_SORTED = [...SUBJECTS].sort((a, b) => a.localeCompare(b, 'no'));
 
 const DAYS = ['man','tir','ons','tor','fre'];
 const DAY_LABEL = { man: 'Man', tir: 'Tir', ons: 'Ons', tor: 'Tor', fre: 'Fre' };
+const DAY_LONG  = { man: 'mandag', tir: 'tirsdag', ons: 'onsdag', tor: 'torsdag', fre: 'fredag' };
 
 // Element types that are class-wide (no subject) → shown in the banner.
 const GENERAL_TYPES = ['beskjed', 'timeendring', 'utstyr', 'aktivitet', 'annet'];
@@ -1880,31 +1881,25 @@ function buildVurdRow(vurd, colspan) {
   td.colSpan = colspan;
   tr.appendChild(td);
 
-  const label = document.createElement('span');
-  label.className = 'vurd-row-label';
-  label.textContent = 'Vurdering:';
-  td.appendChild(label);
-
+  // Each vurdering is labelled with the day it falls on when it has one, e.g.
+  // "Vurdering på fredag: …" (else just "Vurdering: …").
   vurd.forEach((v, i) => {
-    const item = document.createElement('span');
-    item.className = 'vurd-row-item';
-    if (v.day && DAY_LABEL[v.day]) {
-      const dayEl = document.createElement('strong');
-      dayEl.className = 'vurd-row-day';
-      dayEl.textContent = DAY_LABEL[v.day] + ': ';
-      item.appendChild(document.createTextNode(' '));
-      item.appendChild(dayEl);
-    } else {
-      item.appendChild(document.createTextNode(' '));
-    }
-    item.appendChild(document.createTextNode(v.description || v.notes || 'Vurdering'));
-    td.appendChild(item);
-    if (i < vurd.length - 1) {
+    if (i > 0) {
       const sep = document.createElement('span');
       sep.className = 'vurd-row-sep';
       sep.textContent = ' · ';
       td.appendChild(sep);
     }
+    const label = document.createElement('span');
+    label.className = 'vurd-row-label';
+    const dayName = v.day && DAY_LONG[v.day];
+    label.textContent = dayName ? 'Vurdering på ' + dayName + ':' : 'Vurdering:';
+    td.appendChild(label);
+
+    const item = document.createElement('span');
+    item.className = 'vurd-row-item';
+    item.appendChild(document.createTextNode(' ' + (v.description || v.notes || 'Vurdering')));
+    td.appendChild(item);
   });
   return tr;
 }
