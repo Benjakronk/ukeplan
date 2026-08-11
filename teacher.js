@@ -232,7 +232,13 @@ function toggleSubjectPin(subject) {
   settings.pinnedSubjects = cur.includes(subject) ? cur.filter(s => s !== subject) : cur.concat(subject);
   saveSettings(); renderHjem();
 }
-function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); saveProfileToServer(); }
+function saveSettings() {
+  // Transactional profile: while the modal is open, defer BOTH the localStorage
+  // write and the server push until "Lagre" (revert on discard).
+  if (profileOpen) { dirtyPrefs = true; markProfileDirty(); return; }
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  saveProfileToServer();
+}
 // The subjects the teacher teaches (profile modal). Empty = no filtering.
 function mySubjects() {
   return Array.isArray(settings.mySubjects) ? settings.mySubjects.filter(s => SUBJECTS.includes(s)) : [];
@@ -484,6 +490,7 @@ function updateKontaktTab() {
 let profileOpen = false;
 let profileDirty = false;
 let dirtyPrefs = false, dirtyClasses = false, dirtyMatrix = false;
+let profileSnapshot = null;   // pre-edit state, restored on discard
 function markProfileDirty() { profileDirty = true; updateProfileSaveBtn(); }
 
 let profileSaveTimer = null;
@@ -610,9 +617,15 @@ async function saveProfileNow() {
   if (!profileDirty) return;
   const btn = document.getElementById('profileSaveBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Lagrer…'; btn.classList.remove('has-changes'); }
+  // Commit the deferred local caches, then push to the server.
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  localStorage.setItem(TNAME_KEY, teacherName);
   const ok = await flushProfileSaves();
-  if (ok) { profileDirty = false; updateProfileSaveBtn(true); }
-  else { showToast('Kunne ikke lagre alt – prøv igjen.'); updateProfileSaveBtn(); }   // still dirty → button re-enables
+  if (ok) {
+    profileSnapshot = snapshotProfileState();   // new baseline = the saved state
+    profileDirty = false;
+    updateProfileSaveBtn(true);
+  } else { showToast('Kunne ikke lagre alt – prøv igjen.'); updateProfileSaveBtn(); }   // still dirty → button re-enables
 }
 
 function updateAdminButton() {
@@ -1103,8 +1116,9 @@ function buildLekseDayRows(container, subject) {
 function openProfileModal() {
   document.getElementById('teacherName').value = teacherName;
   document.getElementById('setConfirmDelete').checked = settings.confirmDelete !== false;
-  profileOpen = true;   // defer server writes until "Lagre" (or a flush on close)
+  profileOpen = true;   // transactional: nothing is committed until "Lagre"
   profileDirty = false; dirtyPrefs = dirtyClasses = dirtyMatrix = false;
+  profileSnapshot = snapshotProfileState();   // to revert on discard
   buildMySubjectChips();
   buildProfileClasses();   // per-subject class pickers + lekse-days live in here now
   syncThemeSeg();
@@ -1127,17 +1141,50 @@ function setProfileTab(tab) {
       document.getElementById(paneId).hidden = t !== tab;
     });
 }
-function closeProfileModal() {
-  // An emptied name field falls back to the last saved name – entries should
-  // never be saved with teacher ''.
-  document.getElementById('teacherName').value = teacherName;
+// A deep copy of everything the profile modal can edit, so a discard restores it.
+function snapshotProfileState() {
+  return {
+    teacherName,
+    settings:       JSON.parse(JSON.stringify(settings)),
+    subjectClasses: JSON.parse(JSON.stringify(subjectClasses)),
+    classesTaught:  classesTaught.slice(),
+    kontaktClasses: kontaktClasses.slice(),
+    theme:          window.UPTheme ? UPTheme.get() : 'auto',
+  };
+}
+// Discard: restore in-memory state from the snapshot. localStorage was never
+// written while the modal was open (transactional), so it already matches the
+// snapshot – only the live-applied theme needs re-applying.
+function revertProfileState() {
+  if (!profileSnapshot) return;
+  teacherName    = profileSnapshot.teacherName;
+  settings       = JSON.parse(JSON.stringify(profileSnapshot.settings));
+  subjectClasses = JSON.parse(JSON.stringify(profileSnapshot.subjectClasses));
+  classesTaught  = profileSnapshot.classesTaught.slice();
+  kontaktClasses = profileSnapshot.kontaktClasses.slice();
+  if (window.UPTheme) UPTheme.set(profileSnapshot.theme);
+  updateProfileButton();
+  updateKontaktTab();
+}
+// Attempt to close the modal. With unsaved changes, confirm a discard first;
+// `{ force }` skips the guard (used after a successful save). Returns whether the
+// modal actually closed, so callers (logout, rerun onboarding) can chain.
+async function closeProfileModal(opts = {}) {
+  const force = opts === true || opts.force;   // tolerate a stray event arg
+  if (!force && profileDirty) {
+    const discard = await uiConfirm('Du har ulagrede endringer i profilen. Vil du forkaste dem?',
+      { title: 'Ulagrede endringer', okText: 'Forkast', danger: true });
+    if (!discard) return false;   // stay open
+    revertProfileState();
+  }
   profileOpen = false;
-  // Safety net: never lose work if they close without pressing Lagre.
-  if (profileDirty) { flushProfileSaves(); profileDirty = false; updateProfileSaveBtn(); }
+  profileDirty = false; dirtyPrefs = dirtyClasses = dirtyMatrix = false;
+  document.getElementById('teacherName').value = teacherName;
   document.getElementById('profileOverlay').classList.remove('open');
   document.getElementById('profileModal').classList.remove('open');
   document.body.classList.remove('scroll-locked');
-  render();   // Mine fag may have changed
+  render();   // Mine fag may have changed (if saved)
+  return true;
 }
 
 // Reusable grouped subject chip picker: a "Valgt"-summary, a search box, core
@@ -2089,7 +2136,11 @@ function setupDashboardListeners() {
   const nameInput = document.getElementById('teacherName');
   nameInput.addEventListener('input', () => {
     const v = nameInput.value.trim();
-    if (v) { teacherName = v; localStorage.setItem(TNAME_KEY, v); saveProfileToServer(); }  // never store an empty name
+    if (v) {
+      teacherName = v;
+      if (!profileOpen) localStorage.setItem(TNAME_KEY, v);   // transactional: commit on Lagre
+      saveProfileToServer();   // defers + marks dirty while the modal is open
+    }
     updateProfileButton();
   });
 
@@ -2098,11 +2149,11 @@ function setupDashboardListeners() {
   document.getElementById('ptabFag').addEventListener('click', () => setProfileTab('fag'));
   document.getElementById('ptabInnst').addEventListener('click', () => setProfileTab('innst'));
   document.getElementById('ptabKonto').addEventListener('click', () => setProfileTab('konto'));
-  document.getElementById('profileClose').addEventListener('click', closeProfileModal);
-  document.getElementById('profileOverlay').addEventListener('click', closeProfileModal);
-  document.getElementById('profileDone').addEventListener('click', closeProfileModal);
+  document.getElementById('profileClose').addEventListener('click', () => closeProfileModal());
+  document.getElementById('profileOverlay').addEventListener('click', () => closeProfileModal());
+  document.getElementById('profileDone').addEventListener('click', () => closeProfileModal());
   document.getElementById('profileSaveBtn').addEventListener('click', saveProfileNow);
-  document.getElementById('logoutBtn2').addEventListener('click', () => { closeProfileModal(); handleLogout(); });
+  document.getElementById('logoutBtn2').addEventListener('click', async () => { if (await closeProfileModal()) handleLogout(); });
   document.getElementById('adminPanelBtn').addEventListener('click', openAdminModal);
   document.getElementById('adminClose').addEventListener('click', closeAdminModal);
   document.getElementById('adminOverlay').addEventListener('click', closeAdminModal);
@@ -2113,7 +2164,7 @@ function setupDashboardListeners() {
   document.getElementById('onboardNext').addEventListener('click', onboardNextClick);
   document.getElementById('onboardBack').addEventListener('click', onboardBackClick);
   document.getElementById('onboardSkip').addEventListener('click', onboardSkipClick);
-  document.getElementById('rerunOnboard').addEventListener('click', () => { closeProfileModal(); showOnboarding(); });
+  document.getElementById('rerunOnboard').addEventListener('click', async () => { if (await closeProfileModal()) showOnboarding(); });
   document.getElementById('pwChangeBtn').addEventListener('click', changeOwnPassword);
   document.getElementById('setConfirmDelete').addEventListener('change', e => {
     settings.confirmDelete = e.target.checked;
@@ -2589,8 +2640,41 @@ function buildEditCell(subject, type, elements) {
   ed.dataset.type    = type;
   ed.dataset.ids     = JSON.stringify(single.map(e => e.id).filter(Boolean));
   td.appendChild(ed);
+  addCellActions(td, ed, subject, type);   // delete + copy while editing
   multi.forEach(el => td.appendChild(buildElementChip(el)));
   return td;
+}
+
+// A small "delete + copy" action bar shown at the top-right of an inline rich cell
+// while it's focused and has content – so a filled cell can be deleted/copied
+// without emptying it and clicking away. `mousedown` preventDefault keeps the
+// field focused (so clicking a button doesn't blur-commit first).
+function addCellActions(td, ed, subject, type) {
+  const bar = document.createElement('div');
+  bar.className = 'cell-actions no-print';
+  const mk = (cls, label, txt, onClick) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'cell-action ' + cls;
+    b.title = label; b.setAttribute('aria-label', label); b.textContent = txt;
+    b.addEventListener('mousedown', e => e.preventDefault());
+    b.addEventListener('click', onClick);
+    return b;
+  };
+  if (!isElective(subject)) {   // electives are year-wide – no per-class copy
+    bar.appendChild(mk('cell-action-copy', 'Kopier til dine andre klasser', '⧉',
+      () => { ed.blur(); copyRowToClasses(subject, { types: [type] }); }));   // commit first, then copy
+  }
+  bar.appendChild(mk('cell-action-del', 'Slett innholdet', '🗑', () => {
+    // Reuse the exact manual deletion flow: empty the field, then blur so the
+    // commit-on-blur runs (confirm dialog + restore-on-cancel), with no mid-flow
+    // re-blur race (the field is already blurred before the dialog opens).
+    ed.innerHTML = ''; ed.blur();
+  }));
+  td.appendChild(bar);
+  const sync = () => td.classList.toggle('has-content', !!(ed.textContent || '').trim());
+  ed.addEventListener('input', sync);
+  ed.addEventListener('focus', sync);
+  sync();
 }
 
 // Clickable chip for an element that spans weeks and/or several days
@@ -2680,15 +2764,26 @@ function buildHomeworkRow(subject, el, opts = {}) {
 
   daySel.addEventListener('change', () => commitHomeworkRow(row));
 
+  row.appendChild(daySel);
+  row.appendChild(ed);
+  // Copy this subject's lekser to the teacher's other classes (core only; electives
+  // are year-wide). Kept off the modal-edited (variant) board.
+  if (!isElective(subject) && !opts.cls) {
+    const cp = document.createElement('button');
+    cp.type = 'button';
+    cp.className = 'hw-edit-copy';
+    cp.textContent = '⧉';
+    cp.title = 'Kopier til dine andre klasser';
+    cp.addEventListener('mousedown', e => e.preventDefault());
+    cp.addEventListener('click', () => copyRowToClasses(subject, { types: ['lekse'] }));
+    row.appendChild(cp);
+  }
   const del = document.createElement('button');
   del.type = 'button';
   del.className = 'hw-edit-del';
   del.textContent = '×';
   del.title = 'Slett lekse';
   del.addEventListener('click', () => deleteHomeworkRow(row));
-
-  row.appendChild(daySel);
-  row.appendChild(ed);
   row.appendChild(del);
   return row;
 }

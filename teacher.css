@@ -113,7 +113,18 @@
 
 /* ── Editable board cells ──────────────────────────────────── */
 .plan-table.editable td { padding: 6px 8px; }
-.cell-edit { padding: 6px 8px; }
+.cell-edit { padding: 6px 8px; position: relative; }
+/* Inline-cell action bar (delete + copy), shown while a filled cell is focused. */
+.cell-actions { position: absolute; top: 2px; right: 2px; display: none; gap: 3px; z-index: 3; }
+.cell-edit.has-content:focus-within .cell-actions { display: flex; }
+.cell-action {
+  width: 22px; height: 22px; padding: 0; font-size: 12px; line-height: 1; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 5px; color: var(--text-muted);
+  box-shadow: 0 1px 3px rgba(0,0,0,.12);
+}
+.cell-action:hover { border-color: var(--primary); color: var(--text); }
+.cell-action-del:hover { border-color: var(--danger); color: var(--danger); }
 .edit-textarea {
   width: 100%; resize: none; border: 1px solid transparent; background: transparent;
   font-family: var(--font); font-size: 14px; color: var(--text); line-height: 1.4;
@@ -143,11 +154,13 @@
   border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); cursor: pointer;
 }
 .hw-edit-text { flex: 1; }
-.hw-edit-del {
-  flex-shrink: 0; width: 24px; height: 24px; font-size: 16px; line-height: 1;
+.hw-edit-del, .hw-edit-copy {
+  flex-shrink: 0; width: 24px; height: 24px; font-size: 15px; line-height: 1;
   background: transparent; border: none; color: var(--text-muted); cursor: pointer; border-radius: 4px;
 }
 .hw-edit-del:hover { background: var(--hover-soft); color: var(--danger); }
+.hw-edit-copy { font-size: 13px; }
+.hw-edit-copy:hover { background: var(--hover-soft); color: var(--primary); }
 .hw-edit-add {
   margin-top: 4px; font-family: var(--font); font-size: 12px; font-weight: 600;
   color: var(--primary); background: transparent; border: none; cursor: pointer; padding: 2px 0;
@@ -320,7 +333,7 @@
   }
   .no-print, .controls, .toolbar, .tabs, .pane-head .btn, .pane-head .view-toggle,
   .vurd-filter-summary, .th-caret, .teacher-header-actions,
-  .general-del, .vurd-hint, .hw-edit-del, .hw-edit-add, .week-nav-btn, .class-pill-change,
+  .general-del, .vurd-hint, .hw-edit-del, .hw-edit-copy, .hw-edit-add, .week-nav-btn, .class-pill-change,
   .board-filter-note, .row-copy-btn { display: none !important; }
   body { background: #fff; }
   .page { max-width: 100%; padding: 0; }
