@@ -19,7 +19,7 @@ const ALL_TS_KEY     = 'up_all_ts';
 const VARIANT_KEY    = 'up_variant';         // personal/adapted-plan code, e.g. "8A-K7X9M"
 const NAME_KEY       = 'up_name';            // student display name (personalization)
 const ONBOARDED_KEY  = 'up_onboarded';       // '1' once the first-run wizard is finished
-const LANDING_KEY    = 'up_landing';         // startside: 'hjem' | 'ukeplan' (default hjem)
+const LANDING_KEY    = 'up_landing';         // startside: 'hjem' | 'ukeplan' | 'last' (default hjem)
 const TAB_KEY        = 'up_last_tab';         // last-visited tab, restored on reload
 const HIDE_BE_KEY    = 'up_hide_be';          // beskjeder+hendelser block collapsed?
 const ACK_BESKJED_KEY = 'up_ack_beskjed';    // { [beskjedKey]: true } – acknowledged beskjeder
@@ -135,13 +135,9 @@ let hendData      = [];                 // all calendar events (filtered client-
 let lastFocusedEl = null;
 let schoolDays    = loadCachedSchoolDays() || {}; // ISO date -> { type, summaries }
 
-// Restore the last-visited tab on reload (continue where they left off); fall
-// back to the Startside preference on a first visit.
-let currentTab       = (() => {
-  const last = localStorage.getItem(TAB_KEY);
-  if (last && ['hjem', 'ukeplan', 'fag', 'vurd'].includes(last)) return last;
-  return localStorage.getItem(LANDING_KEY) === 'ukeplan' ? 'ukeplan' : 'hjem';
-})();
+// Which tab to open, per the Startside preference: a fixed tab ('hjem'/'ukeplan')
+// or 'last' = wherever the user last was (resolveLanding, defined below).
+let currentTab       = resolveLanding();
 let ukeplanView      = 'uke';      // 'uke' | 'dag'
 let selectedDayIndex = 0;          // 0..4 (Mon..Fri), for the day view
 let planDataKey      = null;       // "<planKey>|<week>" that planData currently holds
@@ -622,8 +618,18 @@ function syncThemeSeg(container) {
   const p = UPTheme.get();
   container.querySelectorAll('.theme-seg-btn').forEach(b => b.classList.toggle('active', b.dataset.themePref === p));
 }
-// Startside preference: 'hjem' (default) or 'ukeplan'.
-function getLanding() { return localStorage.getItem(LANDING_KEY) === 'ukeplan' ? 'ukeplan' : 'hjem'; }
+// Startside preference: 'hjem' (default), 'ukeplan', or 'last' (last-visited tab).
+function getLanding() {
+  const v = localStorage.getItem(LANDING_KEY);
+  return (v === 'ukeplan' || v === 'last') ? v : 'hjem';
+}
+// The tab to actually open, resolving 'last' → the last-visited tab (up_last_tab).
+function resolveLanding() {
+  const l = getLanding();
+  if (l !== 'last') return l;   // 'hjem' | 'ukeplan'
+  const last = localStorage.getItem(TAB_KEY);
+  return (last && ['hjem', 'ukeplan', 'fag', 'vurd'].includes(last)) ? last : 'hjem';
+}
 
 // The profile/settings modal (name · class · valgfag · tema). Opened by the class
 // pill + the Profil button; the class modal's markup is reused for it.
@@ -683,7 +689,8 @@ function confirmClassModal() {
   localStorage.setItem(ELECTIVE_KEY, JSON.stringify(electives));
   studentName = document.getElementById('studentName').value.trim();
   if (studentName) localStorage.setItem(NAME_KEY, studentName); else localStorage.removeItem(NAME_KEY);
-  if (modalLanding === 'ukeplan') localStorage.setItem(LANDING_KEY, 'ukeplan'); else localStorage.removeItem(LANDING_KEY);
+  if (modalLanding === 'ukeplan' || modalLanding === 'last') localStorage.setItem(LANDING_KEY, modalLanding);
+  else localStorage.removeItem(LANDING_KEY);   // 'hjem' is the default → no key
   planData = [];           // drop any previous plan so the new one is fetched fresh
   planDataKey = null; dashReviewedKey = null;
   previewWeekKey = null;
@@ -785,7 +792,7 @@ function completeStudentOnboarding() {
   updateClassLabel();
   populateFagSubjects();
   closeStudentOnboarding();
-  setTab(getLanding());
+  setTab(resolveLanding());
   loadWeek();
 }
 function closeStudentOnboarding() {
