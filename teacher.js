@@ -2446,12 +2446,23 @@ function buildClassModalGrids() {
   mine.innerHTML = '';
   const taught = classesTaught.filter(c => CLASSES.includes(c));
   if (taught.length) {
-    const wrap = document.createElement('div');
-    wrap.className = 'class-modal-group class-modal-mine';
-    const lbl = document.createElement('span'); lbl.className = 'class-grade-label'; lbl.textContent = 'Dine klasser';
-    wrap.appendChild(lbl);
-    taught.forEach(c => wrap.appendChild(classPickBtn(c)));
-    mine.appendChild(wrap);
+    const section = document.createElement('div');
+    section.className = 'class-modal-mine';
+    const head = document.createElement('span'); head.className = 'class-modal-mine-title'; head.textContent = 'Dine klasser';
+    section.appendChild(head);
+    // One row per grade-year (only the classes you teach in it), mirroring the
+    // «Alle klasser» grid below so the grade labels line up.
+    CLASS_GRADES.forEach(group => {
+      const inYear = group.classes.filter(c => taught.includes(c));
+      if (!inYear.length) return;
+      const wrap = document.createElement('div');
+      wrap.className = 'class-modal-group';
+      const lbl = document.createElement('span'); lbl.className = 'class-grade-label'; lbl.textContent = group.label;
+      wrap.appendChild(lbl);
+      inYear.forEach(c => wrap.appendChild(classPickBtn(c)));
+      section.appendChild(wrap);
+    });
+    mine.appendChild(section);
   }
   const grid = document.getElementById('classModalGrid');
   grid.innerHTML = '';

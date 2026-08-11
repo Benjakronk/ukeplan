@@ -616,9 +616,11 @@
 .onboard-sum-val { flex: 1; color: var(--text); }
 .onboard-sum-empty { color: var(--text-muted); font-style: italic; }
 
-/* «Dine klasser» shortcut row atop the class chooser */
-.class-modal-mine { padding-bottom: 12px; margin-bottom: 2px; border-bottom: 1px solid var(--border); }
-.class-modal-mine .class-grade-label { width: auto; color: var(--primary); }
+/* «Dine klasser» shortcut atop the class chooser: a heading + one row per
+   grade-year (taught classes only), laid out like the «Alle klasser» grid so
+   the grade labels align. */
+.class-modal-mine { display: flex; flex-direction: column; gap: 12px; padding-bottom: 14px; margin-bottom: 2px; border-bottom: 1px solid var(--border); }
+.class-modal-mine-title { color: var(--primary); font-weight: 700; }
 
 /* ── Hjem (dashboard) tab ──────────────────────────────────── */
 .hjem-header { margin: 4px 0 16px; }
