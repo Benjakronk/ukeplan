@@ -161,10 +161,8 @@ window.addEventListener('DOMContentLoaded', init);
 async function init() {
   setupListeners();
   loadSchoolCalendar();
-
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
-  }
+  // Service worker is registered (+ auto-reload on update) from rich.js, shared
+  // by both pages.
 
   selectedClass = localStorage.getItem(CLASS_KEY);
   if (selectedClass && !CLASSES.includes(selectedClass)) selectedClass = null;

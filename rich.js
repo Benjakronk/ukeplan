@@ -508,3 +508,39 @@ function createRichField(opts) {
   }
   window.UPJourney = { build, update, victory };
 })();
+
+// =============================================================
+// Service worker registration + auto-update (shared by both pages)
+//
+// The SW serves the app shell network-first, so fresh HTML/JS/CSS arrive on the
+// next load. This makes a DEPLOY apply without a manual hard refresh: when a new
+// SW version activates (it skipWaiting()s and claims clients), every open page
+// reloads itself once. `updateViaCache:'none'` keeps the browser from serving a
+// stale sw.js from HTTP cache, and we re-check for a new SW whenever the tab
+// regains focus so a page left open picks up a deploy on its own.
+// =============================================================
+(function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  // Whether this page was already controlled at load. If not (first-ever visit),
+  // the SW's initial clients.claim() fires controllerchange once – we must NOT
+  // reload then (the page already loaded fresh from the network).
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloading = false;
+  // Don't yank the page out from under someone who's mid-edit – wait until the
+  // focused field is blurred (inline edits auto-save on blur), then reload.
+  const isEditing = () => {
+    const a = document.activeElement;
+    return !!(a && (a.isContentEditable || a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT'));
+  };
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloading || !hadController) return;   // skip the first-install claim
+    reloading = true;
+    const go = () => (isEditing() ? setTimeout(go, 1500) : window.location.reload());
+    go();
+  });
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') reg.update().catch(() => {});
+    });
+  }).catch(() => {});
+})();
