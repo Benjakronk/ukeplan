@@ -805,11 +805,20 @@ body.scroll-locked { overflow: hidden; }
 .event-card-head { font-size: 12px; font-weight: 700; color: var(--event); display: flex; align-items: center; gap: 8px; }
 .event-card-range { font-weight: 600; color: var(--text-muted); }
 .event-card-desc { font-size: 14px; color: var(--text); margin-top: 3px; }
-/* Events on the Min uke dashboard */
-.dash-events { gap: 8px; }
-.dash-event-line { display: flex; align-items: baseline; gap: 8px; border: 1px solid var(--border); border-left: 3px solid var(--event); border-radius: var(--radius-btn); background: var(--surface); padding: 10px 12px; }
-.dash-event-star { color: var(--event); flex: none; }
-.dash-event-body { font-size: 15px; color: var(--text); }
+/* Upcoming-events panel (Min uke, teacher Hjem + Ukeplan) – tiered by urgency:
+   tier-now (today/tomorrow) most prominent, tier-week medium, tier-coming muted. */
+.events-panel { display: flex; flex-direction: column; gap: 8px; }
+.events-section { margin-bottom: 14px; }
+.events-section:empty { display: none; margin: 0; }
+.event-item { display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left; font-family: inherit;
+  border: 1px solid var(--border); border-left: 3px solid var(--event); border-radius: var(--radius-btn);
+  background: var(--surface); color: var(--text); padding: 10px 12px; font-size: 15px; }
+button.event-item { cursor: pointer; transition: border-color var(--transition); }
+button.event-item:hover { border-color: var(--event); }
+.event-item-star { color: var(--event); flex: none; }
+.event-item-body { line-height: 1.4; }
+.event-item.tier-now { background: var(--event-bg); border-left-width: 5px; font-size: 16px; font-weight: 600; }
+.event-item.tier-coming { opacity: .68; font-size: 13px; padding: 8px 12px; }
 /* Teacher calendar day-detail: event card + the +Vurdering / +Hendelse row */
 .event-detail-card { border-left-color: var(--event) !important; }
 .event-detail-card .vurd-detail-meta { color: var(--event); }

@@ -2136,6 +2136,54 @@ function eventsByDateFor(cls) {
 function eventsForDate(iso, cls) {
   return hendData.filter(h => hendMatchesClass(h, cls) && hendDates(h).includes(iso));
 }
+// Events relevant to the teacher: school-wide or in any class they teach.
+function hendForTeacher(h) { return !h.classes || classesTaught.some(c => classMatches(h.classes, c)); }
+
+// Urgency of an upcoming event relative to TODAY, for the dashboards. null when
+// it's outside the lookahead window (today → end of NEXT week). Three tiers:
+// now (today/tomorrow, most prominent), week (rest of this week), coming (next
+// week – shown "the week before"). `rank` orders them, `label` is the day text.
+function eventUrgency(h) {
+  const today = new Date();
+  const todayISO = toISODate(today);
+  const tomorrowISO = toISODate(addDays(today, 1));
+  const nextMondayISO = toISODate(addDays(mondayOf(today), 7));
+  const windowEndISO = toISODate(addDays(mondayOf(today), 13));   // Sunday of next week
+  const days = hendDates(h);
+  const upcoming = days.filter(iso => iso >= todayISO && iso <= windowEndISO);
+  if (!upcoming.length) return null;
+  const nextDay = upcoming[0];
+  if (days.includes(todayISO)) return { tier: 'now', rank: 0, label: 'I dag', day: todayISO };
+  if (nextDay === tomorrowISO)  return { tier: 'now', rank: 0, label: 'I morgen', day: nextDay };
+  if (nextDay < nextMondayISO)  return { tier: 'week', rank: 1, label: capitalizeFirst(isoToDate(nextDay).toLocaleDateString('no', { weekday: 'long' })), day: nextDay };
+  return { tier: 'coming', rank: 2, label: 'Neste uke · ' + capitalizeFirst(isoToDate(nextDay).toLocaleDateString('no', { weekday: 'long', day: 'numeric', month: 'short' })), day: nextDay };
+}
+function upcomingEventRows(matchFn) {
+  const rows = [];
+  hendData.forEach(h => { if (matchFn(h)) { const u = eventUrgency(h); if (u) rows.push(Object.assign({ ev: h }, u)); } });
+  rows.sort((a, b) => a.rank - b.rank || a.day.localeCompare(b.day));
+  return rows;
+}
+// A tiered "upcoming events" panel. opts.clickable → each line opens the editor.
+function buildUpcomingEvents(matchFn, opts = {}) {
+  const rows = upcomingEventRows(matchFn);
+  if (!rows.length) return null;
+  const wrap = document.createElement('div');
+  wrap.className = 'events-panel';
+  if (opts.title) { const t = document.createElement('h3'); t.className = opts.titleClass || 'dash-section-title'; t.textContent = opts.title; wrap.appendChild(t); }
+  rows.forEach(({ ev, tier, label }) => {
+    const line = document.createElement(opts.clickable ? 'button' : 'div');
+    line.className = 'event-item tier-' + tier;
+    if (opts.clickable) { line.type = 'button'; line.title = 'Rediger hendelse'; line.addEventListener('click', () => openHendEdit(ev)); }
+    const star = document.createElement('span'); star.className = 'event-item-star'; star.textContent = '★'; line.appendChild(star);
+    const body = document.createElement('span'); body.className = 'event-item-body';
+    const range = ev.dateTo && ev.dateTo !== ev.date ? ' (' + shortDate(ev.date) + '–' + shortDate(ev.dateTo) + ')' : '';
+    body.innerHTML = '<strong>' + escapeHtml(label) + ':</strong> ' + escapeHtml(ev.description || 'Hendelse') + escapeHtml(range);
+    line.appendChild(body);
+    wrap.appendChild(line);
+  });
+  return wrap;
+}
 
 // ─── Week navigation ──────────────────────────────────────────
 
@@ -2557,7 +2605,7 @@ function render() {
   if (!selectedClass) return;
   if (deferIfEditing()) return;
   renderDeferred = false;
-  if (teacherTab === 'ukeplan') { renderGeneral(); renderBoard(); }
+  if (teacherTab === 'ukeplan') { renderEventsSection(); renderGeneral(); renderBoard(); }
   else if (teacherTab === 'vurd') renderVurd();
   else if (teacherTab === 'oversikt') renderOversiktActive();
 }
@@ -2568,6 +2616,15 @@ function renderOversiktActive() {
 }
 
 // Class-wide elements (beskjeder etc.) as editable cards.
+// Upcoming events for the viewed class, at the top of the Ukeplan tab.
+function renderEventsSection() {
+  const sec = document.getElementById('eventsSection');
+  if (!sec) return;
+  sec.innerHTML = '';
+  const panel = buildUpcomingEvents(h => hendMatchesClass(h, selectedClass), { title: 'Hendelser', clickable: true });
+  if (panel) sec.appendChild(panel);
+}
+
 function renderGeneral() {
   const section = document.getElementById('generalSection');
   section.innerHTML = '';
@@ -4868,6 +4925,7 @@ function refreshConflicts() {
 async function loadHjem(opts = {}) {
   const week = dateToWeek(weekMonday);
   loadAssessments(opts.force ? { force: true } : {});   // TTL-cheap; forced on explicit refreshes
+  loadHendelser(opts.force ? { force: true } : {});     // for the upcoming-events panel
   if (!opts.force && hjemWeek === week) { renderHjem(); return; }
   showBgLoading();
   try {
@@ -4998,6 +5056,9 @@ function renderHjem() {
 
   const intern = buildInternBanner(week);   // teacher-only reminders, front of mind
   if (intern) pane.appendChild(intern);
+
+  const evPanel = buildUpcomingEvents(hendForTeacher, { title: 'Hendelser', clickable: true });
+  if (evPanel) pane.appendChild(evPanel);
 
   const my = mySubjects();
   const classes = hjemClasses();

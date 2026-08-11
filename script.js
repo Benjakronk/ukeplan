@@ -503,6 +503,26 @@ function hendDates(h) {
 function hendForStudent(h) { return !h.classes || classMatches(h.classes, selectedClass); }
 function eventsOnDate(iso) { return hendData.filter(h => hendForStudent(h) && hendDates(h).includes(iso)); }
 
+// Urgency of an upcoming event relative to TODAY (for the Min uke panel). null
+// when outside the lookahead window (today → end of NEXT week). Three tiers:
+// now (today/tomorrow – most prominent), week (rest of this week), coming (next
+// week – shown "the week before").
+function eventUrgency(h) {
+  const today = new Date();
+  const todayISO = toISODate(today);
+  const tomorrowISO = toISODate(addDays(today, 1));
+  const nextMondayISO = toISODate(addDays(mondayOf(today), 7));
+  const windowEndISO = toISODate(addDays(mondayOf(today), 13));   // Sunday of next week
+  const days = hendDates(h);
+  const upcoming = days.filter(iso => iso >= todayISO && iso <= windowEndISO);
+  if (!upcoming.length) return null;
+  const nextDay = upcoming[0];
+  if (days.includes(todayISO)) return { tier: 'now', rank: 0, label: 'I dag', day: todayISO };
+  if (nextDay === tomorrowISO)  return { tier: 'now', rank: 0, label: 'I morgen', day: nextDay };
+  if (nextDay < nextMondayISO)  return { tier: 'week', rank: 1, label: capitalizeFirst(isoToDate(nextDay).toLocaleDateString('no', { weekday: 'long' })), day: nextDay };
+  return { tier: 'coming', rank: 2, label: 'Neste uke · ' + capitalizeFirst(isoToDate(nextDay).toLocaleDateString('no', { weekday: 'long', day: 'numeric', month: 'short' })), day: nextDay };
+}
+
 // ─── Class selection ──────────────────────────────────────────
 
 function updateClassLabel() {
@@ -1194,31 +1214,23 @@ function buildDashVurd() {
   return wrap;
 }
 
-// This week's calendar events, one line each ("★ I dag: Idrettsdag"), pinned at
-// the top of Min uke. An ongoing multi-day event reads as "I dag".
+// Upcoming events pinned at the top of Min uke, tiered by urgency (today/tomorrow
+// most prominent → this week → next week "kommende"). Anchored to TODAY, so it's
+// a rolling look-ahead regardless of which week is being browsed.
 function buildDashEvents() {
-  const todayISO = toISODate(new Date());
-  const seen = new Set(), rows = [];
-  for (let k = 0; k < 7; k++) {
-    const iso = toISODate(addDays(weekMonday, k));
-    eventsOnDate(iso).forEach(ev => {
-      const key = ev.id || (ev.date + '|' + ev.description);
-      if (seen.has(key)) return; seen.add(key);
-      const isToday = hendDates(ev).includes(todayISO);
-      rows.push({ ev, when: isToday ? 'I dag' : capitalizeFirst(isoToDate(iso).toLocaleDateString('no', { weekday: 'long' })), today: isToday });
-    });
-  }
+  const rows = [];
+  hendData.forEach(h => { if (hendForStudent(h)) { const u = eventUrgency(h); if (u) rows.push(Object.assign({ ev: h }, u)); } });
   if (!rows.length) return null;
-  rows.sort((a, b) => (b.today - a.today));   // today's first
-  const wrap = document.createElement('div'); wrap.className = 'dash-section dash-events';
-  rows.forEach(({ ev, when }) => {
+  rows.sort((a, b) => a.rank - b.rank || a.day.localeCompare(b.day));
+  const wrap = document.createElement('div'); wrap.className = 'dash-section events-panel';
+  rows.forEach(({ ev, tier, label }) => {
     const line = document.createElement('div');
-    line.className = 'dash-event-line';
-    const star = document.createElement('span'); star.className = 'dash-event-star'; star.textContent = '★';
-    const body = document.createElement('span'); body.className = 'dash-event-body';
+    line.className = 'event-item tier-' + tier;
+    const star = document.createElement('span'); star.className = 'event-item-star'; star.textContent = '★'; line.appendChild(star);
+    const body = document.createElement('span'); body.className = 'event-item-body';
     const range = ev.dateTo && ev.dateTo !== ev.date ? ' (' + shortDate(ev.date) + '–' + shortDate(ev.dateTo) + ')' : '';
-    body.innerHTML = '<strong>' + escapeHtml(when) + ':</strong> ' + escapeHtml(ev.description || 'Hendelse') + escapeHtml(range);
-    line.appendChild(star); line.appendChild(body);
+    body.innerHTML = '<strong>' + escapeHtml(label) + ':</strong> ' + escapeHtml(ev.description || 'Hendelse') + escapeHtml(range);
+    line.appendChild(body);
     wrap.appendChild(line);
   });
   return wrap;
