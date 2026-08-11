@@ -69,9 +69,9 @@ const SUBJECT_TYPES = ['læringsmål', 'ressurs', 'lekse'];
 // `intern` is a teacher-only reminder (hidden from students – it's simply absent
 // from the student GENERAL_TYPES). Kept last so the picker/board order is stable.
 const GENERAL_TYPES = ['beskjed', 'timeendring', 'utstyr', 'aktivitet', 'annet', 'intern'];
-const MODAL_TYPES   = ['lekse', 'læringsmål', 'ressurs', 'vurdering', 'beskjed', 'timeendring', 'utstyr', 'aktivitet', 'annet', 'intern'];
+const MODAL_TYPES   = ['lekse', 'læringsmål', 'ressurs', 'vurdering', 'hendelse', 'beskjed', 'timeendring', 'utstyr', 'aktivitet', 'annet', 'intern'];
 const TYPE_LABEL = {
-  'læringsmål': 'Tema og læringsmål', 'ressurs': 'Ressurser', 'lekse': 'Lekse', 'vurdering': 'Vurdering', 'beskjed': 'Beskjed',
+  'læringsmål': 'Tema og læringsmål', 'ressurs': 'Ressurser', 'lekse': 'Lekse', 'vurdering': 'Vurdering', 'hendelse': 'Hendelse', 'beskjed': 'Beskjed',
   'timeendring': 'Timeendring', 'utstyr': 'Utstyr', 'aktivitet': 'Aktivitet', 'annet': 'Annet', 'intern': 'Intern (kun lærere)',
 };
 const GENERAL_ICON = { beskjed: '📣', timeendring: '🕑', utstyr: '🎒', aktivitet: '🚌', annet: '📌', intern: '🔒' };
@@ -83,6 +83,8 @@ const GENERAL_ICON = { beskjed: '📣', timeendring: '🕑', utstyr: '🎒', akt
 const VURD_CACHE_KEY = 'up_teacher_vurd';
 const VURD_TS_KEY    = 'up_teacher_vurd_ts';
 const VURD_CACHE_TTL = 10 * 60 * 1000;
+const HEND_CACHE_KEY = 'up_teacher_hend';
+const HEND_TS_KEY    = 'up_teacher_hend_ts';
 
 // Writes that failed on an expired session – replayed after re-login.
 const PENDING_WRITES_KEY = 'up_pending_writes';
@@ -94,6 +96,8 @@ let kontaktClasses = [];     // subset of classesTaught where the teacher is Kon
 let subjectClasses = {};     // { subject: [classes] } – which classes each subject is taught in (server relation)
 let cloning       = false;   // true while a clone request is in flight (guards double-clicks)
 let editingVurd   = null; // the vurdering object being edited in the modal, or null
+let editingHend   = null; // the hendelse (event) being edited in the modal, or null
+let hendData      = []; // all calendar events (filtered client-side by class/date)
 let selectedClass = localStorage.getItem(CLASS_KEY) || null;
 let variantCode   = null;   // adapted-plan code being edited, or null
 
@@ -911,6 +915,41 @@ function recordVurdUpdate(id, before, after, label) {
     label: label || 'endret vurdering',
     undo: () => vurdApi('update', Object.assign({ id }, before)),
     redo: () => vurdApi('update', Object.assign({ id }, after)),
+  });
+}
+
+// Record helpers (events via hendApi()).
+async function hendApi(action, params = {}) {
+  const data = await api('hend' + action, params);   // hendcreate | hendupdate | henddelete
+  localStorage.removeItem(HEND_TS_KEY);              // own write → next loadHendelser refetches
+  return data;
+}
+function hendCreateParams(h) {
+  return { date: h.date, dateTo: h.dateTo || '', classes: h.classes || '',
+           description: h.description || '', teacher: h.teacher || '' };
+}
+function recordHendCreate(params, id, label) {
+  const ref = { id };
+  pushUndo({
+    label: label || 'la til hendelse',
+    undo: () => hendApi('delete', { id: ref.id }),
+    redo: async () => { const r = await hendApi('create', params); ref.id = r && r.id; },
+  });
+}
+function recordHendDelete(h, label) {
+  const params = hendCreateParams(h);
+  const ref = { id: h.id };
+  pushUndo({
+    label: label || 'slettet hendelse',
+    undo: async () => { const r = await hendApi('create', params); ref.id = r && r.id; },
+    redo: () => hendApi('delete', { id: ref.id }),
+  });
+}
+function recordHendUpdate(id, before, after, label) {
+  pushUndo({
+    label: label || 'endret hendelse',
+    undo: () => hendApi('update', Object.assign({ id }, before)),
+    redo: () => hendApi('update', Object.assign({ id }, after)),
   });
 }
 
@@ -1904,6 +1943,19 @@ function contextualVurdDate() {
 function updateDateInfo() {
   const echo = document.getElementById('dateEcho');
   const warn = document.getElementById('dateWarn');
+  if (modalType === 'hendelse') {
+    if (warn) warn.hidden = true;   // events are allowed on skolerute days
+    const from = document.getElementById('dateInput').value;
+    const to   = document.getElementById('dateToInput').value;
+    if (echo) {
+      if (from) {
+        const fmt = iso => capitalizeFirst(isoToDate(iso).toLocaleDateString('no', { weekday: 'long', day: 'numeric', month: 'long' }));
+        echo.textContent = 'Hendelse: ' + fmt(from) + (to && to !== from ? ' – ' + fmt(to) : '');
+        echo.hidden = false;
+      } else echo.hidden = true;
+    }
+    return;
+  }
   if (modalType !== 'vurdering') {
     if (echo) echo.hidden = true;
     if (warn) warn.hidden = true;
@@ -1950,6 +2002,7 @@ function cacheCurrentWeek() { weekCache.set(weekCacheKey(dateToWeek(weekMonday))
 async function loadData(opts = {}) {
   const { background = false, force = false, skipCache = false } = opts;
   loadAssessments({ force });
+  loadHendelser({ force });
 
   const week = dateToWeek(weekMonday);
   const key  = weekCacheKey(week);
@@ -2031,6 +2084,57 @@ async function loadAssessments(opts = {}) {
     } catch { /* storage full – the cache is best-effort */ }
     if (changed) render();   // skip the pointless board rebuild when unchanged
   } catch { /* silent */ }
+}
+
+// Calendar events – same cache-then-fetch pattern as assessments.
+async function loadHendelser(opts = {}) {
+  const { force = false } = opts;
+  if (!force) {
+    const ts = Number(localStorage.getItem(HEND_TS_KEY)) || 0;
+    if (Date.now() - ts < VURD_CACHE_TTL) {
+      if (!hendData.length) {
+        try { hendData = JSON.parse(localStorage.getItem(HEND_CACHE_KEY)) || []; } catch { hendData = []; }
+        if (hendData.length) render();
+      }
+      return;
+    }
+  }
+  try {
+    const res = await fetch(`${SCRIPT_URL}?action=hendelser`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!Array.isArray(data)) return;
+    const changed = JSON.stringify(data) !== JSON.stringify(hendData);
+    hendData = data;
+    try {
+      localStorage.setItem(HEND_CACHE_KEY, JSON.stringify(data));
+      localStorage.setItem(HEND_TS_KEY, String(Date.now()));
+    } catch { /* best-effort */ }
+    if (changed) render();
+  } catch { /* silent */ }
+}
+
+// The ISO dates a hendelse covers (single day when dateTo is empty), capped so a
+// bad range can't blow up the loop.
+function hendDates(h) {
+  const out = [];
+  if (!h || !h.date) return out;
+  let d = isoToDate(h.date);
+  const end = h.dateTo ? isoToDate(h.dateTo) : d;
+  let guard = 0;
+  while (d <= end && guard++ < 120) { out.push(toISODate(d)); d = addDays(d, 1); }
+  return out;
+}
+// An event with no classes is school-wide; else it must list the class.
+function hendMatchesClass(h, cls) { return !cls || !h.classes || classMatches(h.classes, cls); }
+// { iso -> [events] } for a class scope (null = all, for the teacher calendar).
+function eventsByDateFor(cls) {
+  const map = {};
+  hendData.forEach(h => { if (hendMatchesClass(h, cls)) hendDates(h).forEach(iso => { (map[iso] = map[iso] || []).push(h); }); });
+  return map;
+}
+function eventsForDate(iso, cls) {
+  return hendData.filter(h => hendMatchesClass(h, cls) && hendDates(h).includes(iso));
 }
 
 // ─── Week navigation ──────────────────────────────────────────
@@ -3254,6 +3358,7 @@ function setupModalListeners() {
     refreshConflicts();
   });
   document.getElementById('dateInput').addEventListener('change', () => { updateDateInfo(); refreshConflicts(); });
+  document.getElementById('dateToInput').addEventListener('change', () => updateDateInfo());
 
   // Subject select – grouped «Mine fag» / «Andre fag» (rebuilt on open too).
   fillSubjectSelect(document.getElementById('subjectSelect'), '(uten fag)');
@@ -3311,12 +3416,13 @@ function modalTeacherValue() {
 function openAddModal(preset = {}) {
   if (!selectedClass) { showClassModal(); return; }
   editingVurd    = null;
+  editingHend    = null;
   editingElement = null;
   modalType      = preset.type || 'lekse';
   // In an adapted plan, plan elements are saved under the code; assessments
-  // (vurdering) stay on the base class so they're shared with the whole class.
+  // (vurdering) + events (hendelse) stay on the base class so they're class-wide.
   modalClasses   = preset.classes ? preset.classes.slice()
-                 : (variantCode && modalType !== 'vurdering' ? [variantCode] : [selectedClass]);
+                 : (variantCode && modalType !== 'vurdering' && modalType !== 'hendelse' ? [variantCode] : [selectedClass]);
   modalDays      = preset.days ? preset.days.slice() : [];
   modalWeekFrom  = preset.weekFrom || weekMonday;
   modalWeekTo    = preset.weekTo || modalWeekFrom;
@@ -3327,6 +3433,7 @@ function openAddModal(preset = {}) {
   document.getElementById('subjectSelect').value = preset.subject || '';
   buildModalWeekOptions();
   setDateInputBounds(preset.date);
+  setDateToInputBounds(preset.dateTo || '');
   document.getElementById('addModalTitle').textContent = 'Legg til element';
   document.getElementById('addDelete').hidden = true;
   document.getElementById('addSave').textContent = 'Lagre';
@@ -3341,6 +3448,7 @@ function openAddModal(preset = {}) {
 function openElementEdit(el) {
   if (!el.id) { showToast('Dette elementet kan ikke redigeres her.'); return; }
   editingVurd    = null;
+  editingHend    = null;
   editingElement = el;
   modalType      = el.type;
   modalClasses   = String(el.classes || '').toUpperCase().replace(/,/g, ' ').split(/\s+/).filter(Boolean);
@@ -3372,6 +3480,7 @@ function openVurdAdd(subject) {
 function openVurdEdit(v) {
   if (!v.id) { showToast('Denne vurderingen er fra det gamle systemet og kan ikke redigeres her.'); return; }
   editingVurd    = v;
+  editingHend    = null;
   editingElement = null;
   modalType    = 'vurdering';
   modalClasses = String(v.classes || '').toUpperCase().replace(/,/g, ' ').split(/\s+/).filter(Boolean);
@@ -3391,6 +3500,39 @@ function openVurdEdit(v) {
   document.getElementById('addSave').textContent = 'Lagre';
 
   selectModalType('vurdering');
+  buildModalClassBtns();
+  showModal();
+}
+
+// Add an event on a specific date (from the calendar's "+ hendelse").
+function openHendAdd(date) {
+  openAddModal({ type: 'hendelse', date: date || '', classes: [selectedClass] });
+}
+
+// Edit an existing event (clicked on the calendar).
+function openHendEdit(h) {
+  if (!h.id) { showToast('Denne hendelsen kan ikke redigeres her.'); return; }
+  editingHend    = h;
+  editingVurd    = null;
+  editingElement = null;
+  modalType      = 'hendelse';
+  modalClasses   = String(h.classes || '').toUpperCase().replace(/,/g, ' ').split(/\s+/).filter(Boolean);
+  if (!modalClasses.length) modalClasses = [selectedClass];
+  modalDays        = [];
+  modalWeekFrom    = h.date ? mondayOf(isoToDate(h.date)) : weekMonday;
+  modalWeekTo      = modalWeekFrom;
+  modalPendingDesc = h.description || '';
+  modalInitialDesc = h.description || '';
+  document.getElementById('vurdTeacherInput').value = h.teacher || teacherName;
+  buildModalWeekOptions();
+  setDateInputBounds(h.date);
+  document.getElementById('dateInput').value = h.date || '';
+  setDateToInputBounds(h.dateTo || '');
+  document.getElementById('addModalTitle').textContent = 'Rediger hendelse';
+  document.getElementById('addDelete').hidden = false;
+  document.getElementById('addSave').textContent = 'Lagre';
+
+  selectModalType('hendelse');
   buildModalClassBtns();
   showModal();
 }
@@ -3417,6 +3559,14 @@ function setDateInputBounds(preferred) {
   if (v > b.end)   v = b.end;
   input.value = v;
   updateDateInfo();
+}
+// The optional "til" date for a hendelse range: same school-year bounds.
+function setDateToInputBounds(value) {
+  const input = document.getElementById('dateToInput');
+  if (!input) return;
+  const b = getSchoolYearBounds(new Date());
+  input.min = b.start; input.max = b.end;
+  input.value = value || '';
 }
 
 // Populate the from/til week dropdowns centred on the modal's start week. The
@@ -3472,7 +3622,7 @@ function modalHtmlToText(html) {
 function buildModalDescEditor(seed) {
   const ta = document.getElementById('descInput');
   const box = document.getElementById('descRich');
-  if (modalType !== 'vurdering') {          // rich
+  if (modalType !== 'vurdering' && modalType !== 'hendelse') {   // rich
     box.innerHTML = '';
     modalDescEd = createRichField({
       value: seed || '',
@@ -3505,16 +3655,21 @@ function selectModalType(t) {
   buildModalDescEditor(seed);
   document.querySelectorAll('#typeBtns .type-btn').forEach(b => b.classList.toggle('active', b.dataset.type === t));
   const isVurd = t === 'vurdering';
+  const isHend = t === 'hendelse';       // date-based calendar event (idrettsdag, leirskole …)
+  const usesDate = isVurd || isHend;     // date field instead of week/day
   const hasDay = t === 'lekse' || GENERAL_TYPES.includes(t); // lekse + general types
-  document.getElementById('subjectRow').style.display    = '';            // all types can carry a subject
-  document.getElementById('weekRangeRow').style.display  = isVurd ? 'none' : '';
-  document.getElementById('dateRow').style.display       = isVurd ? '' : 'none';
+  document.getElementById('subjectRow').style.display    = isHend ? 'none' : '';   // events aren't subject-specific
+  document.getElementById('weekRangeRow').style.display  = usesDate ? 'none' : '';
+  document.getElementById('dateRow').style.display       = usesDate ? '' : 'none';
+  document.getElementById('dateToRow').style.display     = isHend ? '' : 'none';
   document.getElementById('dayRow').style.display        = hasDay ? '' : 'none';
+  const dateLabel = document.getElementById('dateLabel');
+  if (dateLabel) dateLabel.textContent = isHend ? 'Fra dato' : 'Dato';
   if (!hasDay) { modalDays = []; syncDayBtns(); }
 
   // Adapted plan: plan elements target the code (hide the class picker, show a
-  // note); vurdering keeps the normal class picker (assessments are class-wide).
-  const variantPlan = !!variantCode && !isVurd;
+  // note); vurdering + hendelse keep the normal class picker (class-wide).
+  const variantPlan = !!variantCode && !isVurd && !isHend;
   const classRow = document.getElementById('classRow');
   const note     = document.getElementById('variantClassNote');
   if (classRow) classRow.style.display = variantPlan ? 'none' : '';
@@ -3522,7 +3677,7 @@ function selectModalType(t) {
     note.hidden = !variantPlan;
     if (variantPlan) note.querySelector('strong').textContent = variantCode;
   }
-  if (variantCode && !editingElement && !editingVurd) {
+  if (variantCode && !editingElement && !editingVurd && !editingHend) {
     modalClasses = variantPlan ? [variantCode] : [selectedClass];
     buildModalClassBtns();
   }
@@ -3638,6 +3793,7 @@ async function saveFromModal() {
   beginModalSaving();
   try {
     if (modalType === 'vurdering') { await saveVurderingFromModal(desc); return; }
+    if (modalType === 'hendelse')  { await saveHendelseFromModal(desc); return; }
 
     let weekFrom = dateToWeek(modalWeekFrom);
     let weekTo   = dateToWeek(modalWeekTo);
@@ -3733,7 +3889,45 @@ async function saveVurderingFromModal(desc) {
   }
 }
 
+// Calendar events – date-range (dateTo empty = single day), class-wide, no
+// subject. Allowed on school-free/planning days (idrettsdag, leirskole …), so
+// no vurdDateProblem check – only a from≤til sanity check.
+async function saveHendelseFromModal(desc) {
+  let date = document.getElementById('dateInput').value;
+  if (!date) { showToast('Velg en fra-dato for hendelsen.'); return; }
+  let dateTo = document.getElementById('dateToInput').value || '';
+  if (dateTo && dateTo < date) { const t = date; date = dateTo; dateTo = t; }   // swap if reversed
+  const classes = modalClasses.join(' ');
+  const teacher = modalTeacherValue();
+
+  setSaving();
+  try {
+    if (editingHend && editingHend.id) {
+      const before = { date: editingHend.date, dateTo: editingHend.dateTo || '', classes: editingHend.classes || '', description: editingHend.description || '', teacher: editingHend.teacher || '' };
+      const after  = { date, dateTo, classes, description: desc, teacher };
+      await hendApi('update', Object.assign({ id: editingHend.id }, after));
+      recordHendUpdate(editingHend.id, before, after, 'endret hendelse');
+    } else {
+      const params = { date, dateTo, classes, description: desc, teacher };
+      const r = await hendApi('create', params);
+      if (r && r.id) recordHendCreate(params, r.id, 'la til hendelse');
+    }
+    setSaved();
+    closeAddModal({ force: true });
+    loadHendelser({ force: true });
+  } catch (err) {
+    setSaveError(err.message);
+  }
+}
+
 async function deleteFromModal() {
+  if (editingHend && editingHend.id) {
+    if (!await uiConfirm('Slette denne hendelsen?', { title: 'Slette hendelse', okText: 'Slett', danger: true })) return;
+    setSaving();
+    try { const h = editingHend; await hendApi('delete', { id: h.id }); recordHendDelete(h, 'slettet hendelse'); setSaved(); closeAddModal({ force: true }); loadHendelser({ force: true }); }
+    catch (err) { setSaveError(err.message); }
+    return;
+  }
   if (editingVurd && editingVurd.id) {
     if (!await uiConfirm('Slette denne vurderingen?', { title: 'Slette vurdering', okText: 'Slett', danger: true })) return;
     setSaving();
@@ -4397,15 +4591,16 @@ function renderVurdCalendar() {
 
   const byDate = {};
   getVurdFiltered().forEach(v => { (byDate[v.date] = byDate[v.date] || []).push(v); });
+  const eventsByDate = eventsByDateFor(null);   // teacher calendar shows all events
 
   let cursor = new Date(start.getFullYear(), start.getMonth(), 1);
   const endMonth = new Date(end.getFullYear(), end.getMonth(), 1);
   if (cursor > endMonth) { // reversed/empty range guard
-    root.appendChild(buildVurdMonthCard(new Date(today.getFullYear(), today.getMonth(), 1), byDate));
+    root.appendChild(buildVurdMonthCard(new Date(today.getFullYear(), today.getMonth(), 1), byDate, { eventsByDate }));
     return;
   }
   while (cursor <= endMonth) {
-    root.appendChild(buildVurdMonthCard(cursor, byDate));
+    root.appendChild(buildVurdMonthCard(cursor, byDate, { eventsByDate }));
     cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
   }
 }
@@ -4479,6 +4674,17 @@ function buildVurdMonthCard(monthDate, byDate, opts = {}) {
             const dot = document.createElement('span'); dot.className = 'dot'; dots.appendChild(dot);
           }
           td.appendChild(dots);
+        }
+
+        // Calendar events (hendelser): a distinct tinted cell + a ★ marker.
+        const evs = (opts.eventsByDate && opts.eventsByDate[iso]) || [];
+        if (evs.length) {
+          td.classList.add('has-event');
+          const em = document.createElement('span');
+          em.className = 'cal-event-badge';
+          em.textContent = '★';
+          em.title = evs.map(e => e.description).filter(Boolean).join(', ');
+          td.appendChild(em);
         }
 
         // Every in-month day is clickable so teachers can add for empty days too.
@@ -4565,16 +4771,54 @@ function showVurdDayDetail(date, items) {
     box.appendChild(card);
   });
 
-  const add = document.createElement('button');
-  add.className = 'btn btn-primary btn-tiny vurd-detail-add';
-  add.type = 'button';
-  add.textContent = '+ Legg til for denne datoen';
-  add.addEventListener('click', () => openAddModal({ type: 'vurdering', date: iso, weekFrom: mondayOf(date) }));
-  box.appendChild(add);
+  // Calendar events (hendelser) on this day – teacher sees all classes.
+  eventsForDate(iso, null).forEach(ev => {
+    const card = document.createElement('div');
+    card.className = 'assessment-card vurd-detail-card event-detail-card';
+    const head = document.createElement('div');
+    head.className = 'vurd-detail-card-head';
+    const meta = document.createElement('span');
+    meta.className = 'vurd-detail-meta';
+    const range = ev.dateTo && ev.dateTo !== ev.date ? ' · ' + shortDate(ev.date) + '–' + shortDate(ev.dateTo) : '';
+    meta.textContent = '★ Hendelse · ' + (ev.classes || 'hele skolen') + range;
+    head.appendChild(meta);
+    const edit = document.createElement('button');
+    edit.className = 'link-btn'; edit.type = 'button'; edit.textContent = 'Rediger';
+    edit.addEventListener('click', () => openHendEdit(ev));
+    head.appendChild(edit);
+    card.appendChild(head);
+    const desc = document.createElement('p');
+    desc.className = 'vurd-detail-desc';
+    desc.textContent = ev.description || '';
+    card.appendChild(desc);
+    if (ev.teacher) {
+      const who = document.createElement('p');
+      who.className = 'vurd-detail-teacher';
+      who.textContent = 'Lagt inn av ' + ev.teacher;
+      card.appendChild(who);
+    }
+    box.appendChild(card);
+  });
+
+  const actions = document.createElement('div');
+  actions.className = 'vurd-detail-addrow';
+  const addV = document.createElement('button');
+  addV.className = 'btn btn-primary btn-tiny';
+  addV.type = 'button';
+  addV.textContent = '+ Vurdering';
+  addV.addEventListener('click', () => openAddModal({ type: 'vurdering', date: iso, weekFrom: mondayOf(date) }));
+  const addH = document.createElement('button');
+  addH.className = 'btn btn-ghost btn-tiny';
+  addH.type = 'button';
+  addH.textContent = '+ Hendelse';
+  addH.addEventListener('click', () => openAddModal({ type: 'hendelse', date: iso, weekFrom: mondayOf(date), classes: [selectedClass] }));
+  actions.appendChild(addV); actions.appendChild(addH);
+  box.appendChild(actions);
 
   box.classList.add('active');
   box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
+function shortDate(iso) { return isoToDate(iso).toLocaleDateString('no', { day: 'numeric', month: 'short' }); }
 
 function capitalizeFirst(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 function formatDateLong(date) {
@@ -5094,7 +5338,7 @@ function renderKontakt() {
   const today = new Date();
   let cursor = new Date(today.getFullYear(), today.getMonth(), 1);
   const endMonth = new Date(today.getFullYear(), today.getMonth() + 2, 1);
-  const calOpts = { scope: '#kontaktCalWrap', onDay: showKontaktDayDetail };
+  const calOpts = { scope: '#kontaktCalWrap', onDay: showKontaktDayDetail, eventsByDate: eventsByDateFor(cls) };
   while (cursor <= endMonth) {
     calWrap.appendChild(buildVurdMonthCard(cursor, byDate, calOpts));
     cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
@@ -5262,6 +5506,18 @@ function showKontaktDayDetail(date, items) {
     const desc = document.createElement('p'); desc.className = 'vurd-detail-desc'; desc.textContent = v.description || v.notes || '';
     card.appendChild(desc);
     if (v.teacher) { const who = document.createElement('p'); who.className = 'vurd-detail-teacher'; who.textContent = 'Lagt inn av ' + v.teacher; card.appendChild(who); }
+    box.appendChild(card);
+  });
+  // Events for the kontakt class (read-only).
+  eventsForDate(iso, kontaktViewClass).forEach(ev => {
+    const card = document.createElement('div');
+    card.className = 'assessment-card vurd-detail-card event-detail-card';
+    const meta = document.createElement('span'); meta.className = 'vurd-detail-meta';
+    const range = ev.dateTo && ev.dateTo !== ev.date ? ' · ' + shortDate(ev.date) + '–' + shortDate(ev.dateTo) : '';
+    meta.textContent = '★ Hendelse' + range;
+    card.appendChild(meta);
+    const desc = document.createElement('p'); desc.className = 'vurd-detail-desc'; desc.textContent = ev.description || '';
+    card.appendChild(desc);
     box.appendChild(card);
   });
   box.classList.add('active');

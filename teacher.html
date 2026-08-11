@@ -241,10 +241,15 @@
     </div>
 
     <div class="form-row" id="dateRow" style="display:none">
-      <label class="form-label" for="dateInput">Dato</label>
+      <label class="form-label" for="dateInput"><span id="dateLabel">Dato</span></label>
       <input type="date" id="dateInput" class="input">
       <p id="dateEcho" class="date-echo" hidden></p>
       <p id="dateWarn" class="date-warn" hidden></p>
+    </div>
+
+    <div class="form-row" id="dateToRow" style="display:none">
+      <label class="form-label" for="dateToInput">Til dato (valgfritt – tomt = én dag)</label>
+      <input type="date" id="dateToInput" class="input">
     </div>
 
     <div class="form-row" id="subjectRow">

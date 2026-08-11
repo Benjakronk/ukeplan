@@ -11,6 +11,8 @@ const ELECTIVE_KEY   = 'up_electives';      // chosen elective subjects (array; 
 const WEEK_CACHE_KEY = 'up_weeks';          // { "8A|2026-W24": { ts, data } }
 const VURD_CACHE_KEY = 'up_vurd';
 const VURD_TS_KEY    = 'up_vurd_ts';
+const HEND_CACHE_KEY = 'up_hend';
+const HEND_TS_KEY    = 'up_hend_ts';
 const DONE_KEY       = 'up_done';            // { elementId: true } – locally checked-off homework
 const ALL_CACHE_KEY  = 'up_all';             // all plan elements (for fag-progresjon)
 const ALL_TS_KEY     = 'up_all_ts';
@@ -127,6 +129,7 @@ let planData      = [];                 // plan elements for current class+week
 let previewWeekData = [];               // next week's elements (Friday "day before" preview)
 let previewWeekKey  = null;             // "class|week" the preview data is for / in flight
 let vurdData      = [];                 // all assessments (filtered client-side)
+let hendData      = [];                 // all calendar events (filtered client-side by class/date)
 let lastFocusedEl = null;
 let schoolDays    = loadCachedSchoolDays() || {}; // ISO date -> { type, summaries }
 
@@ -200,6 +203,7 @@ function setupListeners() {
     // Assessments are cached separately (up to 1 h); refresh them too so a newly
     // added vurdering shows up without waiting for the cache to expire.
     loadAssessments({ skipCache: true });
+    loadHendelser({ skipCache: true });
   });
 
   // Theme lives in the profile modal now (segmented Auto/Lyst/Mørkt, live).
@@ -371,8 +375,9 @@ async function loadWeek(opts = {}) {
   const key  = planKey();
   const background = planData.length > 0 || !!getCachedWeek(key, week);
 
-  // Assessments cache (small dataset, fetched once per hour).
+  // Assessments + events caches (small datasets, fetched once per hour).
   loadAssessments({ skipCache });
+  loadHendelser({ skipCache });
 
   if (!skipCache) {
     const cached = getCachedWeek(key, week);
@@ -463,6 +468,42 @@ async function loadAssessments(opts = {}) {
     // Silent – keep whatever was cached.
   }
 }
+
+// Calendar events (hendelser) – same 1 h cache pattern as assessments.
+async function loadHendelser(opts = {}) {
+  const { skipCache = false } = opts;
+  if (!skipCache) {
+    const ts = localStorage.getItem(HEND_TS_KEY);
+    if (ts && Date.now() - Number(ts) < CACHE_TTL) {
+      try { hendData = JSON.parse(localStorage.getItem(HEND_CACHE_KEY)) || []; } catch { hendData = []; }
+      return;
+    }
+  }
+  try {
+    const res = await fetch(`${SCRIPT_URL}?action=hendelser`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!Array.isArray(data)) return;
+    hendData = data;
+    localStorage.setItem(HEND_CACHE_KEY, JSON.stringify(data));
+    localStorage.setItem(HEND_TS_KEY, String(Date.now()));
+    render();
+  } catch { /* keep cached */ }
+}
+
+// The ISO dates a hendelse covers (single day when dateTo empty), capped.
+function hendDates(h) {
+  const out = [];
+  if (!h || !h.date) return out;
+  let d = isoToDate(h.date);
+  const end = h.dateTo ? isoToDate(h.dateTo) : d;
+  let guard = 0;
+  while (d <= end && guard++ < 120) { out.push(toISODate(d)); d = addDays(d, 1); }
+  return out;
+}
+// An event with no classes is school-wide; else it must list the student's class.
+function hendForStudent(h) { return !h.classes || classMatches(h.classes, selectedClass); }
+function eventsOnDate(iso) { return hendData.filter(h => hendForStudent(h) && hendDates(h).includes(iso)); }
 
 // ─── Class selection ──────────────────────────────────────────
 
@@ -811,6 +852,8 @@ function renderDashboard() {
     return;
   }
 
+  const dev = buildDashEvents();
+  if (dev) view.appendChild(dev);
   const bstep = buildBeskjedStepper();
   if (bstep) view.appendChild(bstep);
   const barch = buildBeskjedArchive();
@@ -1153,6 +1196,36 @@ function buildDashVurd() {
   return wrap;
 }
 
+// This week's calendar events, one line each ("★ I dag: Idrettsdag"), pinned at
+// the top of Min uke. An ongoing multi-day event reads as "I dag".
+function buildDashEvents() {
+  const todayISO = toISODate(new Date());
+  const seen = new Set(), rows = [];
+  for (let k = 0; k < 7; k++) {
+    const iso = toISODate(addDays(weekMonday, k));
+    eventsOnDate(iso).forEach(ev => {
+      const key = ev.id || (ev.date + '|' + ev.description);
+      if (seen.has(key)) return; seen.add(key);
+      const isToday = hendDates(ev).includes(todayISO);
+      rows.push({ ev, when: isToday ? 'I dag' : capitalizeFirst(isoToDate(iso).toLocaleDateString('no', { weekday: 'long' })), today: isToday });
+    });
+  }
+  if (!rows.length) return null;
+  rows.sort((a, b) => (b.today - a.today));   // today's first
+  const wrap = document.createElement('div'); wrap.className = 'dash-section dash-events';
+  rows.forEach(({ ev, when }) => {
+    const line = document.createElement('div');
+    line.className = 'dash-event-line';
+    const star = document.createElement('span'); star.className = 'dash-event-star'; star.textContent = '★';
+    const body = document.createElement('span'); body.className = 'dash-event-body';
+    const range = ev.dateTo && ev.dateTo !== ev.date ? ' (' + shortDate(ev.date) + '–' + shortDate(ev.dateTo) + ')' : '';
+    body.innerHTML = '<strong>' + escapeHtml(when) + ':</strong> ' + escapeHtml(ev.description || 'Hendelse') + escapeHtml(range);
+    line.appendChild(star); line.appendChild(body);
+    wrap.appendChild(line);
+  });
+  return wrap;
+}
+
 // Progress milestones over the week's total lekser: first done, halfway, and all
 // done. The first two get a small confetti burst, finishing everything gets a
 // bigger one. Returns [id, reached, level] triples (shared by seed + check).
@@ -1408,6 +1481,14 @@ function buildDayDetail(i, weekVurd) {
   const sch = schoolDays[iso];
   if (sch) wrap.appendChild(buildSchoolDayCard(sch));
 
+  // Calendar events this day (idrettsdag, leirskole …) – shown up top.
+  const dayEvents = eventsOnDate(iso);
+  if (dayEvents.length) {
+    const sec = daySection('Hendelser');
+    dayEvents.forEach(ev => sec.appendChild(buildEventCard(ev)));
+    wrap.appendChild(sec);
+  }
+
   // Vurderinger that day
   const dayVurd = weekVurd.filter(v => v.day === dayKey);
   if (dayVurd.length) {
@@ -1465,7 +1546,7 @@ function buildDayDetail(i, weekVurd) {
     sec.appendChild(box);
   }
 
-  if (!sch && !dayVurd.length && !dayHw.length && !dayGeneral.length && !preview.length) {
+  if (!sch && !dayEvents.length && !dayVurd.length && !dayHw.length && !dayGeneral.length && !preview.length) {
     const empty = document.createElement('p');
     empty.className = 'empty-state';
     empty.textContent = variantCode
@@ -1962,8 +2043,19 @@ function buildMonthCard(monthDate, byDate) {
           td.appendChild(dots);
         }
 
-        // Clickable when there are assessments OR a school-calendar note.
-        if (items.length || sch) {
+        // Calendar events (hendelser): a distinct tinted cell + a ★ marker.
+        const evs = eventsOnDate(iso);
+        if (evs.length) {
+          td.classList.add('has-event');
+          const em = document.createElement('span');
+          em.className = 'cal-event-badge';
+          em.textContent = '★';
+          em.title = evs.map(e => e.description).filter(Boolean).join(', ');
+          td.appendChild(em);
+        }
+
+        // Clickable when there are assessments, an event, OR a school-calendar note.
+        if (items.length || evs.length || sch) {
           const snap = new Date(cursor);
           const snapItems = items.slice();
           const cell = td;
@@ -2008,10 +2100,33 @@ function showVurdDetail(date, items) {
     box.appendChild(note);
   }
 
+  eventsOnDate(toISODate(date)).forEach(ev => box.appendChild(buildEventCard(ev)));
   items.forEach(v => box.appendChild(buildAssessmentCard(v)));
   box.classList.add('active');
   box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
+
+// A calendar event (hendelse) card – read-only, star-marked, with its range.
+function buildEventCard(ev) {
+  const card = document.createElement('div');
+  card.className = 'assessment-card event-card';
+  const head = document.createElement('div');
+  head.className = 'event-card-head';
+  head.textContent = '★ Hendelse';
+  if (ev.dateTo && ev.dateTo !== ev.date) {
+    const range = document.createElement('span');
+    range.className = 'event-card-range';
+    range.textContent = shortDate(ev.date) + '–' + shortDate(ev.dateTo);
+    head.appendChild(range);
+  }
+  card.appendChild(head);
+  const desc = document.createElement('div');
+  desc.className = 'event-card-desc';
+  desc.textContent = ev.description || '';
+  card.appendChild(desc);
+  return card;
+}
+function shortDate(iso) { return isoToDate(iso).toLocaleDateString('no', { day: 'numeric', month: 'short' }); }
 
 // ─── Overlay & indicators ─────────────────────────────────────
 
@@ -2095,6 +2210,8 @@ function addDays(date, n) {
 function toISODate(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
+// Parse a "YYYY-MM-DD" string as a LOCAL date (avoids the UTC shift of new Date(iso)).
+function isoToDate(iso) { const [y, m, d] = String(iso || '').split('-').map(Number); return new Date(y, (m || 1) - 1, d || 1); }
 function dayOf(date) {
   const dow = date.getDay(); // 0=Sun … 6=Sat
   return ['', 'man', 'tir', 'ons', 'tor', 'fre', ''][dow] || '';

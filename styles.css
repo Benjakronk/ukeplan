@@ -42,6 +42,8 @@
   --info-bg:       #e4efec;
   --info-border:   #bcd4cd;
   --marker-bg:     #dfeee4;   /* school "marker" day (green) */
+  --event:         #3f6fb0;   /* calendar events (hendelser) – blue, distinct from vurd rust */
+  --event-bg:      #e2e9f4;
   --inverse-surface:#16211f;  /* toast + rich toolbar chip */
   --inverse-text:  #f2f5f3;
   --accent-on-dark:#8fd3c6;   /* link/accent sitting on the dark chip */
@@ -91,6 +93,8 @@
     --info-bg:       #18261f;
     --info-border:   #2a3d35;
     --marker-bg:     #2e4d3b;
+    --event:         #7fa8e0;
+    --event-bg:      #1e2a3d;
     --inverse-surface:#263330;
     --inverse-text:  #e9efec;
     --accent-on-dark:#8fd3c6;
@@ -111,6 +115,7 @@
   --success:#3b7a57; --success-bg:#e0efe6; --success-border:#b7d6c4;
   --warn-bg:#f6ecd6; --warn-border:#e2c98f; --warn-text:#8a5a1a;
   --info-bg:#e4efec; --info-border:#bcd4cd; --marker-bg:#dfeee4;
+  --event:#3f6fb0; --event-bg:#e2e9f4;
   --inverse-surface:#16211f; --inverse-text:#f2f5f3; --accent-on-dark:#8fd3c6;
   --scrim:rgba(16,33,31,.52);
   --shadow-card:0 1px 2px rgba(16,33,31,.05), 0 8px 24px rgba(16,33,31,.07);
@@ -126,6 +131,7 @@
   --success:#6bbd8a; --success-bg:#18261f; --success-border:#2a3d35;
   --warn-bg:#2b2517; --warn-border:#5c5027; --warn-text:#e0c48a;
   --info-bg:#18261f; --info-border:#2a3d35; --marker-bg:#2e4d3b;
+  --event:#7fa8e0; --event-bg:#1e2a3d;
   --inverse-surface:#263330; --inverse-text:#e9efec; --accent-on-dark:#8fd3c6;
   --scrim:rgba(0,0,0,.6);
   --shadow-card:0 1px 2px rgba(0,0,0,.35), 0 10px 30px rgba(0,0,0,.45);
@@ -790,6 +796,24 @@ body.scroll-locked { overflow: hidden; }
 .day-num { font-size: 13px; font-weight: 600; }
 .dots { display: flex; justify-content: center; gap: 2px; margin-top: 3px; }
 .dots .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--vurd); }
+
+/* Calendar events (hendelser): tinted cell + a ★ marker (top-left, opposite the P badge) */
+.cal-table td.has-event { background: var(--event-bg); }
+.cal-event-badge { position: absolute; top: 1px; left: 3px; font-size: 10px; line-height: 1; color: var(--event); }
+/* Event cards (student calendar detail + day view) */
+.event-card { border-left-color: var(--event) !important; }
+.event-card-head { font-size: 12px; font-weight: 700; color: var(--event); display: flex; align-items: center; gap: 8px; }
+.event-card-range { font-weight: 600; color: var(--text-muted); }
+.event-card-desc { font-size: 14px; color: var(--text); margin-top: 3px; }
+/* Events on the Min uke dashboard */
+.dash-events { gap: 8px; }
+.dash-event-line { display: flex; align-items: baseline; gap: 8px; border: 1px solid var(--border); border-left: 3px solid var(--event); border-radius: var(--radius-btn); background: var(--surface); padding: 10px 12px; }
+.dash-event-star { color: var(--event); flex: none; }
+.dash-event-body { font-size: 15px; color: var(--text); }
+/* Teacher calendar day-detail: event card + the +Vurdering / +Hendelse row */
+.event-detail-card { border-left-color: var(--event) !important; }
+.event-detail-card .vurd-detail-meta { color: var(--event); }
+.vurd-detail-addrow { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 
 /* ── Responsive ────────────────────────────────────────────── */
 @media (max-width: 640px) {
