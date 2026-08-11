@@ -3254,6 +3254,7 @@ async function commitHomeworkRow(row) {
         if (el) recordDelete(el, 'lekse');
         planData = planData.filter(p => p.id !== id);
         allPlanData = allPlanData.filter(p => p.id !== id);
+        oversiktData = oversiktData.filter(p => p.id !== id);   // keep compare view in step
         cacheCurrentWeek();
         ed.dataset.id = ''; ed._original = ''; ed.classList.remove('unsaved'); setSaved();
       }
@@ -3277,9 +3278,9 @@ async function commitHomeworkRow(row) {
       ed.dataset.id = created && created.id ? created.id : '';
       if (created && created.id) {
         recordCreate(params, created.id, 'lekse');
-        // Progresjon rows draw from allPlanData; the board from planData
-        // (only while the commit's week is still the one on screen).
-        if (ed.dataset.cls) allPlanData.push(created);
+        // Progresjon/compare rows draw from allPlanData/oversiktData; the board
+        // from planData (only while the commit's week is still on screen).
+        if (ed.dataset.cls) { allPlanData.push(created); oversiktData.push(created); }
         else if (week === dateToWeek(weekMonday)) { planData.push(created); offerRowCopy(subject, 'lekse'); }
       }
     }
@@ -3308,6 +3309,7 @@ async function deleteHomeworkRow(row) {
       if (el) recordDelete(el, 'lekse');
       planData = planData.filter(p => p.id !== id);
       allPlanData = allPlanData.filter(p => p.id !== id);
+      oversiktData = oversiktData.filter(p => p.id !== id);   // keep compare view in step
       cacheCurrentWeek();
       setSaved();
     }
@@ -4360,6 +4362,9 @@ function setTeacherTab(tab) {
       document.getElementById(paneId).hidden = t !== tab;
     });
   document.getElementById('toolbar').style.display = tab === 'ukeplan' ? '' : 'none';
+  // Hjem keys off classesTaught (all classes at once), not the selected class, so
+  // the class pill is meaningless there – hide it.
+  document.getElementById('classBtn').style.display = tab === 'hjem' ? 'none' : '';
   // visibility (not display) so the controls-row keeps a constant size across tabs
   document.querySelector('.week-nav').style.visibility = tab === 'vurd' ? 'hidden' : 'visible';
   if (tab === 'hjem') { loadHjem(); startHjemPoll(); return; }   // keys off classesTaught, not selectedClass
@@ -5660,57 +5665,30 @@ function renderOversikt() {
   ['Klasse', 'Tema og læringsmål', 'Ressurser', 'Lekser', 'Vurdering'].forEach(h => { const th = document.createElement('th'); th.textContent = h; hr.appendChild(th); });
   const tbody = table.createTBody();
 
+  // Fully editable, exactly like the Progresjon view and the ukeplan board:
+  // empty cells edit in place (click and type / "+ lekse" / "+ legg til"), so
+  // there are no dead-end "–" markers.
+  table.classList.add('editable');
+  const monday = weekStringToMonday(week);
   classes.forEach(cls => {
     const els     = oversiktData.filter(p => p.subject === subject && classMatches(p.classes, cls));
-    const goalEls = els.filter(p => p.type === 'læringsmål' && p.description);
-    const resEls  = els.filter(p => p.type === 'ressurs' && p.description);
+    const goalEls = els.filter(p => p.type === 'læringsmål');
+    const resEls  = els.filter(p => p.type === 'ressurs');
     const hwEls   = els.filter(p => p.type === 'lekse' && p.description).slice().sort(byDay);
     const vurd    = vurdData.filter(v => v.date && dateToWeek(isoToDate(v.date)) === week && v.subject === subject && classMatches(v.classes, cls));
 
     const tr = tbody.insertRow();
     const c = tr.insertCell(); c.className = 'cell-subject'; c.textContent = cls;
 
-    // Every item is click-to-edit (opens the right modal); no dead-ends.
-    tr.appendChild(buildCompareCell(goalEls, false));
-    tr.appendChild(buildCompareCell(resEls, false));
-    tr.appendChild(buildCompareCell(hwEls, true));
-    tr.appendChild(buildCompareVurdCell(vurd));
+    // Bound to this row's class + the viewed week (electives write year-wide).
+    tr.appendChild(buildProgEditCell(cls, subject, 'læringsmål', week, goalEls));
+    tr.appendChild(buildProgEditCell(cls, subject, 'ressurs', week, resEls));
+    tr.appendChild(buildHomeworkEditCell(subject, hwEls, { cls, week }));
+    tr.appendChild(buildVurdCell(subject, vurd, { cls, weekFrom: monday }));
   });
 
   div.appendChild(table);
   board.appendChild(div);
-}
-
-// A read-but-editable cell for the compare view: each element opens the edit
-// modal on click. showDay prefixes the weekday for lekser.
-function buildCompareCell(elements, showDay) {
-  const td = document.createElement('td');
-  if (!elements.length) { td.className = 'cell-empty'; td.textContent = '–'; return td; }
-  elements.forEach(el => {
-    const d = document.createElement('div');
-    d.className = 'rich-content ov-editable';
-    const dp = showDay && daysLabel(el.day) ? '<strong>' + escapeHtml(daysLabel(el.day)) + ':</strong> ' : '';
-    d.innerHTML = dp + sanitizeHtml(el.description || '');
-    d.title = 'Klikk for å redigere';
-    d.addEventListener('click', () => openElementEdit(el));
-    td.appendChild(d);
-  });
-  return td;
-}
-function buildCompareVurdCell(vurd) {
-  const td = document.createElement('td');
-  td.className = 'cell-vurd';
-  if (!vurd.length) { td.classList.add('cell-empty'); td.textContent = '–'; return td; }
-  vurd.forEach(v => {
-    const vd = dayOf(isoToDate(v.date));
-    const s = document.createElement('div');
-    s.className = 'ov-editable' + (v.id ? '' : ' legacy');
-    s.textContent = (vd && DAY_LABEL[vd] ? DAY_LABEL[vd] + ': ' : '') + (v.description || v.notes || 'Vurdering');
-    if (v.id) { s.title = 'Klikk for å redigere'; s.addEventListener('click', () => openVurdEdit(v)); }
-    else { s.title = 'Fra det gamle systemet – kan ikke redigeres her'; }
-    td.appendChild(s);
-  });
-  return td;
 }
 
 // Progresjon: one class + one subject, week by week.
@@ -5768,6 +5746,7 @@ async function commitProgCell(ed, html) {
     if (!val) {
       for (const id of ids) { const el = findLoadedElement(id); await api('delete', { id }); if (el) recordDelete(el, 'sletting'); }
       allPlanData = allPlanData.filter(p => !ids.includes(p.id));
+      oversiktData = oversiktData.filter(p => !ids.includes(p.id));   // keep compare view in step
       ed.dataset.ids = '[]';
     } else if (ids.length) {
       const el = findLoadedElement(ids[0]);
@@ -5777,12 +5756,13 @@ async function commitProgCell(ed, html) {
       if (el) el.description = val;
       for (const extra of ids.slice(1)) await api('delete', { id: extra });
       allPlanData = allPlanData.filter(p => !ids.slice(1).includes(p.id));
+      oversiktData = oversiktData.filter(p => !ids.slice(1).includes(p.id));
       ed.dataset.ids = JSON.stringify([ids[0]]);
     } else {
       const params = { type, classes: wcls, week, day: '', subject, description: val, teacher: teacherName };
       const c = await api('create', params);
       ed.dataset.ids = JSON.stringify(c && c.id ? [c.id] : []);
-      if (c && c.id) { recordCreate(params, c.id, 'tekst'); allPlanData.push(c); }
+      if (c && c.id) { recordCreate(params, c.id, 'tekst'); allPlanData.push(c); oversiktData.push(c); }
     }
     allPlanTs = 0; // invalidate so a later reload picks up the change
     ed.classList.remove('unsaved');
