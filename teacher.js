@@ -3052,7 +3052,7 @@ function buildAdaptToggle(subject) {
     b.addEventListener('click', () => { if (on !== adapted) toggleAdaptSubject(subject, on); });
     return b;
   };
-  seg.appendChild(mk(false, 'Følger klassen', 'Eleven følger klassens vanlige plan i ' + subject));
+  seg.appendChild(mk(false, 'Som klassen', 'Eleven følger klassens vanlige plan i ' + subject));
   seg.appendChild(mk(true, 'Tilpasset', 'Eleven har egen, tilpasset plan i ' + subject));
   wrap.appendChild(seg);
   if (adapted) {
