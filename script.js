@@ -504,23 +504,25 @@ function hendForStudent(h) { return !h.classes || classMatches(h.classes, select
 function eventsOnDate(iso) { return hendData.filter(h => hendForStudent(h) && hendDates(h).includes(iso)); }
 
 // Urgency of an upcoming event relative to TODAY (for the Min uke panel). null
-// when outside the lookahead window (today → end of NEXT week). Three tiers:
-// now (today/tomorrow – most prominent), week (rest of this week), coming (next
-// week – shown "the week before").
+// only when the event is fully in the past. Four tiers, most→least prominent:
+// now (today/tomorrow), week (rest of this week), coming (next week – "the week
+// before"), senere (everything further out, most muted – so nothing is hidden).
 function eventUrgency(h) {
   const today = new Date();
   const todayISO = toISODate(today);
   const tomorrowISO = toISODate(addDays(today, 1));
   const nextMondayISO = toISODate(addDays(mondayOf(today), 7));
-  const windowEndISO = toISODate(addDays(mondayOf(today), 13));   // Sunday of next week
+  const nextSundayISO = toISODate(addDays(mondayOf(today), 13));   // end of next week
   const days = hendDates(h);
-  const upcoming = days.filter(iso => iso >= todayISO && iso <= windowEndISO);
-  if (!upcoming.length) return null;
+  const upcoming = days.filter(iso => iso >= todayISO);
+  if (!upcoming.length) return null;   // fully past
   const nextDay = upcoming[0];
+  const longDate = iso => capitalizeFirst(isoToDate(iso).toLocaleDateString('no', { weekday: 'long', day: 'numeric', month: 'short' }));
   if (days.includes(todayISO)) return { tier: 'now', rank: 0, label: 'I dag', day: todayISO };
   if (nextDay === tomorrowISO)  return { tier: 'now', rank: 0, label: 'I morgen', day: nextDay };
   if (nextDay < nextMondayISO)  return { tier: 'week', rank: 1, label: capitalizeFirst(isoToDate(nextDay).toLocaleDateString('no', { weekday: 'long' })), day: nextDay };
-  return { tier: 'coming', rank: 2, label: 'Neste uke · ' + capitalizeFirst(isoToDate(nextDay).toLocaleDateString('no', { weekday: 'long', day: 'numeric', month: 'short' })), day: nextDay };
+  if (nextDay <= nextSundayISO) return { tier: 'coming', rank: 2, label: 'Neste uke · ' + longDate(nextDay), day: nextDay };
+  return { tier: 'senere', rank: 3, label: 'Senere · ' + longDate(nextDay), day: nextDay };
 }
 
 // ─── Class selection ──────────────────────────────────────────
