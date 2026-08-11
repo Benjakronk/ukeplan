@@ -4463,7 +4463,9 @@ function renderHjem() {
 
   const grid = document.createElement('div');
   grid.className = 'hjem-grid';
-  classes.forEach(cls => grid.appendChild(buildHjemCard(cls, week)));
+  // Skip classes with no CORE subjects taught (e.g. a class where you only teach a
+  // valgfag) – their core card would be empty; the valgfag shows in a year card instead.
+  classes.filter(cls => hjemSubjectsFor(cls).length).forEach(cls => grid.appendChild(buildHjemCard(cls, week)));
   hjemElectiveYears().forEach(g => grid.appendChild(buildValgfagCard(g, week)));   // electives once per year
   pane.appendChild(grid);
 }
