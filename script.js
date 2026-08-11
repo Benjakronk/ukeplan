@@ -564,6 +564,7 @@ function renderSStep() {
   if (sStep === 0) {
     title.textContent = 'Velkommen til Ukeportalen!';
     body.appendChild(sPara('onboard-lead', 'Her ser du ukeplanen for klassen din – tema, lekser og vurderinger. Vi setter opp profilen din på noen få steg.'));
+    body.appendChild(sPara('class-modal-hint', 'Alt du fyller inn lagres bare i denne nettleseren, på din egen enhet – ingenting sendes til noen.'));
   } else if (sStep === 1) {
     title.textContent = 'Hva heter du?';
     body.appendChild(sPara('class-modal-hint', 'Navnet vises bare på din egen enhet – det sendes ingen steder. Du kan hoppe over.'));
@@ -580,8 +581,8 @@ function renderSStep() {
     buildClassGridInto(grid, () => { next.disabled = !modalClass; });
     next.disabled = !modalClass;   // class is required to continue
   } else if (sStep === 3) {
-    title.textContent = 'Har du valgfag eller tilvalgsfag?';
-    body.appendChild(sPara('class-modal-hint', 'Huk av fagene du har, så viser vi bare dine. Hopp over hvis du ikke har noen.'));
+    title.textContent = 'Hvilket valgfag og tilvalgsfag har du?';
+    body.appendChild(sPara('class-modal-hint', 'Huk av valgfagene og tilvalgsfagene du har, så viser vi bare dine.'));
     const grid = document.createElement('div'); grid.className = 'class-modal-grid elective-grid';
     body.appendChild(grid);
     buildElectiveGridInto(grid);
