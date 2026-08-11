@@ -569,7 +569,8 @@ body.scroll-locked { overflow: hidden; }
 .dash-bar-fill { height: 100%; background: var(--primary); border-radius: 999px; transition: width var(--transition); }
 .dash-nolekser { font-size: 16px; font-weight: 600; color: var(--text); }
 .dash-allclear { font-size: 14px; font-weight: 700; color: var(--success); }
-.dash-new { font-size: 13px; font-weight: 600; color: var(--vurd); }
+/* "Nytt denne uka" modal list */
+.dash-new-list { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; }
 /* Lekse checklist (reuses .homework-list / .hw-check / .homework-item.done) */
 .dash-lekser { display: flex; flex-direction: column; gap: 10px; }
 .dash-lekse-day { font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 2px; }

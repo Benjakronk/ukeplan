@@ -91,6 +91,7 @@ let planDataKey      = null;       // "<planKey>|<week>" that planData currently
 let dashBeskjedIdx   = 0;          // which unacknowledged beskjed the stepper shows
 let newLekseKeys     = [];         // lekser added since the last dashboard review (this week)
 let dashReviewedKey  = null;       // "<planKey>|<week>" the new-lekse review last ran for
+let newLekserPending = false;      // a fresh review found new lekser → announce once (modal)
 let modalLanding     = null;       // startside tentatively picked in the profile
 let allPlanData      = [];         // all plan elements (fag-progresjon)
 let electives        = null;       // chosen elective subjects (null = not chosen yet → show all)
@@ -713,6 +714,7 @@ function reviewNewLekser() {
   newLekseKeys = seen ? cur.filter(k => !seen.includes(k)) : [];   // first visit → nothing is "new"
   store[key] = seen ? [...new Set(seen.concat(cur))] : cur;
   writeJSON(SEEN_LEKSER_KEY, store);
+  if (newLekseKeys.length) newLekserPending = true;   // announce once, as a modal on entry
 }
 
 function renderDashboard() {
@@ -744,6 +746,35 @@ function renderDashboard() {
   if (vwrap) view.appendChild(vwrap);
 
   checkMilestones();
+  if (newLekserPending) { newLekserPending = false; showNewLekserDialog(); }
+}
+
+// Announce lekser added since the pupil's last visit this week, as a modal they
+// dismiss with «Skjønner» (the items are also tagged «nytt» in the list).
+function showNewLekserDialog() {
+  const items = weekLekser().filter(el => newLekseKeys.includes(doneKey(el)));
+  if (!items.length) return;
+  buildUiDialog({
+    title: 'Nytt denne uka',
+    render(ctx) {
+      const p = document.createElement('p');
+      p.className = 'ui-dialog-message';
+      p.textContent = (items.length === 1 ? 'Det har kommet 1 ny lekse' : 'Det har kommet ' + items.length + ' nye lekser')
+        + ' siden sist du var her:';
+      ctx.body.appendChild(p);
+      const ul = document.createElement('ul');
+      ul.className = 'dash-new-list';
+      items.forEach(el => {
+        const li = document.createElement('li'); li.className = 'rich-content';
+        const day = parseDays(el.day)[0];
+        const lead = (el.subject ? '<strong>' + escapeHtml(el.subject) + '</strong>' : '') + (day ? ' (' + DAY_LABEL[day] + ')' : '');
+        li.innerHTML = (lead ? lead + ': ' : '') + sanitizeHtml(el.description || '');
+        ul.appendChild(li);
+      });
+      ctx.body.appendChild(ul);
+    },
+    buttons: [{ label: 'Skjønner', className: 'btn-primary', primary: true, value: true }],
+  });
 }
 
 // One beskjed at a time, with Neste (cycle) + Skjønner (acknowledge).
@@ -814,11 +845,6 @@ function buildLekseProgress() {
     const clear = document.createElement('p'); clear.className = 'dash-allclear';
     clear.textContent = '✓ Alt gjort denne uka!';
     wrap.appendChild(clear);
-  }
-  if (newLekseKeys.length) {
-    const notice = document.createElement('p'); notice.className = 'dash-new';
-    notice.textContent = '🆕 ' + newLekseKeys.length + (newLekseKeys.length === 1 ? ' ny lekse' : ' nye lekser') + ' er lagt til siden sist.';
-    wrap.appendChild(notice);
   }
 
   wrap.appendChild(buildDashLekseList(lekser));
