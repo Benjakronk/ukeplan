@@ -217,10 +217,11 @@
 .variant-note { font-size: 13px; color: var(--text-muted); }
 .variant-note strong { color: var(--text); }
 
-/* Class modal: fixed size + scrollable body (so opening the tilpasset panel scrolls
-   instead of resizing the modal) */
+/* Class modal: fixed size + scrollable body – a FIXED body height (not max-height)
+   so expanding «Alle klasser» or the tilpasset panel scrolls inside it instead of
+   resizing the modal. */
 .class-modal-fixed { width: 560px; }
-.class-modal-body { max-height: 62vh; overflow-y: auto; padding-right: 2px; }
+.class-modal-body { height: 68vh; overflow-y: auto; padding-right: 2px; }
 .all-classes { margin: 8px 0; }
 .all-classes > summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-muted); padding: 4px 0; }
 .all-classes > summary:hover { color: var(--text); }
@@ -372,10 +373,13 @@
 
 /* ── Variant banner (adapted-plan editing) ─────────────────── */
 .variant-banner {
-  margin: 10px 0 0; padding: 8px 12px;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 8px 0 0; padding: 8px 12px;
   background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: var(--radius-btn);
   color: var(--warn-text); font-size: 13px; font-weight: 600;
 }
+.variant-banner-text { flex: 1; min-width: 0; }
+.variant-banner-exit { flex: none; }
 
 /* ── Mine fag: board filter note ───────────────────────────── */
 .board-filter-note {

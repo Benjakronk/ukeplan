@@ -2350,6 +2350,8 @@ function setupDashboardListeners() {
   document.getElementById('addBtn').addEventListener('click', () => openAddModal());
   document.getElementById('cloneBtn').addEventListener('click', cloneFromPreviousWeek);
   document.getElementById('cloneFromClassBtn').addEventListener('click', cloneFromBaseClass);
+  // Exit the adapted plan → back to the base class's regular plan.
+  document.getElementById('variantExitBtn').addEventListener('click', () => { if (selectedClass) pickClass(selectedClass); });
   document.getElementById('printBtn').addEventListener('click', () => window.print());
 
   document.getElementById('tTabHjem').addEventListener('click', () => setTeacherTab('hjem'));
@@ -2457,7 +2459,10 @@ function setupDashboardListeners() {
 // ─── Class selection ──────────────────────────────────────────
 
 function updateClassLabel() {
-  document.getElementById('classBtnLabel').textContent = variantCode || selectedClass || 'Velg klasse';
+  // While a variant is active, show its local label if the teacher set one
+  // (friendlier than the raw code); fall back to the code, then the class.
+  const vlabel = variantCode ? (variantLabels()[variantCode] || variantCode) : null;
+  document.getElementById('classBtnLabel').textContent = vlabel || selectedClass || 'Velg klasse';
   const b = document.getElementById('cloneFromClassBtn');
   if (b) b.hidden = !variantCode;
   // Persistent banner while a variant is active – the pill text alone is easy
@@ -2466,7 +2471,8 @@ function updateClassLabel() {
   if (banner) {
     banner.hidden = !variantCode;
     if (variantCode) {
-      banner.textContent = '✎ Du redigerer en tilpasset plan (kode ' + variantSuffix(variantCode) +
+      document.getElementById('variantBannerText').textContent =
+        '✎ Du redigerer en tilpasset plan (kode ' + variantSuffix(variantCode) +
         ', basert på ' + (parseVariantClass(variantCode) || selectedClass) +
         '). Planinnhold her vises bare for eleven med koden.';
     }
