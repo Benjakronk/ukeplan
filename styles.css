@@ -320,6 +320,7 @@ body.scroll-locked { overflow: hidden; }
 .banner-utstyr      { background: var(--success-bg); border-color: var(--success-border); }
 .banner-aktivitet   { background: var(--plan-bg); border-color: var(--plan-border); }
 .banner-annet       { background: var(--surface); border-color: var(--border); }
+.banner-intern      { background: var(--primary-light); border-color: var(--primary); }   /* teacher-only */
 
 /* ── Subject board ─────────────────────────────────────────── */
 .board-wrap {

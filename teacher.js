@@ -65,13 +65,15 @@ const DAY_LABEL = { man: 'Man', tir: 'Tir', ons: 'Ons', tor: 'Tor', fre: 'Fre' }
 // 'vurdering' is special: it is date-specific rather than week-level and uses
 // its own actions (vurderinger/vurdcreate/…) and table on the same backend.
 const SUBJECT_TYPES = ['læringsmål', 'ressurs', 'lekse'];
-const GENERAL_TYPES = ['beskjed', 'timeendring', 'utstyr', 'aktivitet', 'annet'];
-const MODAL_TYPES   = ['lekse', 'læringsmål', 'ressurs', 'vurdering', 'beskjed', 'timeendring', 'utstyr', 'aktivitet', 'annet'];
+// `intern` is a teacher-only reminder (hidden from students – it's simply absent
+// from the student GENERAL_TYPES). Kept last so the picker/board order is stable.
+const GENERAL_TYPES = ['beskjed', 'timeendring', 'utstyr', 'aktivitet', 'annet', 'intern'];
+const MODAL_TYPES   = ['lekse', 'læringsmål', 'ressurs', 'vurdering', 'beskjed', 'timeendring', 'utstyr', 'aktivitet', 'annet', 'intern'];
 const TYPE_LABEL = {
   'læringsmål': 'Tema og læringsmål', 'ressurs': 'Ressurser', 'lekse': 'Lekse', 'vurdering': 'Vurdering', 'beskjed': 'Beskjed',
-  'timeendring': 'Timeendring', 'utstyr': 'Utstyr', 'aktivitet': 'Aktivitet', 'annet': 'Annet',
+  'timeendring': 'Timeendring', 'utstyr': 'Utstyr', 'aktivitet': 'Aktivitet', 'annet': 'Annet', 'intern': 'Intern (kun lærere)',
 };
-const GENERAL_ICON = { beskjed: '📣', timeendring: '🕑', utstyr: '🎒', aktivitet: '🚌', annet: '📌' };
+const GENERAL_ICON = { beskjed: '📣', timeendring: '🕑', utstyr: '🎒', aktivitet: '🚌', annet: '📌', intern: '🔒' };
 
 // Teacher-side assessments cache. The assessments list only changes when a
 // teacher writes, so cache it briefly instead of refetching on every week
@@ -2388,7 +2390,9 @@ function buildGeneralLine(el, opts = {}) {
   txt.className = 'rich-content';
   txt.innerHTML = prefix + sanitizeHtml(el.description);
   line.appendChild(txt);
-  if (opts.teacher && el.teacher) {
+  // Intern reminders always show their signer (who added it); other general types
+  // only when the caller asks (Kontaktlærer tab).
+  if ((opts.teacher || el.type === 'intern') && el.teacher) {
     const who = document.createElement('span');
     who.className = 'general-line-teacher';
     who.textContent = ' – ' + el.teacher;
@@ -4414,6 +4418,27 @@ function hjemClassVurd(cls, week) {
   return vurdData.filter(v => v.date && dateToWeek(new Date(v.date)) === week && classMatches(v.classes, cls));
 }
 
+// Teacher-only «intern» reminders for the viewed week that touch one of the
+// teacher's classes, pinned at the top of Hjem so they stay front of mind.
+// Read-only here; edit/delete from the Ukeplan board's beskjeder section.
+// (`hjemData` is the all-classes week fetch, so multi-week reminders are included.)
+function buildInternBanner() {
+  const notes = hjemData.filter(p => p.type === 'intern' && p.description
+    && classesTaught.some(c => classMatches(p.classes, c)));
+  if (!notes.length) return null;
+  const card = document.createElement('div');
+  card.className = 'hjem-intern';
+  const head = document.createElement('div');
+  head.className = 'hjem-intern-head';
+  head.textContent = '🔒 Intern';
+  card.appendChild(head);
+  const list = document.createElement('div');
+  list.className = 'hjem-intern-list';
+  notes.forEach(el => list.appendChild(buildGeneralLine(el, { readonly: true, teacher: true })));
+  card.appendChild(list);
+  return card;
+}
+
 function renderHjem() {
   const pane = document.getElementById('paneHjem');
   if (!pane) return;
@@ -4431,6 +4456,9 @@ function renderHjem() {
   wk.textContent = 'Uke ' + getWeekNumber(weekMonday) + (thisWeek ? ' – denne uka' : '');
   header.appendChild(h); header.appendChild(wk);
   pane.appendChild(header);
+
+  const intern = buildInternBanner(week);   // teacher-only reminders, front of mind
+  if (intern) pane.appendChild(intern);
 
   const my = mySubjects();
   const classes = hjemClasses();

@@ -559,6 +559,13 @@
 .hjem-header { margin: 4px 0 16px; }
 .hjem-greeting { font-family: var(--font-display); font-size: 24px; font-weight: 700; color: var(--text); }
 .hjem-week { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+/* Intern reminders, pinned prominently at the top of Hjem */
+.hjem-intern {
+  background: var(--primary-light); border: 1px solid var(--primary); border-radius: var(--radius-card);
+  padding: 12px 16px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 6px;
+}
+.hjem-intern-head { font-size: 13px; font-weight: 700; color: var(--primary-dark); letter-spacing: .02em; }
+.hjem-intern-list { display: flex; flex-direction: column; gap: 6px; }
 .hjem-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
 .hjem-card {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card);
