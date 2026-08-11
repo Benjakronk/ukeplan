@@ -578,13 +578,20 @@ function saveProfileToServer() {
 // Persist the taught classes + Kontaktlærer subset (server relation, debounced).
 // Routes through api() so it inherits Unauthorized stash/replay handling; the
 // echoed response is the source of truth (server enforces kontakt ⊆ classes).
+// `*EditSeq` bumps on every local edit; a save captures it at fire time and
+// discards its echoed response if a newer edit landed while it was in flight –
+// otherwise a slow in-flight save clobbers a class you just toggled (the
+// "only one of two classes registered" bug).
 let classesSaveTimer = null;
+let taughtEditSeq = 0;
 function doSaveClasses() {
+  const editAt = taughtEditSeq;
   return api('setclasses', { classes: classesTaught.join(','), kontakt: kontaktClasses.join(',') })
-    .then(r => { if (r && Array.isArray(r.classes)) { classesTaught = r.classes; kontaktClasses = r.kontakt || []; updateKontaktTab(); } });
+    .then(r => { if (editAt === taughtEditSeq && r && Array.isArray(r.classes)) { classesTaught = r.classes; kontaktClasses = r.kontakt || []; updateKontaktTab(); } });
 }
 function saveClassesToServer() {
   if (!loggedIn) return;
+  taughtEditSeq++;
   if (profileOpen) { dirtyClasses = true; markProfileDirty(); return; }
   clearTimeout(classesSaveTimer);
   classesSaveTimer = setTimeout(() => { doSaveClasses().catch(() => {}); }, 600);
@@ -629,12 +636,15 @@ function setSubjectClasses(subject, list, on) {
   saveSubjectClassesToServer();
 }
 let subjectClassesSaveTimer = null;
+let matrixEditSeq = 0;
 function doSaveSubjectClasses() {
+  const editAt = matrixEditSeq;
   return api('setsubjectclasses', { matrix: JSON.stringify(subjectClasses) })
-    .then(r => { if (r && r.subjectClasses) subjectClasses = sanitizeMatrix(r.subjectClasses); });
+    .then(r => { if (editAt === matrixEditSeq && r && r.subjectClasses) subjectClasses = sanitizeMatrix(r.subjectClasses); });
 }
 function saveSubjectClassesToServer() {
   if (!loggedIn) return;
+  matrixEditSeq++;
   if (profileOpen) { dirtyMatrix = true; markProfileDirty(); return; }
   clearTimeout(subjectClassesSaveTimer);
   subjectClassesSaveTimer = setTimeout(() => { doSaveSubjectClasses().catch(() => {}); }, 600);
@@ -1855,8 +1865,11 @@ function resumeOnboarding() {
   renderOnboardStep();
 }
 // Leave the wizard for good: stamp onboardedAt and continue into the dashboard.
-// Selections were already persisted live via their toggles.
+// Selections persist live via their toggles, but flush any pending debounced
+// matrix/classes save first so a last-second toggle isn't lost on navigation.
 function completeOnboarding() {
+  if (subjectClassesSaveTimer) { clearTimeout(subjectClassesSaveTimer); subjectClassesSaveTimer = null; doSaveSubjectClasses().catch(() => {}); }
+  if (classesSaveTimer) { clearTimeout(classesSaveTimer); classesSaveTimer = null; doSaveClasses().catch(() => {}); }
   settings.onboardedAt = new Date().toISOString();
   saveSettings();
   document.getElementById('onboardOverlay').classList.remove('open');
@@ -2166,24 +2179,39 @@ function upcomingEventRows(matchFn) {
   rows.sort((a, b) => a.rank - b.rank || a.day.localeCompare(b.day));
   return rows;
 }
-// A tiered "upcoming events" panel. opts.clickable → each line opens the editor.
+// One event line; clickable → opens the editor.
+function buildEventRow(row, clickable) {
+  const { ev, tier, label } = row;
+  const line = document.createElement(clickable ? 'button' : 'div');
+  line.className = 'event-item tier-' + tier;
+  if (clickable) { line.type = 'button'; line.title = 'Rediger hendelse'; line.addEventListener('click', () => openHendEdit(ev)); }
+  const star = document.createElement('span'); star.className = 'event-item-star'; star.textContent = '★'; line.appendChild(star);
+  const body = document.createElement('span'); body.className = 'event-item-body';
+  const range = ev.dateTo && ev.dateTo !== ev.date ? ' (' + shortDate(ev.date) + '–' + shortDate(ev.dateTo) + ')' : '';
+  body.innerHTML = '<strong>' + escapeHtml(label) + ':</strong> ' + escapeHtml(ev.description || 'Hendelse') + escapeHtml(range);
+  line.appendChild(body);
+  return line;
+}
+// A tiered "upcoming events" panel. opts.clickable → each line opens the editor;
+// the "senere" tier collapses behind a details when there are >2.
 function buildUpcomingEvents(matchFn, opts = {}) {
   const rows = upcomingEventRows(matchFn);
   if (!rows.length) return null;
   const wrap = document.createElement('div');
   wrap.className = 'events-panel';
   if (opts.title) { const t = document.createElement('h3'); t.className = opts.titleClass || 'dash-section-title'; t.textContent = opts.title; wrap.appendChild(t); }
-  rows.forEach(({ ev, tier, label }) => {
-    const line = document.createElement(opts.clickable ? 'button' : 'div');
-    line.className = 'event-item tier-' + tier;
-    if (opts.clickable) { line.type = 'button'; line.title = 'Rediger hendelse'; line.addEventListener('click', () => openHendEdit(ev)); }
-    const star = document.createElement('span'); star.className = 'event-item-star'; star.textContent = '★'; line.appendChild(star);
-    const body = document.createElement('span'); body.className = 'event-item-body';
-    const range = ev.dateTo && ev.dateTo !== ev.date ? ' (' + shortDate(ev.date) + '–' + shortDate(ev.dateTo) + ')' : '';
-    body.innerHTML = '<strong>' + escapeHtml(label) + ':</strong> ' + escapeHtml(ev.description || 'Hendelse') + escapeHtml(range);
-    line.appendChild(body);
-    wrap.appendChild(line);
-  });
+  const near = rows.filter(r => r.tier !== 'senere');
+  const senere = rows.filter(r => r.tier === 'senere');
+  near.forEach(r => wrap.appendChild(buildEventRow(r, opts.clickable)));
+  if (senere.length && senere.length <= 2) senere.forEach(r => wrap.appendChild(buildEventRow(r, opts.clickable)));
+  else if (senere.length) {
+    const det = document.createElement('details'); det.className = 'events-senere';
+    const sum = document.createElement('summary'); sum.className = 'events-senere-sum';
+    sum.textContent = 'Senere (' + senere.length + ')';
+    det.appendChild(sum);
+    senere.forEach(r => det.appendChild(buildEventRow(r, opts.clickable)));
+    wrap.appendChild(det);
+  }
   return wrap;
 }
 
@@ -5090,6 +5118,11 @@ function renderHjem() {
     nudge.addEventListener('click', () => openProfileModal());
     pane.appendChild(nudge);
   }
+
+  const gjHead = document.createElement('h3');
+  gjHead.className = 'hjem-section-title';
+  gjHead.textContent = 'Gjøremål';
+  pane.appendChild(gjHead);
 
   const grid = document.createElement('div');
   grid.className = 'hjem-grid';

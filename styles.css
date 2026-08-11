@@ -820,6 +820,12 @@ button.event-item:hover { border-color: var(--event); }
 .event-item.tier-now { background: var(--event-bg); border-left-width: 5px; font-size: 16px; font-weight: 600; }
 .event-item.tier-coming { opacity: .68; font-size: 13px; padding: 8px 12px; }
 .event-item.tier-senere { opacity: .5; font-size: 12px; padding: 7px 12px; }
+/* Collapsible "Senere" group when there are many far-off events */
+.events-senere { display: flex; flex-direction: column; gap: 8px; }
+.events-senere-sum { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text-muted); list-style: none; padding: 2px 0; }
+.events-senere-sum::-webkit-details-marker { display: none; }
+.events-senere-sum::before { content: '▸ '; }
+.events-senere[open] .events-senere-sum::before { content: '▾ '; }
 /* Teacher calendar day-detail: event card + the +Vurdering / +Hendelse row */
 .event-detail-card { border-left-color: var(--event) !important; }
 .event-detail-card .vurd-detail-meta { color: var(--event); }

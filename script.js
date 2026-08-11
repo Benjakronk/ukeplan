@@ -1216,25 +1216,41 @@ function buildDashVurd() {
   return wrap;
 }
 
+// One event line (★ label: description [range]).
+function buildEventRow(row) {
+  const { ev, tier, label } = row;
+  const line = document.createElement('div');
+  line.className = 'event-item tier-' + tier;
+  const star = document.createElement('span'); star.className = 'event-item-star'; star.textContent = '★'; line.appendChild(star);
+  const body = document.createElement('span'); body.className = 'event-item-body';
+  const range = ev.dateTo && ev.dateTo !== ev.date ? ' (' + shortDate(ev.date) + '–' + shortDate(ev.dateTo) + ')' : '';
+  body.innerHTML = '<strong>' + escapeHtml(label) + ':</strong> ' + escapeHtml(ev.description || 'Hendelse') + escapeHtml(range);
+  line.appendChild(body);
+  return line;
+}
+// Append rows; collapse the "senere" tier behind a details when there are >2.
+function appendEventRows(wrap, rows) {
+  const near = rows.filter(r => r.tier !== 'senere');
+  const senere = rows.filter(r => r.tier === 'senere');
+  near.forEach(r => wrap.appendChild(buildEventRow(r)));
+  if (!senere.length) return;
+  if (senere.length <= 2) { senere.forEach(r => wrap.appendChild(buildEventRow(r))); return; }
+  const det = document.createElement('details'); det.className = 'events-senere';
+  const sum = document.createElement('summary'); sum.className = 'events-senere-sum';
+  sum.textContent = 'Senere (' + senere.length + ')';
+  det.appendChild(sum);
+  senere.forEach(r => det.appendChild(buildEventRow(r)));
+  wrap.appendChild(det);
+}
 // Upcoming events pinned at the top of Min uke, tiered by urgency (today/tomorrow
-// most prominent → this week → next week "kommende"). Anchored to TODAY, so it's
-// a rolling look-ahead regardless of which week is being browsed.
+// → this week → next week → senere). Anchored to TODAY (rolling look-ahead).
 function buildDashEvents() {
   const rows = [];
   hendData.forEach(h => { if (hendForStudent(h)) { const u = eventUrgency(h); if (u) rows.push(Object.assign({ ev: h }, u)); } });
   if (!rows.length) return null;
   rows.sort((a, b) => a.rank - b.rank || a.day.localeCompare(b.day));
   const wrap = document.createElement('div'); wrap.className = 'dash-section events-panel';
-  rows.forEach(({ ev, tier, label }) => {
-    const line = document.createElement('div');
-    line.className = 'event-item tier-' + tier;
-    const star = document.createElement('span'); star.className = 'event-item-star'; star.textContent = '★'; line.appendChild(star);
-    const body = document.createElement('span'); body.className = 'event-item-body';
-    const range = ev.dateTo && ev.dateTo !== ev.date ? ' (' + shortDate(ev.date) + '–' + shortDate(ev.dateTo) + ')' : '';
-    body.innerHTML = '<strong>' + escapeHtml(label) + ':</strong> ' + escapeHtml(ev.description || 'Hendelse') + escapeHtml(range);
-    line.appendChild(body);
-    wrap.appendChild(line);
-  });
+  appendEventRows(wrap, rows);
   return wrap;
 }
 

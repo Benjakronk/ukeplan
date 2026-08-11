@@ -568,6 +568,19 @@
 .class-picker { display: flex; flex-direction: column; gap: 12px; padding-top: 6px; }
 .class-selectall-bar { margin-bottom: 2px; }
 .class-selectall-grade { margin-left: 4px; font-size: 12px; }
+/* One clean, aligned row per grade-year: a "8." label + the 6 class cells in a
+   fixed 6-column grid; the per-grade "Velg alle" wraps below so the class row
+   stays uniform across all three years. */
+.class-picker .class-modal-group {
+  display: grid;
+  grid-template-columns: 34px repeat(6, minmax(0, 1fr));
+  align-items: center;
+  gap: 6px;
+}
+.class-picker .class-grade-label { width: auto; }
+.class-picker .class-pick { display: block; width: 100%; }
+.class-picker .class-pick-btn { width: 100%; min-width: 0; padding: 9px 4px; }
+.class-picker .class-selectall-grade { grid-column: 2 / -1; justify-self: start; margin: 2px 0 0; }
 .class-pick { position: relative; display: inline-block; }
 .class-pick-btn {
   min-width: 46px; padding: 9px 12px;
@@ -618,6 +631,7 @@
 }
 .hjem-intern-head { font-size: 13px; font-weight: 700; color: var(--primary-dark); letter-spacing: .02em; }
 .hjem-intern-list { display: flex; flex-direction: column; gap: 6px; }
+.hjem-section-title { font-size: 15px; font-weight: 700; color: var(--text); margin: 6px 0 2px; }
 .hjem-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
 .hjem-card {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card);
