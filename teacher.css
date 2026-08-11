@@ -388,6 +388,33 @@
 }
 .row-copy-btn:hover { background: var(--primary-light); color: var(--primary-dark); }
 
+/* ── Variant board: per-subject «Følger klassen ⇄ Tilpasset» ─── */
+.adapt-toggle { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.adapt-seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-btn); overflow: hidden; align-self: flex-start; }
+.adapt-seg-btn {
+  padding: 3px 8px; background: var(--surface); border: none;
+  color: var(--text-muted); font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.adapt-seg-btn + .adapt-seg-btn { border-left: 1px solid var(--border); }
+.adapt-seg-btn:hover { color: var(--text); }
+.adapt-seg-btn.active { background: var(--primary); color: var(--on-accent); }
+.adapt-copy-btn {
+  align-self: flex-start; padding: 2px 6px; background: transparent;
+  border: 1px dashed var(--border); border-radius: var(--radius-btn);
+  color: var(--primary-dark); font-size: 11px; cursor: pointer;
+}
+.adapt-copy-btn:hover { background: var(--primary-light); }
+/* Read-only cell for a subject that follows the class */
+.cell-follow { color: var(--text-muted); background: var(--surface-sunken, transparent); }
+.follow-content { font-size: 13px; }
+.follow-empty { font-size: 12px; font-style: italic; color: var(--text-muted); opacity: 0.7; }
+.follow-hw-row { font-size: 13px; padding: 2px 0; }
+.follow-hw-day {
+  display: inline-block; margin-right: 6px; padding: 0 5px;
+  background: var(--primary-light); color: var(--primary-dark);
+  border-radius: 8px; font-size: 11px; font-weight: 600;
+}
+
 /* ── Responsive ────────────────────────────────────────────── */
 @media (max-width: 640px) {
   .teacher-header-row { flex-direction: column; align-items: flex-start; gap: 10px; }
@@ -675,6 +702,14 @@
 .kontakt-section-title { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 10px; }
 .kontakt-line { font-size: 14px; color: var(--text); }
 .kontakt-empty { font-size: 13px; color: var(--text-muted); }
+.kontakt-variant-card { border: 1px solid var(--border); border-radius: var(--radius-card); padding: 10px 12px; margin-top: 10px; }
+.kontakt-variant-top { display: flex; align-items: center; gap: 10px; }
+.kontakt-variant-label { font-size: 13px; color: var(--text); font-weight: 600; }
+.kontakt-variant-top .btn { margin-left: auto; }
+.kontakt-variant-body { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.kontakt-variant-subj { font-size: 12px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+.kontakt-variant-subj.filled { background: var(--primary-light); color: var(--primary-dark); }
+.kontakt-variant-subj.empty { background: var(--surface-sunken, transparent); color: var(--text-muted); border: 1px dashed var(--border); }
 .kontakt-staff { display: flex; flex-direction: column; margin-top: 8px; }
 .kontakt-staff-row { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-top: 1px solid var(--border); }
 .kontakt-staff-subj { font-weight: 600; color: var(--text); }

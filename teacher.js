@@ -102,6 +102,53 @@ let variantCode   = null;   // adapted-plan code being edited, or null
 // class (selectedClass), so an adapted plan inherits its class's vurderinger.
 function planKey() { return variantCode || selectedClass; }
 
+// A tilpasset plan FOLLOWS THE REGULAR CLASS PLAN by default: only the subjects
+// in `variantAdapted` carry the pupil's own content (stored under the code);
+// every other subject inherits the class read-only ("Følger klassen"). These
+// support that on the teacher board.
+let variantAdapted     = [];    // subjects this code adapts (from the server)
+let variantAdaptedCode = null;  // the code `variantAdapted` was loaded for
+let variantBaseData    = [];    // base-class content for the viewed week (read-only)
+let variantBaseKey     = null;  // "<base>|<week>" the above was loaded for
+function variantBase() { return (variantCode && parseVariantClass(variantCode)) || selectedClass; }
+function isAdaptedSubject(subject) { return variantAdapted.includes(subject); }
+async function loadVariantAdapted() {
+  if (!variantCode) { variantAdapted = []; variantAdaptedCode = null; return; }
+  if (variantAdaptedCode === variantCode) return;
+  try {
+    const res = await fetch(`${SCRIPT_URL}?action=variant_info&code=${encodeURIComponent(variantCode)}`);
+    const d = await res.json();
+    variantAdapted = (d && Array.isArray(d.adaptedSubjects)) ? d.adaptedSubjects : [];
+  } catch { variantAdapted = []; }
+  variantAdaptedCode = variantCode;
+}
+// Fetch the base class's week once so "Følger klassen" subjects can show the
+// class content read-only; re-renders the board when it arrives.
+function ensureVariantBase() {
+  if (!variantCode) { variantBaseData = []; variantBaseKey = null; return; }
+  const week = dateToWeek(weekMonday), base = variantBase();
+  const key = base + '|' + week;
+  if (variantBaseKey === key) return;
+  variantBaseKey = key;
+  variantBaseData = [];   // drop the previous week's base so it can't flash
+  fetch(`${SCRIPT_URL}?action=week&classes=${encodeURIComponent(base)}&week=${encodeURIComponent(week)}`)
+    .then(r => (r.ok ? r.json() : null))
+    .then(d => {
+      if (!Array.isArray(d)) { if (variantBaseKey === key) variantBaseKey = null; return; }
+      if (variantBaseKey !== key) return;
+      variantBaseData = d;
+      if (variantCode && teacherTab === 'ukeplan') render();
+    })
+    .catch(() => { if (variantBaseKey === key) variantBaseKey = null; });
+}
+// Persist the adapted-subject set (which subjects carry the pupil's own content).
+async function setVariantAdapted(subjects) {
+  variantAdapted = subjects.slice();
+  variantAdaptedCode = variantCode;
+  try { await api('variant_subjects', { code: variantCode, subjects: JSON.stringify(subjects) }); }
+  catch (e) { /* stash/replay handled by api() on Unauthorized */ }
+}
+
 // Stored key is "<CLASS>-<SUFFIX>", but only the SUFFIX is handed to pupils –
 // the class comes from their class choice, so a code resolves only with the
 // right class and never reveals which class it belongs to.
@@ -159,6 +206,7 @@ let kontaktViewClass = null;   // which of the teacher's kontaktlærer classes i
 let kontaktTeam  = null;       // last class_team result { class, kontakt, subjects }
 let kontaktWeekData = [];      // all-classes plan elements for the coverage week
 let kontaktWeek  = null;       // the week kontaktWeekData is for (cache guard)
+let kontaktVariants = [];      // the kontakt class's adapted plans [{code, adaptedSubjects, weekData}]
 let allPlanData  = [];         // all plan elements (progresjon mode)
 let allPlanTs    = 0;
 let ovFrom       = null;       // week range filter (progresjon)
@@ -308,7 +356,8 @@ function init() {
   variantCode = localStorage.getItem(VARIANT_KEY) || null;
   if (variantCode) {
     const base = parseVariantClass(variantCode);
-    if (base) selectedClass = base; else variantCode = null;
+    if (base) { selectedClass = base; loadVariantAdapted().then(() => { if (teacherTab === 'ukeplan') render(); }); }
+    else variantCode = null;
   }
   document.getElementById('teacherName').value = teacherName;
   updateProfileButton();
@@ -2185,6 +2234,9 @@ function applyVariant(code, base) {
   localStorage.setItem(VARIANT_KEY, code);
   localStorage.setItem(CLASS_KEY, base);
   planData = [];
+  variantAdapted = []; variantAdaptedCode = null;
+  variantBaseData = []; variantBaseKey = null;
+  loadVariantAdapted().then(() => { if (variantCode === code && teacherTab === 'ukeplan') render(); });
   updateClassLabel();
   closeClassModal();
   loadData();
@@ -2532,12 +2584,24 @@ function renderBoard() {
     .filter(v => v.date && dateToWeek(new Date(v.date)) === week && classMatches(v.classes, selectedClass))
     .map(v => ({ ...v, day: dayOf(new Date(v.date)) }));
 
-  // Map (subject||type) → elements
+  // In variant mode we also need the base class content (for "Følger klassen"
+  // subjects, shown read-only) – fetched lazily into variantBaseData.
+  if (variantCode) ensureVariantBase();
+
+  // Map (subject||type) → elements. For a variant, `map` holds the code's OWN
+  // content and `baseMap` the class content (loaded separately).
   const map = {};
   planData.forEach(p => {
-    if (SUBJECT_TYPES.includes(p.type) && p.subject) {
+    if (SUBJECT_TYPES.includes(p.type) && p.subject && (!variantCode || classMatches(p.classes, variantCode))) {
       const k = p.subject + '||' + p.type;
       (map[k] = map[k] || []).push(p);
+    }
+  });
+  const baseMap = {};
+  if (variantCode) variantBaseData.forEach(p => {
+    if (SUBJECT_TYPES.includes(p.type) && p.subject) {
+      const k = p.subject + '||' + p.type;
+      (baseMap[k] = baseMap[k] || []).push(p);
     }
   });
   const vurdBySubject = {};
@@ -2645,6 +2709,23 @@ function renderBoard() {
       tdSubject.appendChild(cp);
     }
 
+    // Variant board: each subject either follows the class (read-only) or is
+    // tilpasset (the pupil's own, editable). A toggle in the Fag cell switches.
+    if (variantCode) {
+      tdSubject.appendChild(buildAdaptToggle(subject));
+      if (isAdaptedSubject(subject)) {
+        tr.appendChild(buildEditCell(subject, 'læringsmål', map[subject + '||læringsmål'] || []));
+        tr.appendChild(buildEditCell(subject, 'ressurs', map[subject + '||ressurs'] || []));
+        tr.appendChild(buildHomeworkEditCell(subject, (map[subject + '||lekse'] || []).slice().sort(byDay)));
+      } else {
+        tr.appendChild(buildFollowCell(subject, 'læringsmål', baseMap[subject + '||læringsmål'] || []));
+        tr.appendChild(buildFollowCell(subject, 'ressurs', baseMap[subject + '||ressurs'] || []));
+        tr.appendChild(buildFollowHomeworkCell(subject, (baseMap[subject + '||lekse'] || []).slice().sort(byDay)));
+      }
+      tr.appendChild(buildVurdCell(subject, vurdBySubject[subject] || []));
+      return;
+    }
+
     tr.appendChild(buildEditCell(subject, 'læringsmål', map[subject + '||læringsmål'] || []));
     tr.appendChild(buildEditCell(subject, 'ressurs', map[subject + '||ressurs'] || []));
     tr.appendChild(buildHomeworkEditCell(subject, (map[subject + '||lekse'] || []).slice().sort(byDay)));
@@ -2673,6 +2754,131 @@ function buildEditCell(subject, type, elements) {
   td.appendChild(ed);
   addCellActions(td, ed, subject, type);   // delete + copy while editing
   multi.forEach(el => td.appendChild(buildElementChip(el)));
+  return td;
+}
+
+// ─── Variant board: per-subject «Følger klassen ⇄ Tilpasset» ───────────────
+// A subject on an adapted plan either inherits the class (read-only) or carries
+// the pupil's own content (editable). This toggle switches, persisting the
+// adapted-subject set; when a subject becomes tilpasset a «Kopier fra klassen»
+// action seeds it from the week's class content.
+function buildAdaptToggle(subject) {
+  const wrap = document.createElement('div');
+  wrap.className = 'adapt-toggle no-print';
+  const adapted = isAdaptedSubject(subject);
+  const seg = document.createElement('div');
+  seg.className = 'adapt-seg';
+  const mk = (on, label, title) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'adapt-seg-btn' + (on === adapted ? ' active' : '');
+    b.textContent = label; b.title = title;
+    b.addEventListener('click', () => { if (on !== adapted) toggleAdaptSubject(subject, on); });
+    return b;
+  };
+  seg.appendChild(mk(false, 'Følger klassen', 'Eleven følger klassens vanlige plan i ' + subject));
+  seg.appendChild(mk(true, 'Tilpasset', 'Eleven har egen, tilpasset plan i ' + subject));
+  wrap.appendChild(seg);
+  if (adapted) {
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 'adapt-copy-btn';
+    copy.textContent = '↓ Kopier fra klassen';
+    copy.title = 'Kopier klassens ' + subject + '-innhold for denne uka som utgangspunkt';
+    copy.addEventListener('click', () => copyFromClassSubject(subject));
+    wrap.appendChild(copy);
+  }
+  return wrap;
+}
+
+async function toggleAdaptSubject(subject, on) {
+  const next = variantAdapted.filter(s => s !== subject);
+  if (on) next.push(subject);
+  await setVariantAdapted(next);
+  renderBoard();
+  // Newly tilpasset with no own content yet? Offer to seed it from the class.
+  if (on) {
+    const hasOwn = planData.some(p => classMatches(p.classes, variantCode) &&
+      SUBJECT_TYPES.includes(p.type) && p.subject === subject);
+    const hasClass = variantBaseData.some(p => SUBJECT_TYPES.includes(p.type) && p.subject === subject);
+    if (!hasOwn && hasClass) {
+      showToast('«' + subject + '» er nå tilpasset. Kopiere klassens innhold som utgangspunkt?',
+        { action: { label: 'Kopier', onClick: () => copyFromClassSubject(subject) }, duration: 8000 });
+    }
+  }
+}
+
+// Clone the class's content for ONE subject + the viewed week into the variant.
+async function copyFromClassSubject(subject) {
+  if (cloning) return;
+  const base = variantBase();
+  const week = dateToWeek(weekMonday);
+  if (!await uiConfirm('Hente klassens ' + subject + '-innhold for uke ' + getWeekNumber(weekMonday) +
+      ' inn i den tilpassede planen? Du kan endre det etterpå.', { title: 'Kopier fra klassen', okText: 'Hent' })) return;
+  cloning = true;
+  try {
+    setSaving();
+    const result = await api('clone', { fromWeek: week, toWeek: week, classes: base, toClasses: variantCode, subjects: subject, general: '0' });
+    setSaved();
+    if (result.entries && result.entries.length) {
+      recordCreateMany(result.entries.map(en => ({ id: en.id, params: elementCreateParams(en) })), 'kopierte ' + subject + ' fra klassen');
+    }
+    showToast('Kopierte ' + (result.count || 0) + ' element(er) fra ' + base + '.');
+    loadData({ background: true, skipCache: true });
+  } catch (err) {
+    setSaveError(err.message);
+  } finally {
+    cloning = false;
+  }
+}
+
+// Read-only Tema/Ressurser cell showing the class content a «Følger klassen»
+// subject inherits (muted; the pupil sees exactly this).
+function buildFollowCell(subject, type, elements) {
+  const td = document.createElement('td');
+  td.className = 'cell-edit cell-follow';
+  const html = elements.map(e => e.description).filter(Boolean).join('<br>');
+  if (html) {
+    const div = document.createElement('div');
+    div.className = 'follow-content rich-content';
+    div.innerHTML = sanitizeHtml(html);
+    td.appendChild(div);
+  } else {
+    const em = document.createElement('span');
+    em.className = 'follow-empty';
+    em.textContent = 'Som klassen';
+    td.appendChild(em);
+  }
+  return td;
+}
+
+// Read-only Lekser cell for a «Følger klassen» subject.
+function buildFollowHomeworkCell(subject, elements) {
+  const td = document.createElement('td');
+  td.className = 'cell-edit cell-homework-edit cell-follow';
+  if (!elements.length) {
+    const em = document.createElement('span');
+    em.className = 'follow-empty';
+    em.textContent = 'Som klassen';
+    td.appendChild(em);
+    return td;
+  }
+  elements.forEach(el => {
+    const row = document.createElement('div');
+    row.className = 'follow-hw-row';
+    const days = parseDays(el.day);
+    if (days.length) {
+      const tag = document.createElement('span');
+      tag.className = 'follow-hw-day';
+      tag.textContent = days.map(d => DAY_LABEL[d]).join(', ');
+      row.appendChild(tag);
+    }
+    const txt = document.createElement('span');
+    txt.className = 'rich-content';
+    txt.innerHTML = sanitizeHtml(el.description || '');
+    row.appendChild(txt);
+    td.appendChild(row);
+  });
   return td;
 }
 
@@ -3460,6 +3666,11 @@ async function saveFromModal() {
         }
         recordCreateMany(creates, 'la til ' + (TYPE_LABEL[modalType] || 'element'));
       }
+      // On a variant, adding a subject element implicitly makes that subject
+      // tilpasset – otherwise the new content would be hidden behind the class.
+      if (variantCode && SUBJECT_TYPES.includes(modalType) && subject && !isAdaptedSubject(subject)) {
+        await setVariantAdapted(variantAdapted.concat([subject]));
+      }
       setSaved();
       closeAddModal({ force: true });
       if (weekFrom !== dateToWeek(weekMonday) || weekTo !== weekFrom) {
@@ -3821,7 +4032,8 @@ async function copyRowToClasses(subject, opts = {}) {
 }
 
 // Seed the adapted plan's current week from its base class (one clone call,
-// class → code). Only meaningful while editing a variant.
+// class → code) and mark every copied subject tilpasset – i.e. "fork the whole
+// class plan for this pupil, then trim". Only meaningful while editing a variant.
 async function cloneFromBaseClass() {
   if (!variantCode || cloning) return;
   cloning = true;
@@ -3831,16 +4043,21 @@ async function cloneFromBaseClass() {
     const hasContent = planData.some(p => SUBJECT_TYPES.includes(p.type) || GENERAL_TYPES.includes(p.type));
     const msg = hasContent
       ? `Den tilpassede planen har allerede innhold denne uka. Hente fra ${selectedClass} likevel? (Kan gi dobbeltoppføringer.)`
-      : `Hente innholdet fra ${selectedClass} (uke ${getWeekNumber(weekMonday)}) inn i den tilpassede planen, som utgangspunkt?`;
-    if (!await uiConfirm(msg, { title: 'Hent fra klassen', okText: 'Hent' })) return;
+      : `Kopiere HELE klassens plan (${selectedClass}, uke ${getWeekNumber(weekMonday)}) inn i den tilpassede planen? Alle fag blir «Tilpasset» og kan endres. Du kan sette enkeltfag tilbake til «Følger klassen» etterpå.`;
+    if (!await uiConfirm(msg, { title: 'Kopier hele klassen', okText: 'Kopier' })) return;
 
     setSaving();
     const result = await api('clone', { fromWeek: week, toWeek: week, classes: selectedClass, toClasses: variantCode });
     setSaved();
     if (result.entries && result.entries.length) {
-      recordCreateMany(result.entries.map(en => ({ id: en.id, params: elementCreateParams(en) })), 'hentet fra klassen');
+      recordCreateMany(result.entries.map(en => ({ id: en.id, params: elementCreateParams(en) })), 'kopierte hele klassen');
+      // Mark each copied subject tilpasset so the new content actually shows.
+      const copied = new Set(result.entries.filter(en => SUBJECT_TYPES.includes(en.type) && en.subject).map(en => en.subject));
+      const next = variantAdapted.slice();
+      copied.forEach(s => { if (!next.includes(s)) next.push(s); });
+      if (next.length !== variantAdapted.length) await setVariantAdapted(next);
     }
-    showToast(`Hentet ${result.count || 0} element(er) fra ${selectedClass}.`);
+    showToast(`Kopierte ${result.count || 0} element(er) fra ${selectedClass}.`);
     loadData({ background: true, skipCache: true });
   } catch (err) {
     setSaveError(err.message);
@@ -4759,6 +4976,16 @@ async function loadKontakt(opts = {}) {
     const team = await res[0].json();
     kontaktTeam = (team && !team.error) ? team : { class: cls, kontakt: [], subjects: {} };
     if (needWeek) { const wd = await res[1].json(); kontaktWeekData = Array.isArray(wd) ? wd : []; kontaktWeek = week; }
+    // The class's adapted plans + each one's content for the viewed week.
+    try {
+      const vr = await fetch(`${SCRIPT_URL}?action=variants&class=${encodeURIComponent(cls)}`, { credentials: 'include' }).then(r => r.json());
+      const list = Array.isArray(vr) ? vr : [];
+      kontaktVariants = await Promise.all(list.map(async v => {
+        let weekData = [];
+        try { const d = await fetch(`${SCRIPT_URL}?action=week&classes=${encodeURIComponent(v.code)}&week=${encodeURIComponent(week)}`).then(r => r.json()); if (Array.isArray(d)) weekData = d; } catch {}
+        return { code: v.code, adaptedSubjects: Array.isArray(v.adaptedSubjects) ? v.adaptedSubjects : [], weekData };
+      }));
+    } catch { kontaktVariants = []; }
   } catch { kontaktTeam = kontaktTeam || { class: cls, kontakt: [], subjects: {} }; }
   hideBgLoading();
   if (teacherTab === 'kontakt') renderKontakt();
@@ -4941,6 +5168,60 @@ function renderKontakt() {
     });
   }
   pane.appendChild(secD);
+
+  // E · Tilpassede planer – the class's adapted plans + this-week status.
+  const secE = kontaktSection('Tilpassede planer (uke ' + getWeekNumber(weekMonday) + ')');
+  const labels = variantLabels();
+  if (!kontaktVariants.length) {
+    const p = document.createElement('p'); p.className = 'kontakt-empty';
+    p.textContent = 'Ingen tilpassede planer for klassen. Lag en fra «Bytt klasse» → Tilpasset plan.';
+    secE.appendChild(p);
+  } else {
+    kontaktVariants.forEach(v => {
+      const card = document.createElement('div');
+      card.className = 'kontakt-variant-card';
+      const top = document.createElement('div');
+      top.className = 'kontakt-variant-top';
+      const code = document.createElement('span');
+      code.className = 'variant-code';
+      code.textContent = variantSuffix(v.code);
+      top.appendChild(code);
+      if (labels[v.code]) {
+        const lab = document.createElement('span');
+        lab.className = 'kontakt-variant-label';
+        lab.textContent = labels[v.code];
+        top.appendChild(lab);
+      }
+      const open = document.createElement('button');
+      open.type = 'button'; open.className = 'btn btn-ghost btn-tiny';
+      open.textContent = 'Åpne';
+      open.addEventListener('click', () => applyVariant(v.code, cls));
+      top.appendChild(open);
+      card.appendChild(top);
+
+      const body = document.createElement('div');
+      body.className = 'kontakt-variant-body';
+      const adapted = v.adaptedSubjects.slice().sort((a, b) => a.localeCompare(b, 'no'));
+      if (!adapted.length) {
+        const em = document.createElement('span');
+        em.className = 'follow-empty';
+        em.textContent = 'Følger klassen i alle fag (ingen fag er tilpasset ennå).';
+        body.appendChild(em);
+      } else {
+        adapted.forEach(subject => {
+          const hasWeek = v.weekData.some(p => SUBJECT_TYPES.includes(p.type) && p.subject === subject && p.description);
+          const chip = document.createElement('span');
+          chip.className = 'kontakt-variant-subj' + (hasWeek ? ' filled' : ' empty');
+          chip.textContent = subject + (hasWeek ? ' ✓' : ' – tomt denne uka');
+          chip.title = hasWeek ? 'Har eget innhold denne uka' : 'Tilpasset, men ingen egen tekst lagt inn for denne uka';
+          body.appendChild(chip);
+        });
+      }
+      card.appendChild(body);
+      secE.appendChild(card);
+    });
+  }
+  pane.appendChild(secE);
 }
 
 function kontaktSection(titleText) {

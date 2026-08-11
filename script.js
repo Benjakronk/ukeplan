@@ -68,6 +68,50 @@ let weekMonday    = mondayOf(new Date());
 // using the base class (selectedClass), so a personal plan inherits its vurderinger.
 function planKey() { return (variantCode && !viewBase) ? variantCode : selectedClass; }
 
+// A tilpasset plan FOLLOWS THE REGULAR CLASS PLAN by default: only subjects in
+// `variantAdaptedSubjects` use the pupil's own content; the rest (and all
+// beskjeder) inherit the base class. These support that merge on the student side.
+let variantAdaptedSubjects = [];   // subjects the active code adapts
+let variantInfoCode = null;        // the code adaptedSubjects was loaded for
+function variantBaseClass() { return (variantCode && parseVariantClass(variantCode)) || selectedClass; }
+async function loadVariantInfo() {
+  if (!variantCode) { variantAdaptedSubjects = []; variantInfoCode = null; return; }
+  try {
+    const res = await fetch(`${SCRIPT_URL}?action=variant_info&code=${encodeURIComponent(variantCode)}`);
+    const data = await res.json();
+    variantAdaptedSubjects = (data && Array.isArray(data.adaptedSubjects)) ? data.adaptedSubjects : [];
+  } catch { variantAdaptedSubjects = []; }
+  variantInfoCode = variantCode;
+}
+// Classes to FETCH for a week: a variant view also pulls the base class so
+// non-adapted subjects + beskjeder can be inherited.
+function fetchClassesFor(key) {
+  return (variantCode && !viewBase && key === variantCode) ? (variantCode + ' ' + variantBaseClass()) : key;
+}
+// Resolve the raw base+code payload into the effective plan: adapted subjects use
+// code content, everything else the base class, all normalised to the code so the
+// existing renderers (which match planKey()) work unchanged.
+function applyVariantMerge(raw) {
+  if (!Array.isArray(raw)) return [];
+  if (!variantCode || viewBase) return raw;
+  const code = variantCode, base = variantBaseClass();
+  const SUBJ = ['læringsmål', 'ressurs', 'lekse'];
+  const out = [];
+  raw.forEach(el => {
+    const wantClass = (SUBJ.includes(el.type) && el.subject && !variantAdaptedSubjects.includes(el.subject)) ? base
+                    : (SUBJ.includes(el.type) && el.subject) ? code
+                    : base;   // general/beskjeder inherit the class
+    if (classMatches(el.classes, wantClass)) out.push(Object.assign({}, el, { classes: code }));
+  });
+  return out;
+}
+// The class whose content a given subject draws from in the current view (used by
+// the Fag tab, which reads the full public set rather than the merged week).
+function contentClassFor(subject) {
+  if (variantCode && !viewBase) return variantAdaptedSubjects.includes(subject) ? variantCode : variantBaseClass();
+  return planKey();
+}
+
 // The stored key is "<CLASS>-<SUFFIX>", but pupils only ever enter/receive the
 // SUFFIX – the class comes from their class choice, so a code resolves only
 // together with the right class (and never reveals which class it belongs to).
@@ -320,6 +364,8 @@ function updateWeekLabel() {
 
 async function loadWeek(opts = {}) {
   const { skipCache = false } = opts;
+  // Know which subjects the code adapts before merging a variant view.
+  if (variantCode && !viewBase && variantInfoCode !== variantCode) await loadVariantInfo();
   const week = dateToWeek(weekMonday);
   const key  = planKey();
   const background = planData.length > 0 || !!getCachedWeek(key, week);
@@ -330,7 +376,7 @@ async function loadWeek(opts = {}) {
   if (!skipCache) {
     const cached = getCachedWeek(key, week);
     if (cached) {
-      planData = cached;
+      planData = applyVariantMerge(cached);
       planDataKey = key + '|' + week;
       render();
       hideOverlay();
@@ -347,14 +393,16 @@ async function loadWeek(opts = {}) {
 async function fetchWeek(cls, week, opts = {}) {
   const { background = false } = opts;
   try {
-    const url = `${SCRIPT_URL}?action=week&classes=${encodeURIComponent(cls)}&week=${encodeURIComponent(week)}`;
+    // For a variant view, fetch both the code's own content and the base
+    // class's, so non-adapted subjects can inherit the class plan.
+    const url = `${SCRIPT_URL}?action=week&classes=${encodeURIComponent(fetchClassesFor(cls))}&week=${encodeURIComponent(week)}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (!Array.isArray(data)) throw new Error(data.error || 'Ugyldig svar');
     // Only adopt if still the active plan+week (user may have navigated away).
     if (cls === planKey() && week === dateToWeek(weekMonday)) {
-      planData = data;
+      planData = applyVariantMerge(data);
       planDataKey = cls + '|' + week;
       render();
     }
@@ -378,15 +426,15 @@ function ensureNextWeekData() {
   if (previewWeekKey === key) return;          // already loaded or in flight
   previewWeekKey = key;
   const cached = getCachedWeek(planK, nextWeek);
-  if (cached) { previewWeekData = cached; return; }
-  const url = `${SCRIPT_URL}?action=week&classes=${encodeURIComponent(planK)}&week=${encodeURIComponent(nextWeek)}`;
+  if (cached) { previewWeekData = applyVariantMerge(cached); return; }
+  const url = `${SCRIPT_URL}?action=week&classes=${encodeURIComponent(fetchClassesFor(planK))}&week=${encodeURIComponent(nextWeek)}`;
   fetch(url)
     .then(res => (res.ok ? res.json() : null))
     .then(data => {
       if (!Array.isArray(data)) return;
       setCachedWeek(planK, nextWeek, data);
       if (previewWeekKey !== key) return;       // user navigated away meanwhile
-      previewWeekData = data;
+      previewWeekData = applyVariantMerge(data);
       if (currentTab === 'ukeplan' && ukeplanView === 'dag') renderDayView();
     })
     .catch(() => {});
@@ -1000,7 +1048,7 @@ function renderFag() {
   board.innerHTML = '';
   const subject = document.getElementById('fagSubject').value;
 
-  const plan = allPlanData.filter(p => p.subject === subject && classMatches(p.classes, planKey()));
+  const plan = allPlanData.filter(p => p.subject === subject && classMatches(p.classes, contentClassFor(subject)));
   const vurd = vurdData.filter(v => v.date && v.subject === subject && classMatches(v.classes, selectedClass));
 
   const weeks = new Set();
