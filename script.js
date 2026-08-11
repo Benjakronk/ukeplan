@@ -1447,15 +1447,25 @@ function buildDayDetail(i, weekVurd) {
   // Don't repeat an item that's already shown as today's (multi-day elements).
   preview = preview.filter(p => !p.id || !shownIds.has(p.id));
 
-  const dayGeneralAll = dayGeneral.concat(preview);
-  const gs = buildGeneralSection(dayGeneralAll);
-  if (gs) {
-    const sec = daySection('Beskjeder og praktisk');
-    sec.appendChild(gs);
-    wrap.appendChild(sec);
+  // This day's own beskjeder in the normal section; next-school-day items in a
+  // muted, clearly-separated "Til i morgen" block so they don't read as today's.
+  let sec = null;
+  const gsToday = buildGeneralSection(dayGeneral);
+  if (gsToday) { sec = daySection('Beskjeder og praktisk'); sec.appendChild(gsToday); wrap.appendChild(sec); }
+  if (preview.length) {
+    if (!sec) { sec = daySection('Beskjeder og praktisk'); wrap.appendChild(sec); }
+    const box = document.createElement('div');
+    box.className = 'day-heads-up';
+    const lab = document.createElement('div');
+    lab.className = 'day-heads-up-label';
+    lab.textContent = i < 4 ? 'Til i morgen' : 'Til neste skoledag';
+    box.appendChild(lab);
+    const gsNext = buildGeneralSection(preview);
+    if (gsNext) box.appendChild(gsNext);
+    sec.appendChild(box);
   }
 
-  if (!sch && !dayVurd.length && !dayHw.length && !dayGeneralAll.length) {
+  if (!sch && !dayVurd.length && !dayHw.length && !dayGeneral.length && !preview.length) {
     const empty = document.createElement('p');
     empty.className = 'empty-state';
     empty.textContent = variantCode

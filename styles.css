@@ -745,6 +745,13 @@ body.scroll-locked { overflow: hidden; }
 .day-section-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--text-muted); margin-bottom: 8px; }
 .day-section .assessment-card { margin-bottom: 8px; }
 .day-section .banner { margin-bottom: 0; }
+/* Day-early "heads-up" block: next school day's beskjeder, muted + separated */
+.day-heads-up { margin-top: 12px; opacity: .72; }
+.day-heads-up-label {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted);
+}
+.day-heads-up-label::before, .day-heads-up-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 
 /* ── Calendar (vurderingskalender tab) ─────────────────────── */
 .cal-controls { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
