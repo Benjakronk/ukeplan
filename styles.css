@@ -580,6 +580,68 @@ body.scroll-locked { overflow: hidden; }
   content: 'nytt'; margin-left: 6px; padding: 1px 6px; border-radius: 999px;
   background: var(--vurd); color: var(--on-accent); font-size: 10px; font-weight: 700; vertical-align: middle;
 }
+/* ── Lekse deck (one task at a time, cycle through) ─────────── */
+.dash-deck { gap: 14px; }
+.dash-deck-head { display: flex; align-items: center; gap: 14px; }
+.dash-ring { width: 46px; height: 46px; flex: none; }
+.dash-ring-track { fill: none; stroke: var(--surface-2); stroke-width: 5; }
+.dash-ring-prog { fill: none; stroke: var(--primary); stroke-width: 5; stroke-linecap: round; }
+.dash-ring-label { fill: var(--text); font-size: 12px; font-weight: 700; }
+/* Completion finale: a second colour sweeps over the ring + a drawn checkmark */
+.dash-ring-cel { fill: none; stroke: #e6a92e; stroke-width: 5; stroke-linecap: round; }
+.dash-ring-check { fill: none; stroke: var(--success); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.dash-ring.finale { animation: ring-pop .55s ease .25s both; transform-origin: center; }
+@keyframes ring-pop { 0%,100% { transform: scale(1); } 45% { transform: scale(1.16); } }
+.dash-deck-left { font-family: var(--font-display); font-size: 19px; font-weight: 700; color: var(--text); }
+.dash-deck-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+.dash-lekse-card {
+  position: relative; border: 1px solid var(--border); border-left: 4px solid var(--subj, var(--primary));
+  border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow-card);
+  padding: 16px 18px; display: flex; flex-direction: column; gap: 10px;
+}
+.dash-lc-top { display: flex; align-items: center; gap: 8px; }
+.dash-lc-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--subj, var(--primary)); flex: none; }
+.dash-lc-subj { font-size: 13px; font-weight: 700; color: var(--text); text-transform: uppercase; letter-spacing: .03em; }
+.dash-lc-day { margin-left: auto; font-size: 11px; font-weight: 700; color: var(--subj, var(--primary));
+  background: color-mix(in oklab, var(--subj, var(--primary)) 15%, transparent); padding: 2px 9px; border-radius: 999px; }
+.dash-lc-new { margin-left: auto; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--on-accent); background: var(--vurd); padding: 2px 7px; border-radius: 999px; }
+.dash-lc-day + .dash-lc-new { margin-left: 6px; }
+.dash-lc-body { font-size: 16px; line-height: 1.5; color: var(--text); }
+.dash-lc-done { align-self: flex-start; }
+
+.dash-deck-nav { display: flex; align-items: center; justify-content: center; gap: 16px; }
+.dash-deck-arrow {
+  width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface);
+  color: var(--text); font-size: 18px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: border-color var(--transition), color var(--transition);
+}
+.dash-deck-arrow:hover { border-color: var(--primary); color: var(--primary); }
+.dash-deck-dots { display: flex; gap: 6px; align-items: center; }
+.dash-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--surface-2); transition: transform var(--transition), background var(--transition); }
+.dash-dot.active { background: var(--primary); transform: scale(1.35); }
+.dash-deck-counter { font-size: 13px; font-weight: 600; color: var(--text-muted); min-width: 46px; text-align: center; }
+
+.dash-deck-allclear {
+  display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 700; color: var(--success);
+  border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface); padding: 16px 18px;
+}
+.dash-deck-check { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px;
+  border-radius: 50%; background: var(--success); color: var(--on-accent); font-size: 15px; flex: none; }
+
+.dash-done-box { border-top: 1px dashed var(--border); padding-top: 10px; }
+.dash-done-sum { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-muted); list-style: none; }
+.dash-done-sum::-webkit-details-marker { display: none; }
+.dash-done-box[open] .dash-done-sum { margin-bottom: 8px; }
+.dash-done-list { opacity: .7; }
+
+.dash-deck-anim { animation: deck-in .22s ease both; }
+@keyframes deck-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.dash-card-exit { animation: deck-out .24s ease forwards; pointer-events: none; }
+@keyframes deck-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-14px) scale(.96); } }
+@media (prefers-reduced-motion: reduce) { .dash-deck-anim, .dash-card-exit { animation: none; } .dash-ring-prog { transition: none; } }
+
 /* Celebration confetti (JS-spawned; reduced-motion → none) */
 .celebrate-layer { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 400; }
 .confetti {
@@ -602,6 +664,12 @@ body.scroll-locked { overflow: hidden; }
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: all; }
 .toast-action { background: transparent; border: none; color: var(--accent-on-dark); font-weight: 600; cursor: pointer; }
+/* Celebratory milestone toast: larger and centred in the upper-middle so it's
+   clearly visible, not tucked at the screen edge. */
+.toast.toast-celebrate {
+  bottom: auto; top: 34%; padding: 16px 30px; font-size: 19px; font-weight: 700;
+  border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.28);
+}
 
 /* ── In-app dialogs (alert / confirm / prompt / link) ──────── */
 .ui-dialog-overlay { position: fixed; inset: 0; z-index: 300; background: var(--scrim); }

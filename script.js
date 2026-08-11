@@ -135,6 +135,7 @@ let ukeplanView      = 'uke';      // 'uke' | 'dag'
 let selectedDayIndex = 0;          // 0..4 (Mon..Fri), for the day view
 let planDataKey      = null;       // "<planKey>|<week>" that planData currently holds
 let dashBeskjedIdx   = 0;          // which unacknowledged beskjed the stepper shows
+let dashLekseIdx     = 0;          // which remaining lekse the deck shows (cycle position)
 let newLekseKeys     = [];         // lekser added since the last dashboard review (this week)
 let dashReviewedKey  = null;       // "<planKey>|<week>" the new-lekse review last ran for
 let newLekserPending = false;      // a fresh review found new lekser → announce once (modal)
@@ -775,6 +776,9 @@ function reviewNewLekser() {
   if (planDataKey !== key) { newLekseKeys = []; return; }   // data for this week not loaded yet
   if (dashReviewedKey === key) return;                      // already reviewed this load
   dashReviewedKey = key;
+  dashLekseIdx = 0;                                         // fresh week → start the deck at the top
+  dashRingPct = null;                                      // snap the ring on arrival, don't tween from another week
+  { const c = weekDoneCount(); dashRingDoneKey = (c.total > 0 && c.doneN >= c.total) ? key : null; }
   const cur = weekLekser().map(doneKey);
   const store = readJSON(SEEN_LEKSER_KEY);
   const seen = Array.isArray(store[key]) ? store[key] : null;
@@ -782,6 +786,7 @@ function reviewNewLekser() {
   store[key] = seen ? [...new Set(seen.concat(cur))] : cur;
   writeJSON(SEEN_LEKSER_KEY, store);
   if (newLekseKeys.length) newLekserPending = true;   // announce once, as a modal on entry
+  seedMilestones();   // don't fire confetti for progress already made before this load
 }
 
 function renderDashboard() {
@@ -808,7 +813,7 @@ function renderDashboard() {
 
   const bstep = buildBeskjedStepper();
   if (bstep) view.appendChild(bstep);
-  view.appendChild(buildLekseProgress());
+  view.appendChild(buildLekseDeck());
   const vwrap = buildDashVurd();
   if (vwrap) view.appendChild(vwrap);
 
@@ -881,14 +886,16 @@ function buildBeskjedStepper() {
   return card;
 }
 
-// Progress meter (zero-safe) + "nytt denne uka" notice + the lekse checklist.
-function buildLekseProgress() {
+// The lekse deck: one remaining task at a time with a progress ring, cycle it
+// with ‹ ›, and "✓ Gjort" advances to the next. Done tasks tuck into a
+// collapsible below so the screen only shows what's left – less to decide at
+// once. Zero-safe; milestones/celebrations still fire from checkMilestones().
+function buildLekseDeck() {
   const wrap = document.createElement('div');
-  wrap.className = 'dash-section';
+  wrap.className = 'dash-section dash-deck';
   const lekser = weekLekser();
   const done = getDoneSet();
   const total = lekser.length;
-  const doneN = lekser.filter(el => done[doneKey(el)]).length;
 
   if (total === 0) {
     const p = document.createElement('p');
@@ -898,58 +905,215 @@ function buildLekseProgress() {
     return wrap;
   }
 
-  const prog = document.createElement('div'); prog.className = 'dash-progress';
-  const label = document.createElement('div'); label.className = 'dash-progress-label';
-  label.textContent = doneN + ' av ' + total + ' lekser gjort';
-  const bar = document.createElement('div'); bar.className = 'dash-bar';
-  const fill = document.createElement('div'); fill.className = 'dash-bar-fill';
-  fill.style.width = Math.round(doneN / total * 100) + '%';
-  bar.appendChild(fill);
-  prog.appendChild(label); prog.appendChild(bar);
-  wrap.appendChild(prog);
+  const doneItems = lekser.filter(el => done[doneKey(el)]);
+  const todo = lekser.filter(el => !done[doneKey(el)]).sort(byDay);
+  const doneN = doneItems.length;
 
-  if (doneN === total) {
-    const clear = document.createElement('p'); clear.className = 'dash-allclear';
-    clear.textContent = '✓ Alt gjort denne uka!';
+  // Whether this render is the fresh completion (checked BEFORE buildDeckHead,
+  // which consumes the same once-only gate for the ring finale).
+  const freshComplete = !todo.length && !prefersReducedMotion() && dashRingDoneKey !== weekKey();
+
+  wrap.appendChild(buildDeckHead(doneN, total));
+
+  if (!todo.length) {
+    const clear = document.createElement('div');
+    clear.className = 'dash-deck-allclear' + (freshComplete ? ' dash-deck-anim' : '');
+    clear.innerHTML = '<span class="dash-deck-check">✓</span> Alt gjort denne uka!';
     wrap.appendChild(clear);
+  } else {
+    if (dashLekseIdx >= todo.length) dashLekseIdx = todo.length - 1;
+    if (dashLekseIdx < 0) dashLekseIdx = 0;
+    wrap.appendChild(buildLekseCard(todo[dashLekseIdx]));
+    if (todo.length > 1) wrap.appendChild(buildDeckNav(todo.length));
   }
 
-  wrap.appendChild(buildDashLekseList(lekser));
+  if (doneN) wrap.appendChild(buildDoneCollapsible(doneItems));
   return wrap;
 }
 
-// Lekse checklist grouped by (first) day; each check-off re-renders the dashboard
-// so the meter + milestone celebrations update live.
-function buildDashLekseList(lekser) {
-  const done = getDoneSet();
-  const newSet = new Set(newLekseKeys);
-  const byDay = {};
-  lekser.forEach(el => { const d = parseDays(el.day)[0] || ''; (byDay[d] = byDay[d] || []).push(el); });
-  const groups = [];
-  DAYS.forEach(d => { if (byDay[d]) groups.push([DAY_LABEL[d], byDay[d]]); });
-  if (byDay['']) groups.push(['Hele uka', byDay['']]);
+// Progress ring + "N igjen" headline.
+function buildDeckHead(doneN, total) {
+  const head = document.createElement('div');
+  head.className = 'dash-deck-head';
+  head.appendChild(buildProgressRing(doneN, total));
+  const txt = document.createElement('div'); txt.className = 'dash-deck-headtext';
+  const left = total - doneN;
+  const big = document.createElement('div'); big.className = 'dash-deck-left';
+  big.textContent = left === 0 ? 'Alt gjort!' : (left + (left === 1 ? ' lekse igjen' : ' lekser igjen'));
+  const sub = document.createElement('div'); sub.className = 'dash-deck-sub';
+  // Honest progress line; the ring itself runs one step ahead (endowed progress).
+  sub.textContent = doneN === 0 ? 'Kom i gang!' : (doneN + ' av ' + total + ' gjort');
+  txt.appendChild(big); txt.appendChild(sub);
+  head.appendChild(txt);
+  return head;
+}
 
-  const wrap = document.createElement('div'); wrap.className = 'dash-lekser';
-  groups.forEach(([label, items]) => {
-    const g = document.createElement('div'); g.className = 'dash-lekse-group';
-    const gh = document.createElement('div'); gh.className = 'dash-lekse-day'; gh.textContent = label;
-    g.appendChild(gh);
-    const ul = document.createElement('ul'); ul.className = 'homework-list';
-    items.forEach(el => {
-      const id = doneKey(el);
-      const li = document.createElement('li');
-      li.className = 'homework-item' + (done[id] ? ' done' : '') + (newSet.has(id) ? ' is-new' : '');
-      const lbl = document.createElement('label'); lbl.className = 'hw-label';
-      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.className = 'hw-check'; cb.checked = !!done[id];
-      cb.addEventListener('change', () => { toggleDone(id, cb.checked); renderDashboard(); });
-      const span = document.createElement('span'); span.className = 'hw-text rich-content';
-      const pre = el.subject ? '<strong>' + escapeHtml(el.subject) + ':</strong> ' : '';
-      span.innerHTML = pre + sanitizeHtml(el.description || '');
-      lbl.appendChild(cb); lbl.appendChild(span); li.appendChild(lbl); ul.appendChild(li);
-    });
-    g.appendChild(ul); wrap.appendChild(g);
+// Endowed progress: a flat 5% head start so the ring never starts at 0% – just
+// enough to signify that opening the ukeplan is already a bit of progress (the
+// endowed-progress effect nudges completion). Fixed, so a small week doesn't
+// look half-done; real task progress fills the remaining 95% up to a true 100%.
+// The "N av M gjort" line above stays literally true; only the ring is endowed.
+const ENDOW_BASE = 0.05;
+function endowedPct(doneN, total) { return ENDOW_BASE + (1 - ENDOW_BASE) * (total ? doneN / total : 0); }
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+let dashRingPct = null;       // last endowed pct drawn (so the ring tweens between states)
+let dashRingDoneKey = null;   // weekKey whose completion finale has already played
+function ringCircle(cls, r) {
+  const e = document.createElementNS(SVG_NS, 'circle');
+  e.setAttribute('class', cls);
+  e.setAttribute('cx', '23'); e.setAttribute('cy', '23'); e.setAttribute('r', String(r));
+  return e;
+}
+// The progress ring. It TWEENS from its previous fill to the new one (each render
+// makes a fresh SVG, so the Web Animations API drives the fill – a CSS transition
+// wouldn't fire on a brand-new element). On real completion it plays a finale: a
+// second colour sweeps the ring and a checkmark draws in place of the "%".
+function buildProgressRing(doneN, total) {
+  const complete = total > 0 && doneN >= total;
+  const target = endowedPct(doneN, total);
+  const reduce = prefersReducedMotion();
+  const r = 19, c = 2 * Math.PI * r, key = weekKey();
+  const finale = complete && !reduce && dashRingDoneKey !== key;   // play the finale only on fresh completion
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('class', 'dash-ring' + (complete ? ' is-complete' : '') + (finale ? ' finale' : ''));
+  svg.setAttribute('viewBox', '0 0 46 46');
+  svg.appendChild(ringCircle('dash-ring-track', r));
+
+  const prog = ringCircle('dash-ring-prog', r);
+  prog.setAttribute('stroke-dasharray', c.toFixed(1));
+  prog.setAttribute('stroke-dashoffset', (c * (1 - target)).toFixed(1));
+  prog.setAttribute('transform', 'rotate(-90 23 23)');
+  svg.appendChild(prog);
+  const from = dashRingPct == null ? target : dashRingPct;
+  if (!reduce && from !== target) {
+    prog.animate([{ strokeDashoffset: c * (1 - from) }, { strokeDashoffset: c * (1 - target) }],
+      { duration: 500, easing: 'ease' });
+  }
+  dashRingPct = target;
+
+  if (complete) {
+    dashRingDoneKey = key;
+    // Second colour sweeping over the ring.
+    const cel = ringCircle('dash-ring-cel', r);
+    cel.setAttribute('stroke-dasharray', c.toFixed(1));
+    cel.setAttribute('stroke-dashoffset', '0');
+    cel.setAttribute('transform', 'rotate(-90 23 23)');
+    svg.appendChild(cel);
+    if (finale) cel.animate([{ strokeDashoffset: c }, { strokeDashoffset: 0 }],
+      { duration: 650, easing: 'ease-out', delay: 250, fill: 'backwards' });
+    // Checkmark drawn in place of the "%".
+    const check = document.createElementNS(SVG_NS, 'path');
+    check.setAttribute('class', 'dash-ring-check');
+    check.setAttribute('d', 'M16 23.5 L21 28.5 L31 16.5');
+    check.setAttribute('pathLength', '1');
+    check.setAttribute('stroke-dasharray', '1');
+    check.setAttribute('stroke-dashoffset', '0');
+    svg.appendChild(check);
+    if (finale) check.animate([{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }],
+      { duration: 380, easing: 'ease', delay: 720, fill: 'backwards' });
+  } else {
+    if (dashRingDoneKey === key) dashRingDoneKey = null;   // re-arm the finale after un-complete
+    const label = document.createElementNS(SVG_NS, 'text');
+    label.setAttribute('class', 'dash-ring-label');
+    label.setAttribute('x', '23'); label.setAttribute('y', '23');
+    label.setAttribute('text-anchor', 'middle'); label.setAttribute('dominant-baseline', 'central');
+    label.textContent = Math.round(target * 100) + '%';
+    svg.appendChild(label);
+  }
+  return svg;
+}
+
+// A calm, deterministic accent per subject (earthy palette; works in both themes).
+const SUBJECT_ACCENTS = ['#4f9d8e', '#c06a44', '#c99a3b', '#5b7fb0', '#9b6a97', '#7a9a5b', '#b5716a', '#5aa0a8'];
+function subjectAccent(subject) {
+  if (!subject) return 'var(--primary)';
+  let h = 0; for (let i = 0; i < subject.length; i++) h = (h * 31 + subject.charCodeAt(i)) >>> 0;
+  return SUBJECT_ACCENTS[h % SUBJECT_ACCENTS.length];
+}
+
+// One remaining lekse as a focused card.
+function buildLekseCard(el) {
+  const card = document.createElement('div');
+  card.className = 'dash-lekse-card dash-deck-anim';
+  card.style.setProperty('--subj', subjectAccent(el.subject));
+  const top = document.createElement('div'); top.className = 'dash-lc-top';
+  const dot = document.createElement('span'); dot.className = 'dash-lc-dot'; top.appendChild(dot);
+  const subj = document.createElement('span'); subj.className = 'dash-lc-subj';
+  subj.textContent = el.subject || 'Lekse'; top.appendChild(subj);
+  const day = parseDays(el.day)[0];
+  if (day) { const d = document.createElement('span'); d.className = 'dash-lc-day'; d.textContent = DAY_LABEL[day]; top.appendChild(d); }
+  if (newLekseKeys.includes(doneKey(el))) { const n = document.createElement('span'); n.className = 'dash-lc-new'; n.textContent = 'nytt'; top.appendChild(n); }
+  card.appendChild(top);
+
+  const body = document.createElement('div'); body.className = 'dash-lc-body rich-content';
+  body.innerHTML = sanitizeHtml(el.description || '');
+  card.appendChild(body);
+
+  const act = document.createElement('button');
+  act.type = 'button'; act.className = 'btn btn-primary dash-lc-done';
+  act.textContent = 'Merk som gjort';
+  // Marking done drops this card from `todo`; the same index shows the next one.
+  // If it's the LAST remaining task, animate the card out first, then reveal the
+  // completed state – mid-list ones already feel animated via the incoming card.
+  act.addEventListener('click', () => {
+    const done = getDoneSet();
+    const lastLeft = weekLekser().filter(e => !done[doneKey(e)] && doneKey(e) !== doneKey(el)).length === 0;
+    if (lastLeft && !prefersReducedMotion()) {
+      act.disabled = true;
+      card.classList.add('dash-card-exit');
+      setTimeout(() => { toggleDone(doneKey(el), true); renderDashboard(); }, 240);
+    } else {
+      toggleDone(doneKey(el), true); renderDashboard();
+    }
   });
-  return wrap;
+  card.appendChild(act);
+  return card;
+}
+
+// Cycle controls: ‹ › with dots (≤6 remaining) or an "n / m" counter.
+function buildDeckNav(count) {
+  const nav = document.createElement('div'); nav.className = 'dash-deck-nav';
+  const mk = (txt, label, delta) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'dash-deck-arrow'; b.textContent = txt;
+    b.setAttribute('aria-label', label);
+    b.addEventListener('click', () => { dashLekseIdx = (dashLekseIdx + delta + count) % count; renderDashboard(); });
+    return b;
+  };
+  nav.appendChild(mk('‹', 'Forrige lekse', -1));
+  if (count <= 6) {
+    const dots = document.createElement('div'); dots.className = 'dash-deck-dots';
+    for (let i = 0; i < count; i++) { const s = document.createElement('span'); s.className = 'dash-dot' + (i === dashLekseIdx ? ' active' : ''); dots.appendChild(s); }
+    nav.appendChild(dots);
+  } else {
+    const c = document.createElement('span'); c.className = 'dash-deck-counter'; c.textContent = (dashLekseIdx + 1) + ' / ' + count;
+    nav.appendChild(c);
+  }
+  nav.appendChild(mk('›', 'Neste lekse', 1));
+  return nav;
+}
+
+// Completed lekser, tucked into a collapsible so they're out of the way but can
+// be un-checked (mis-click recovery).
+function buildDoneCollapsible(items) {
+  const det = document.createElement('details'); det.className = 'dash-done-box';
+  const sum = document.createElement('summary'); sum.className = 'dash-done-sum';
+  sum.textContent = '✓ ' + items.length + ' gjort';
+  det.appendChild(sum);
+  const ul = document.createElement('ul'); ul.className = 'homework-list dash-done-list';
+  items.slice().sort(byDay).forEach(el => {
+    const li = document.createElement('li'); li.className = 'homework-item done';
+    const lbl = document.createElement('label'); lbl.className = 'hw-label';
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.className = 'hw-check'; cb.checked = true;
+    cb.addEventListener('change', () => { toggleDone(doneKey(el), false); renderDashboard(); });
+    const span = document.createElement('span'); span.className = 'hw-text rich-content';
+    const pre = el.subject ? '<strong>' + escapeHtml(el.subject) + ':</strong> ' : '';
+    span.innerHTML = pre + sanitizeHtml(el.description || '');
+    lbl.appendChild(cb); lbl.appendChild(span); li.appendChild(lbl); ul.appendChild(li);
+  });
+  det.appendChild(ul);
+  return det;
 }
 
 function buildDashVurd() {
@@ -962,44 +1126,61 @@ function buildDashVurd() {
   return wrap;
 }
 
-// Fire a celebration once per completed milestone (day/subject/week). A milestone
-// that becomes incomplete again (e.g. a new lekse added) is un-marked so it can
-// re-fire when re-completed. Only the biggest newly-completed level animates.
-function checkMilestones() {
+// Progress milestones over the week's total lekser: first done, halfway, and all
+// done. The first two get a small confetti burst, finishing everything gets a
+// bigger one. Returns [id, reached, level] triples (shared by seed + check).
+function milestoneLevels(total, doneN) {
+  const half = Math.ceil(total / 2);
+  return [
+    ['first', doneN >= 1, 'small'],
+    ['half',  half > 1 && doneN >= half, 'small'],   // skip when half === first (total ≤ 2)
+    ['all',   doneN >= total, 'big'],
+  ];
+}
+function weekDoneCount() {
   const lekser = weekLekser();
-  if (!lekser.length) return;
   const done = getDoneSet();
-  const isDone = el => !!done[doneKey(el)];
-  const milestones = [];   // [id, complete, level]
-  milestones.push(['week', lekser.every(isDone), 'week']);
-  [...new Set(lekser.map(l => l.subject).filter(Boolean))].forEach(s => {
-    const items = lekser.filter(l => l.subject === s);
-    milestones.push(['subj:' + s, items.every(isDone), 'small']);
-  });
-  DAYS.forEach(d => {
-    const items = lekser.filter(l => (parseDays(l.day)[0] || '') === d);
-    if (items.length) milestones.push(['day:' + d, items.every(isDone), 'small']);
-  });
-
+  return { total: lekser.length, doneN: lekser.filter(el => done[doneKey(el)]).length };
+}
+// On a fresh week-load, mark already-reached milestones as celebrated WITHOUT
+// firing, so returning mid-week doesn't set off confetti on arrival.
+function seedMilestones() {
+  const { total, doneN } = weekDoneCount();
+  if (!total) return;
   const key = weekKey();
   const store = readJSON(CELEBRATED_KEY);
   const cel = store[key] || {};
-  let fired = null;
-  milestones.forEach(([id, complete, level]) => {
-    if (complete && !cel[id]) { cel[id] = 1; if (!fired || level === 'week') fired = level; }
-    else if (!complete && cel[id]) { delete cel[id]; }
+  milestoneLevels(total, doneN).forEach(([id, reached]) => { if (reached) cel[id] = 1; });
+  store[key] = cel; writeJSON(CELEBRATED_KEY, store);
+}
+// Fire once per newly-reached milestone. A milestone that becomes un-reached
+// (e.g. a task un-checked or a new lekse added) is cleared so it can re-fire.
+// Only the biggest newly-reached level animates.
+function checkMilestones() {
+  const { total, doneN } = weekDoneCount();
+  if (!total) return;
+  const key = weekKey();
+  const store = readJSON(CELEBRATED_KEY);
+  const cel = store[key] || {};
+  const rank = { small: 1, big: 2 };
+  const MSG = { first: 'Du er i gang!', half: 'Over halvveis!', all: 'Du er ferdig!' };
+  let fired = null, firedId = null;
+  milestoneLevels(total, doneN).forEach(([id, reached, level]) => {
+    if (reached && !cel[id]) { cel[id] = 1; if (!fired || rank[level] > rank[fired]) { fired = level; firedId = id; } }
+    else if (!reached && cel[id]) { delete cel[id]; }
   });
   store[key] = cel; writeJSON(CELEBRATED_KEY, store);
-  if (fired) playCelebration(fired);
+  if (fired) { playCelebration(fired); showToast(MSG[firedId], { duration: firedId === 'all' ? 3500 : 2600, celebrate: true }); }
 }
 
-// A small confetti burst (bigger for the whole-week finish). Reduced-motion → none
-// (the "✓ Alt gjort" line already gives static feedback).
+// A confetti burst – bigger and longer for the whole-week finish. Reduced-motion
+// → none (the "✓ Alt gjort" line already gives static feedback).
 function playCelebration(level) {
   if (prefersReducedMotion()) return;
   const layer = document.createElement('div');
   layer.className = 'celebrate-layer';
-  const n = level === 'week' ? 30 : 14;
+  const big = level === 'big';
+  const n = big ? 44 : 16;
   const colors = ['#1e5c55', '#b5502f', '#f4c04e', '#4f9d8e', '#e88b5a'];
   for (let i = 0; i < n; i++) {
     const p = document.createElement('span');
@@ -1007,13 +1188,33 @@ function playCelebration(level) {
     p.style.setProperty('--x', (Math.random() * 100) + 'vw');
     p.style.setProperty('--dx', (Math.random() * 160 - 80) + 'px');
     p.style.setProperty('--rot', (Math.random() * 720 - 360) + 'deg');
-    p.style.setProperty('--delay', (Math.random() * 0.15).toFixed(2) + 's');
-    p.style.setProperty('--dur', (0.9 + Math.random() * 0.7).toFixed(2) + 's');
+    p.style.setProperty('--delay', (Math.random() * (big ? 0.25 : 0.15)).toFixed(2) + 's');
+    p.style.setProperty('--dur', ((big ? 1.0 : 0.9) + Math.random() * 0.7).toFixed(2) + 's');
     p.style.background = colors[i % colors.length];
     layer.appendChild(p);
   }
   document.body.appendChild(layer);
-  setTimeout(() => layer.remove(), level === 'week' ? 2100 : 1600);
+  setTimeout(() => layer.remove(), big ? 2500 : 1600);
+}
+
+// Lightweight toast (the student page's #toast lives in index.html; styled by
+// .toast/.toast.show in styles.css). Used for milestone messages.
+function showToast(message, opts = {}) {
+  const toast = document.getElementById('toast');
+  if (!toast) return;
+  const msg = toast.querySelector('.toast-msg');
+  if (msg) msg.textContent = message;
+  toast.classList.toggle('toast-celebrate', !!opts.celebrate);
+  toast.hidden = false;
+  requestAnimationFrame(() => toast.classList.add('show'));
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(hideToast, opts.duration ?? 3000);
+}
+function hideToast() {
+  const toast = document.getElementById('toast');
+  if (!toast) return;
+  toast.classList.remove('show');
+  setTimeout(() => { toast.hidden = true; }, 250);
 }
 
 // ─── Fag-progresjon tab (one subject, week by week) ───────────
