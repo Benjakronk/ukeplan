@@ -3828,6 +3828,8 @@ function selectModalType(t) {
   modalType = t;
   buildModalDescEditor(seed);
   document.querySelectorAll('#typeBtns .type-btn').forEach(b => b.classList.toggle('active', b.dataset.type === t));
+  const typeSum = document.getElementById('typeSummary');
+  if (typeSum) typeSum.textContent = TYPE_LABEL[t] || t;
   const isVurd = t === 'vurdering';
   const isHend = t === 'hendelse';       // date-based calendar event (idrettsdag, leirskole …)
   const usesDate = isVurd || isHend;     // date field instead of week/day
@@ -3921,6 +3923,7 @@ function buildModalClassBtns() {
           if (modalClasses.includes(cls)) modalClasses = modalClasses.filter(c => c !== cls);
           else modalClasses.push(cls);
           btn.classList.toggle('active');
+          updateClassSummary();
           refreshConflicts();
         });
       }
@@ -3946,6 +3949,25 @@ function buildModalClassBtns() {
     }
     grid.appendChild(wrap);
   });
+  updateClassSummary();
+}
+
+// Collapsed-summary text for the Klasse(r) section: full grade-years collapse to
+// "8. trinn", the rest list individually.
+function updateClassSummary() {
+  const el = document.getElementById('classSummary');
+  if (!el) return;
+  if (!modalClasses.length) { el.textContent = 'ingen valgt'; return; }
+  const remaining = new Set(modalClasses.filter(c => CLASSES.includes(c)));
+  const parts = [];
+  CLASS_GRADES.forEach(g => {
+    if (g.classes.every(c => remaining.has(c))) {
+      parts.push(g.label + ' trinn');
+      g.classes.forEach(c => remaining.delete(c));
+    }
+  });
+  CLASSES.filter(c => remaining.has(c)).forEach(c => parts.push(c));
+  el.textContent = parts.join(', ') || modalClasses.join(', ');
 }
 
 function syncDayBtns() {

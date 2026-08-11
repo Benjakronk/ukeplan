@@ -229,10 +229,13 @@
       <button id="addModalClose" class="panel-close" aria-label="Lukk">&times;</button>
     </div>
 
-    <div class="form-row">
-      <label class="form-label">Type</label>
+    <details class="form-row addcol" id="typeRow" open>
+      <summary class="addcol-summary">
+        <span class="form-label">Type</span>
+        <span id="typeSummary" class="addcol-sel"></span>
+      </summary>
       <div id="typeBtns" class="type-btns"></div>
-    </div>
+    </details>
 
     <div class="form-row" id="weekRangeRow">
       <label class="form-label">Uke (fra–til)</label>
@@ -260,11 +263,14 @@
       <select id="subjectSelect" class="input"></select>
     </div>
 
-    <div class="form-row" id="classRow">
-      <label class="form-label">Klasse(r)</label>
+    <details class="form-row addcol" id="classRow" open>
+      <summary class="addcol-summary">
+        <span class="form-label">Klasse(r)</span>
+        <span id="classSummary" class="addcol-sel"></span>
+      </summary>
       <div id="classBtns" class="class-modal-grid"></div>
       <p class="form-hint" id="editClassNote" hidden>Klassen kan ikke endres her. Slett elementet og lag et nytt for å bytte klasse.</p>
-    </div>
+    </details>
     <div class="form-row" id="internCombineRow" hidden>
       <label class="settings-toggle">
         <input type="checkbox" id="internCombine" checked>

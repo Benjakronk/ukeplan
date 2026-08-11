@@ -173,6 +173,16 @@
 .form-label { display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; }
 .desc-input { width: 100%; min-height: 110px; padding: 10px 12px; resize: vertical; font-family: var(--font); font-size: 14px; line-height: 1.5; }
 
+/* Collapsible Type / Klasse(r) sections in the add modal */
+.addcol > summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: 8px; }
+.addcol > summary::-webkit-details-marker { display: none; }
+.addcol > summary::before { content: '\25be'; font-size: 10px; color: var(--text-muted); }
+.addcol:not([open]) > summary::before { content: '\25b8'; }
+.addcol > summary .form-label { margin: 0; cursor: pointer; }
+.addcol > summary:hover .form-label { color: var(--text); }
+.addcol-sel { font-size: 13px; font-weight: 600; color: var(--text-muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.addcol[open] > summary { margin-bottom: 8px; }
+
 .type-btns, .day-btns { display: flex; flex-wrap: wrap; gap: 6px; }
 .type-btn, .day-btn {
   padding: 7px 12px; font-family: var(--font); font-size: 13px; font-weight: 600;
