@@ -210,6 +210,7 @@ let oversiktWeek = null;
 let hjemData     = [];         // all-classes plan elements for the dashboard's viewed week
 let hjemWeek     = null;       // the week hjemData is for (cache guard; null = stale)
 let kontaktViewClass = null;   // which of the teacher's kontaktlærer classes is shown
+let kontaktSubtab = 'team';    // Kontaktlærer sub-tab: team|vurd|dekning|beskjeder|tilpasset
 let kontaktTeam  = null;       // last class_team result { class, kontakt, subjects }
 let kontaktWeekData = [];      // all-classes plan elements for the coverage week
 let kontaktWeek  = null;       // the week kontaktWeekData is for (cache guard)
@@ -5450,7 +5451,35 @@ function renderKontakt() {
   note.textContent = 'Oversikten er basert på det lærerne har registrert (fag, klasser og innhold).';
   pane.appendChild(note);
 
+  // Sub-tabs – show one section at a time instead of a long stack.
+  const SUBTABS = [
+    ['team', 'Klasseteam'],
+    ['vurd', 'Vurderingsbelastning'],
+    ['dekning', 'Dekning'],
+    ['beskjeder', 'Beskjeder'],
+    ['tilpasset', 'Tilpassede planer'],
+  ];
+  if (!SUBTABS.some(t => t[0] === kontaktSubtab)) kontaktSubtab = 'team';
+  const subbar = document.createElement('div');
+  subbar.className = 'kontakt-subtabs';
+  subbar.setAttribute('role', 'tablist');
+  SUBTABS.forEach(([id, lbl]) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'kontakt-subtab' + (kontaktSubtab === id ? ' active' : '');
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-selected', kontaktSubtab === id ? 'true' : 'false');
+    b.textContent = lbl;
+    b.addEventListener('click', () => { kontaktSubtab = id; renderKontakt(); });
+    subbar.appendChild(b);
+  });
+  pane.appendChild(subbar);
+
+  // Class-team subjects – used by both Klasseteam and Dekning.
+  const subjKeys = Object.keys(team.subjects || {}).sort((a, b) => a.localeCompare(b, 'no'));
+
   // A · Klasseteam
+  if (kontaktSubtab === 'team') {
   const secA = kontaktSection('Klasseteam');
   const kont = document.createElement('p');
   kont.className = 'kontakt-line';
@@ -5461,7 +5490,6 @@ function renderKontakt() {
   strong.textContent = kk.length ? kk.join(', ') : 'ingen registrert';
   kont.appendChild(strong);
   secA.appendChild(kont);
-  const subjKeys = Object.keys(team.subjects || {}).sort((a, b) => a.localeCompare(b, 'no'));
   if (subjKeys.length) {
     const list = document.createElement('div');
     list.className = 'kontakt-staff';
@@ -5480,8 +5508,10 @@ function renderKontakt() {
     secA.appendChild(p);
   }
   pane.appendChild(secA);
+  }
 
   // B · Vurderingsbelastning
+  if (kontaktSubtab === 'vurd') {
   const secB = kontaktSection('Vurderingsbelastning');
   const classVurd = vurdData.filter(v => v.date && classMatches(v.classes, cls));
   // Flagged weeks (from today forward) with too many assessments.
@@ -5524,10 +5554,11 @@ function renderKontakt() {
   }
   secB.appendChild(calWrap);
   pane.appendChild(secB);
+  }
 
   // C · Dekning denne uka
+  if (kontaktSubtab === 'dekning') {
   const secC = kontaktSection('Dekning denne uka (uke ' + getWeekNumber(weekMonday) + ')');
-  const week = dateToWeek(weekMonday);
   const has = (subject, type) => kontaktWeekData.some(p => p.type === type && p.subject === subject && p.description && classMatches(p.classes, cls));
   const teacherFor = subject => (team.subjects && team.subjects[subject]) ? team.subjects[subject].join(', ') : '';
   // Subjects: registered in the class, plus any that actually have content this week.
@@ -5565,8 +5596,10 @@ function renderKontakt() {
     secC.appendChild(list);
   }
   pane.appendChild(secC);
+  }
 
   // D · Beskjeder og praktisk info (this week, read-only, attributed)
+  if (kontaktSubtab === 'beskjeder') {
   const secD = kontaktSection('Beskjeder og praktisk info (uke ' + getWeekNumber(weekMonday) + ')');
   const general = kontaktWeekData.filter(p => GENERAL_TYPES.includes(p.type) && p.description && classMatches(p.classes, cls));
   if (!general.length) {
@@ -5591,8 +5624,10 @@ function renderKontakt() {
     });
   }
   pane.appendChild(secD);
+  }
 
   // E · Tilpassede planer – the class's adapted plans + this-week status.
+  if (kontaktSubtab === 'tilpasset') {
   const secE = kontaktSection('Tilpassede planer (uke ' + getWeekNumber(weekMonday) + ')');
   const labels = variantLabels();
   if (!kontaktVariants.length) {
@@ -5645,6 +5680,7 @@ function renderKontakt() {
     });
   }
   pane.appendChild(secE);
+  }
 }
 
 function kontaktSection(titleText) {
