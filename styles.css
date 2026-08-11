@@ -404,6 +404,7 @@ body.scroll-locked { overflow: hidden; }
 
 .assessment-card { border: 1px solid var(--border); border-radius: var(--radius-btn); padding: 12px 14px; border-left: 3px solid var(--vurd); }
 .ac-subject { font-weight: 700; }
+.ac-day { font-size: 13px; font-weight: 600; color: var(--vurd); margin-top: 2px; }
 .ac-classes { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
 .ac-desc { margin-top: 8px; font-size: 14px; white-space: pre-wrap; }
 .ac-teacher { margin-top: 8px; font-size: 13px; color: var(--text-muted); }

@@ -1224,7 +1224,7 @@ function buildDashVurd() {
   const wrap = document.createElement('div'); wrap.className = 'dash-section dash-vurd';
   const h = document.createElement('h3'); h.className = 'dash-section-title'; h.textContent = 'Vurderinger denne uka';
   wrap.appendChild(h);
-  vs.forEach(v => wrap.appendChild(buildAssessmentCard(v)));
+  vs.forEach(v => wrap.appendChild(buildAssessmentCard(v, { showDay: true, hideClasses: true })));
   return wrap;
 }
 
@@ -1601,14 +1601,21 @@ function daySection(title) {
   return sec;
 }
 
-function buildAssessmentCard(v) {
+function buildAssessmentCard(v, opts = {}) {
   const card = document.createElement('div');
   card.className = 'assessment-card';
   const subject = document.createElement('div');
   subject.className = 'ac-subject';
   subject.textContent = v.subject || 'Vurdering';
   card.appendChild(subject);
-  if (v.classes) {
+  // Min uke shows the weekday it falls on instead of the class(es).
+  if (opts.showDay && v.date) {
+    const day = document.createElement('div');
+    day.className = 'ac-day';
+    day.textContent = capitalizeFirst(isoToDate(v.date).toLocaleDateString('no', { weekday: 'long', day: 'numeric', month: 'short' }));
+    card.appendChild(day);
+  }
+  if (v.classes && !opts.hideClasses) {
     const cls = document.createElement('div');
     cls.className = 'ac-classes';
     cls.textContent = v.classes;
