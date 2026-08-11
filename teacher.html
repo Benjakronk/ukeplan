@@ -202,24 +202,20 @@
 
   <!-- Class selection modal -->
   <div id="classModalOverlay" class="class-modal-overlay"></div>
-  <div id="classModal" class="class-modal" role="dialog" aria-modal="true" aria-labelledby="classModalTitle">
+  <div id="classModal" class="class-modal class-modal-fixed" role="dialog" aria-modal="true" aria-labelledby="classModalTitle">
     <div class="class-modal-header">
       <h2 id="classModalTitle" class="class-modal-title">Velg klasse</h2>
       <button id="classModalClose" class="panel-close" aria-label="Lukk">&times;</button>
     </div>
-    <p class="class-modal-hint">Velg klassen du vil redigere ukeplan for.</p>
-    <div id="classModalGrid" class="class-modal-grid"></div>
-
-    <details id="teacherVariantBox" class="variant-box">
-      <summary>Tilpasset plan (individuelt tilrettelagt)</summary>
-      <p class="class-modal-hint">Velg først en vanlig klasse over. Lag så en egen ukeplan for én eller flere elever uten å lagre navn. Du får en kode du gir til eleven(e), som virker sammen med klassen deres; appen vet ikke hvem den tilhører. <strong>Skriv aldri elevnavn i appen.</strong></p>
-      <button id="variantNewBtn" class="btn btn-ghost btn-tiny" type="button">+ Lag ny tilpasset plan</button>
-      <div class="variant-row">
-        <input type="text" id="variantCodeInput" class="variant-input" placeholder="eller åpne kode: K7X9M" autocomplete="off" autocapitalize="characters" spellcheck="false">
-        <button id="variantOpenBtn" class="btn btn-ghost btn-tiny" type="button">Åpne</button>
-      </div>
-      <p id="variantTError" class="variant-error" hidden></p>
-    </details>
+    <div class="class-modal-body">
+      <p class="class-modal-hint">Velg en klasse, og åpne den vanlige planen – eller en tilpasset plan for en enkeltelev.</p>
+      <div id="classModalMine"></div>
+      <details id="allClassesBox" class="all-classes">
+        <summary>Alle klasser</summary>
+        <div id="classModalGrid" class="class-modal-grid"></div>
+      </details>
+      <div id="variantPanel" class="variant-panel"></div>
+    </div>
   </div>
 
   <!-- Add / edit modal -->

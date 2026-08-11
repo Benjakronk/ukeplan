@@ -60,12 +60,13 @@ const GENERAL_ICON  = { beskjed: '📣', timeendring: '🕑', utstyr: '🎒', ak
 
 let selectedClass = null;
 let variantCode   = null;               // active personal-plan code, or null
+let viewBase      = false;              // "Se vanlig plan" – show the class plan while a code is stored
 let weekMonday    = mondayOf(new Date());
 
-// Plan content is fetched/filtered under the variant code when one is active;
-// assessments, calendar and the class label keep using the base class
-// (selectedClass), so a personal plan inherits its class's vurderinger.
-function planKey() { return variantCode || selectedClass; }
+// Plan content is fetched/filtered under the variant code when one is active
+// (unless "Se vanlig plan" is on); assessments, calendar and the class label keep
+// using the base class (selectedClass), so a personal plan inherits its vurderinger.
+function planKey() { return (variantCode && !viewBase) ? variantCode : selectedClass; }
 
 // The stored key is "<CLASS>-<SUFFIX>", but pupils only ever enter/receive the
 // SUFFIX – the class comes from their class choice, so a code resolves only
@@ -177,6 +178,12 @@ function setupListeners() {
 
   // Profile modal (name · class · valgfag · tema) – opened by the class pill AND
   // the Profil button; the wizard reruns from inside it.
+  document.getElementById('viewBaseToggle').addEventListener('click', () => {
+    viewBase = !viewBase;
+    planData = []; previewWeekKey = null; planDataKey = null; dashReviewedKey = null;
+    updateViewBaseToggle();
+    loadWeek();
+  });
   document.getElementById('classBtn').addEventListener('click', showClassModal);
   document.getElementById('profileBtn').addEventListener('click', showClassModal);
   document.getElementById('classModalClose').addEventListener('click', () => closeClassModal());
@@ -412,6 +419,16 @@ async function loadAssessments(opts = {}) {
 
 function updateClassLabel() {
   document.getElementById('classBtnLabel').textContent = selectedClass || 'Velg klasse';
+  updateViewBaseToggle();
+}
+// "Se vanlig plan" toggle: visible only when a personal code is stored; flips the
+// content view between the pupil's adapted plan and the class's regular plan.
+function updateViewBaseToggle() {
+  const btn = document.getElementById('viewBaseToggle');
+  if (!btn) return;
+  btn.hidden = !variantCode;
+  btn.textContent = viewBase ? 'Se min plan' : 'Se vanlig plan';
+  btn.classList.toggle('active', viewBase);
 }
 
 function loadElectives() {
@@ -541,6 +558,7 @@ function confirmClassModal() {
     selectedClass = modalClass;
     localStorage.removeItem(VARIANT_KEY);
   }
+  viewBase = false;   // a fresh code/class starts on the pupil's own plan
   localStorage.setItem(CLASS_KEY, selectedClass);
   electives = modalElectives.slice();
   localStorage.setItem(ELECTIVE_KEY, JSON.stringify(electives));

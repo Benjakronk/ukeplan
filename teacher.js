@@ -2051,8 +2051,6 @@ function setupDashboardListeners() {
   document.getElementById('addBtn').addEventListener('click', () => openAddModal());
   document.getElementById('cloneBtn').addEventListener('click', cloneFromPreviousWeek);
   document.getElementById('cloneFromClassBtn').addEventListener('click', cloneFromBaseClass);
-  document.getElementById('variantNewBtn').addEventListener('click', startNewVariant);
-  document.getElementById('variantOpenBtn').addEventListener('click', openVariantFromInput);
   document.getElementById('printBtn').addEventListener('click', () => window.print());
 
   document.getElementById('tTabHjem').addEventListener('click', () => setTeacherTab('hjem'));
@@ -2169,6 +2167,17 @@ function updateClassLabel() {
   }
 }
 
+// ─── Class modal + adapted-plan (variant) registry ───────────────────────────
+const VARIANT_LABELS_KEY = 'up_variant_labels';   // { code: label } – LOCAL to this browser only
+let modalPickedClass = null;   // class selected in the class modal (not yet committed)
+
+function variantLabels() { try { return JSON.parse(localStorage.getItem(VARIANT_LABELS_KEY)) || {}; } catch { return {}; } }
+function setVariantLabel(code, label) {
+  const m = variantLabels();
+  if (label) m[code] = label; else delete m[code];
+  try { localStorage.setItem(VARIANT_LABELS_KEY, JSON.stringify(m)); } catch {}
+}
+
 // Activate an adapted-plan code for editing (base class derived from the code).
 function applyVariant(code, base) {
   variantCode   = code;
@@ -2181,101 +2190,164 @@ function applyVariant(code, base) {
   loadData();
 }
 
-async function startNewVariant() {
-  const base = variantCode ? parseVariantClass(variantCode) : selectedClass;
-  if (!base || !CLASSES.includes(base)) { await uiAlert('Velg først en vanlig klasse å lage en tilpasset plan for.'); return; }
-  const suffix = genSuffix();
-  applyVariant(base + '-' + suffix, base);
-  await uiAlert(
-    'Tilpasset plan opprettet for ' + base + '.\n\n' +
-    'Kode til eleven: ' + suffix + '\n\n' +
-    'Eleven velger klasse ' + base + ' og skriver inn denne koden – koden virker bare med riktig klasse. ' +
-    'Appen lagrer ikke hvem koden tilhører; noter koblingen trygt utenfor appen, og skriv aldri elevnavn i appen. ' +
-    'Bruk «Hent fra klassen» hvis du vil starte fra klassens plan.',
-    { title: 'Ny tilpasset plan' }
-  );
-}
-
-function openVariantFromInput() {
-  const base = variantCode ? parseVariantClass(variantCode) : selectedClass;
-  const err  = document.getElementById('variantTError');
-  if (!base || !CLASSES.includes(base)) { err.textContent = 'Velg først en vanlig klasse.'; err.hidden = false; return; }
-  const suffix = document.getElementById('variantCodeInput').value.trim();
-  if (!/^[A-Za-z0-9]{3,}$/.test(suffix)) { err.textContent = 'Ugyldig kode (f.eks. K7X9M).'; err.hidden = false; return; }
-  const code = (base + '-' + suffix).toUpperCase();
-  applyVariant(code, base);
-  warnIfVariantEmpty(code);
-}
-
-// A mistyped code "works" but opens an EMPTY plan – content written there is
-// a silent fork the pupil never sees. So when an existing code is opened by
-// hand, check whether it has any content at all and warn loudly if not.
-async function warnIfVariantEmpty(code) {
-  try {
-    const res = await fetch(`${SCRIPT_URL}?action=all`, { credentials: 'include' });
-    const data = await res.json();
-    if (!Array.isArray(data)) return;
-    if (variantCode !== code) return;              // switched away meanwhile
-    if (data.some(p => classMatches(p.classes, code))) return;
-    uiAlert(
-      'Koden ' + variantSuffix(code) + ' har ikke noe innhold fra før (ingen uker).\n\n' +
-      'Sjekk at koden er skrevet riktig før du legger inn noe – en feilskrevet kode lager en ny, tom plan som eleven ikke ser. ' +
-      'Skal du lage en helt ny plan, bruk «Lag ny tilpasset plan».',
-      { title: 'Tom tilpasset plan' }
-    );
-  } catch { /* offline etc. – the empty board itself is the fallback hint */ }
-}
-
 function showClassModal() {
-  const grid = document.getElementById('classModalGrid');
-  grid.innerHTML = '';
-  // A "Dine klasser" shortcut row on top for one-tap switching to a taught class.
-  const mine = classesTaught.filter(c => CLASSES.includes(c));
-  if (mine.length) {
-    const wrap = document.createElement('div');
-    wrap.className = 'class-modal-group class-modal-mine';
-    const lbl = document.createElement('span');
-    lbl.className = 'class-grade-label';
-    lbl.textContent = 'Dine klasser';
-    wrap.appendChild(lbl);
-    mine.forEach(cls => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'class-modal-btn';
-      btn.textContent = cls;
-      if (cls === selectedClass) btn.classList.add('active');
-      btn.addEventListener('click', () => pickClass(cls));
-      wrap.appendChild(btn);
-    });
-    grid.appendChild(wrap);
-  }
-  CLASS_GRADES.forEach(group => {
-    const wrap = document.createElement('div');
-    wrap.className = 'class-modal-group';
-    const lbl = document.createElement('span');
-    lbl.className = 'class-grade-label';
-    lbl.textContent = group.label;
-    wrap.appendChild(lbl);
-    group.classes.forEach(cls => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'class-modal-btn';
-      btn.textContent = cls;
-      if (cls === selectedClass) btn.classList.add('active');
-      btn.addEventListener('click', () => pickClass(cls));
-      wrap.appendChild(btn);
-    });
-    grid.appendChild(wrap);
-  });
-  const vIn = document.getElementById('variantCodeInput');
-  if (vIn) vIn.value = '';
-  const vErr = document.getElementById('variantTError');
-  if (vErr) vErr.hidden = true;
-  const vBox = document.getElementById('teacherVariantBox');
-  if (vBox) vBox.open = !!variantCode;
+  modalPickedClass = (variantCode && parseVariantClass(variantCode)) || selectedClass || null;
+  buildClassModalGrids();
+  renderVariantPanel();
   document.getElementById('classModalOverlay').classList.add('open');
   document.getElementById('classModal').classList.add('open');
   document.body.classList.add('scroll-locked');
+}
+
+function classPickBtn(cls) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'class-modal-btn' + (cls === modalPickedClass ? ' active' : '');
+  btn.textContent = cls;
+  btn.addEventListener('click', () => selectModalClass(cls));
+  return btn;
+}
+function buildClassModalGrids() {
+  const mine = document.getElementById('classModalMine');
+  mine.innerHTML = '';
+  const taught = classesTaught.filter(c => CLASSES.includes(c));
+  if (taught.length) {
+    const wrap = document.createElement('div');
+    wrap.className = 'class-modal-group class-modal-mine';
+    const lbl = document.createElement('span'); lbl.className = 'class-grade-label'; lbl.textContent = 'Dine klasser';
+    wrap.appendChild(lbl);
+    taught.forEach(c => wrap.appendChild(classPickBtn(c)));
+    mine.appendChild(wrap);
+  }
+  const grid = document.getElementById('classModalGrid');
+  grid.innerHTML = '';
+  CLASS_GRADES.forEach(group => {
+    const wrap = document.createElement('div');
+    wrap.className = 'class-modal-group';
+    const lbl = document.createElement('span'); lbl.className = 'class-grade-label'; lbl.textContent = group.label;
+    wrap.appendChild(lbl);
+    group.classes.forEach(c => wrap.appendChild(classPickBtn(c)));
+    grid.appendChild(wrap);
+  });
+}
+// Picking a class SELECTS it (highlights + shows its panel); it no longer closes
+// the modal, so you can go straight into a tilpasset plan.
+function selectModalClass(cls) {
+  modalPickedClass = cls;
+  document.querySelectorAll('#classModal .class-modal-btn')
+    .forEach(b => b.classList.toggle('active', b.textContent === cls));
+  renderVariantPanel();
+}
+
+// The per-class panel: open the regular plan, or a tilpasset plan (list + create).
+async function renderVariantPanel() {
+  const panel = document.getElementById('variantPanel');
+  panel.innerHTML = '';
+  const cls = modalPickedClass;
+  if (!cls) { panel.innerHTML = '<p class="class-modal-hint">Velg en klasse over.</p>'; return; }
+
+  const openReg = document.createElement('button');
+  openReg.type = 'button'; openReg.className = 'btn btn-primary';
+  openReg.textContent = 'Åpne vanlig plan for ' + cls;
+  openReg.addEventListener('click', () => pickClass(cls));
+  panel.appendChild(openReg);
+
+  const det = document.createElement('details');
+  det.className = 'variant-box';
+  det.open = !!variantCode;
+  const sum = document.createElement('summary'); sum.textContent = 'Tilpasset plan (individuelt tilrettelagt)';
+  det.appendChild(sum);
+  const hint = document.createElement('p'); hint.className = 'class-modal-hint';
+  hint.innerHTML = 'Egen ukeplan for elever med tilrettelegging. <strong>Skriv aldri elevnavn i appen.</strong> Koden knyttes til eleven i skolens eget dokument.';
+  det.appendChild(hint);
+
+  const kontakt = kontaktClasses.includes(cls);
+  const list = document.createElement('div'); list.className = 'variant-list';
+  list.innerHTML = '<p class="class-modal-hint">Laster …</p>';
+  det.appendChild(list);
+
+  if (kontakt) {
+    const newBtn = document.createElement('button');
+    newBtn.type = 'button'; newBtn.className = 'btn btn-ghost btn-tiny variant-new';
+    newBtn.textContent = '+ Lag ny tilpasset plan';
+    newBtn.addEventListener('click', () => createVariantForClass(cls));
+    det.appendChild(newBtn);
+  } else {
+    const note = document.createElement('p'); note.className = 'class-modal-hint variant-perm-note';
+    note.textContent = 'Bare kontaktlærer for klassen kan lage eller slette en tilpasset plan.';
+    det.appendChild(note);
+  }
+  panel.appendChild(det);
+
+  await reloadVariantList(cls, list, kontakt);
+}
+
+async function reloadVariantList(cls, container, kontakt) {
+  try {
+    const res = await fetch(`${SCRIPT_URL}?action=variants&class=${encodeURIComponent(cls)}`, { credentials: 'include' });
+    const data = await res.json();
+    if (modalPickedClass !== cls) return;   // switched away meanwhile
+    renderVariantList(container, Array.isArray(data) ? data : [], cls, kontakt);
+  } catch { container.innerHTML = '<p class="class-modal-hint">Kunne ikke laste listen.</p>'; }
+}
+
+function renderVariantList(container, variants, cls, kontakt) {
+  container.innerHTML = '';
+  if (!variants.length) {
+    container.innerHTML = '<p class="class-modal-hint">Ingen tilpassede planer i denne klassen ennå.</p>';
+    return;
+  }
+  const labels = variantLabels();
+  variants.forEach(v => {
+    const row = document.createElement('div'); row.className = 'variant-list-row' + (v.code === variantCode ? ' active' : '');
+    const info = document.createElement('div'); info.className = 'variant-list-info';
+    const code = document.createElement('span'); code.className = 'variant-code'; code.textContent = variantSuffix(v.code);
+    info.appendChild(code);
+    const label = document.createElement('input');
+    label.type = 'text'; label.className = 'variant-label-input'; label.placeholder = 'notat (kun din enhet)';
+    label.value = labels[v.code] || '';
+    label.title = 'Kun lagret i din nettleser – aldri på serveren.';
+    label.addEventListener('change', () => setVariantLabel(v.code, label.value.trim()));
+    info.appendChild(label);
+    row.appendChild(info);
+    const actions = document.createElement('div'); actions.className = 'variant-list-actions';
+    const open = document.createElement('button'); open.type = 'button'; open.className = 'btn btn-ghost btn-tiny';
+    open.textContent = 'Åpne';
+    open.addEventListener('click', () => applyVariant(v.code, v.class));
+    actions.appendChild(open);
+    if (kontakt) {
+      const del = document.createElement('button'); del.type = 'button'; del.className = 'btn btn-ghost btn-tiny variant-del';
+      del.textContent = 'Slett';
+      del.addEventListener('click', () => deleteVariantPlan(v.code, cls, container, kontakt));
+      actions.appendChild(del);
+    }
+    row.appendChild(actions);
+    container.appendChild(row);
+  });
+}
+
+async function createVariantForClass(cls) {
+  const suffix = genSuffix();
+  const code = (cls + '-' + suffix).toUpperCase();
+  const r = await api('variant_create', { code, class: cls });
+  if (!r || r.error) { await uiAlert(translateError((r && r.error) || 'Kunne ikke opprette.')); return; }
+  await uiAlert(
+    'Kode til eleven: ' + suffix + '\n\n' +
+    'Eleven velger klasse ' + cls + ' og skriver inn denne koden. Noter hvem koden tilhører i skolens eget dokument – aldri i appen.',
+    { title: 'Ny tilpasset plan' }
+  );
+  applyVariant(code, cls);
+}
+
+async function deleteVariantPlan(code, cls, container, kontakt) {
+  const ok = await uiConfirm(
+    'Slette den tilpassede planen ' + variantSuffix(code) + '? Alt innhold i den slettes også. Dette kan ikke angres.',
+    { title: 'Slett tilpasset plan', okText: 'Slett', danger: true });
+  if (!ok) return;
+  const r = await api('variant_delete', { code });
+  if (r && r.error) { await uiAlert(translateError(r.error)); return; }
+  if (variantCode === code) { pickClass(cls); return; }   // was editing it → back to the regular plan
+  await reloadVariantList(cls, container, kontakt);
 }
 
 function pickClass(cls) {
