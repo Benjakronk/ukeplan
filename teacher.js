@@ -94,7 +94,7 @@ const PENDING_WRITES_KEY = 'up_pending_writes';
 let loggedIn      = false;   // set once ?action=me / login / enroll confirms a session
 let isAdmin       = false;   // current teacher is an administrator
 let classesTaught = [];      // union of subjectClasses (derived; kept as a var for reuse)
-let kontaktClasses = [];     // subset of classesTaught where the teacher is Kontaktlærer
+let kontaktClasses = [];     // classes the teacher is Kontaktlærer for (independent of teaching)
 let subjectClasses = {};     // { subject: [classes] } – which classes each subject is taught in (server relation)
 let cloning       = false;   // true while a clone request is in flight (guards double-clicks)
 let editingVurd   = null; // the vurdering object being edited in the modal, or null
@@ -534,7 +534,9 @@ function applyProfile(profile) {
   classesTaught  = Object.keys(subjectClasses).length
     ? taughtUnion()
     : (Array.isArray(profile.classes) ? profile.classes.filter(c => CLASSES.includes(c)) : []);
-  kontaktClasses = Array.isArray(profile.kontakt) ? profile.kontakt.filter(c => classesTaught.includes(c)) : [];
+  // Kontaktlærer is independent of teaching (staff can be kontakt for a class they
+  // don't teach), so keep any valid class – don't intersect with the taught union.
+  kontaktClasses = Array.isArray(profile.kontakt) ? profile.kontakt.filter(c => CLASSES.includes(c)) : [];
   if (p.theme && window.UPTheme) UPTheme.set(p.theme);
   if (p.lastClass && CLASSES.includes(p.lastClass) && !variantCode) {
     selectedClass = p.lastClass; localStorage.setItem(CLASS_KEY, selectedClass);
@@ -605,8 +607,20 @@ let classesSaveTimer = null;
 let taughtEditSeq = 0;
 function doSaveClasses() {
   const editAt = taughtEditSeq;
-  return api('setclasses', { classes: classesTaught.join(','), kontakt: kontaktClasses.join(',') })
-    .then(r => { if (editAt === taughtEditSeq && r && Array.isArray(r.classes)) { classesTaught = r.classes; kontaktClasses = r.kontakt || []; updateKontaktTab(); } });
+  // A kontaktlærer class need not be taught, so persist the UNION of taught +
+  // kontakt (the server enforces kontakt ⊆ classes; a kontakt-only class then
+  // gets its teacher_classes row with is_kontaktlaerer=true).
+  const union = [...new Set([...classesTaught, ...kontaktClasses])].filter(c => CLASSES.includes(c));
+  return api('setclasses', { classes: union.join(','), kontakt: kontaktClasses.join(',') })
+    .then(r => {
+      if (editAt === taughtEditSeq && r && Array.isArray(r.classes)) {
+        // Taught stays matrix-derived – the union we sent may include kontakt-only
+        // classes; only the flat relation (legacy, no matrix) adopts the echo.
+        classesTaught = Object.keys(subjectClasses).length ? taughtUnion() : r.classes;
+        kontaktClasses = r.kontakt || [];
+        updateKontaktTab();
+      }
+    });
 }
 function saveClassesToServer() {
   if (!loggedIn) return;
@@ -636,7 +650,7 @@ function classesForSubject(s) { return (subjectClasses[s] || []).filter(c => CLA
 // relation (teacher_classes stays the taught-union + kontaktlærer mirror).
 function recomputeTaught() {
   classesTaught = taughtUnion();
-  kontaktClasses = kontaktClasses.filter(c => classesTaught.includes(c));
+  kontaktClasses = kontaktClasses.filter(c => CLASSES.includes(c));   // kontakt is independent of taught
   saveClassesToServer();
 }
 function toggleSubjectClass(subject, cls) {
@@ -1494,9 +1508,10 @@ function toggleTaughtClass(cls) {
   }
   saveClassesToServer();
 }
-// Toggle Kontaktlærer for a class – only meaningful for a taught class.
+// Toggle Kontaktlærer for a class. Independent of teaching – staff can be kontakt
+// for a class they don't teach (e.g. to access the tab + manage tilpassede planer).
 function toggleKontaktClass(cls) {
-  if (!classesTaught.includes(cls)) return;
+  if (!CLASSES.includes(cls)) return;
   kontaktClasses = kontaktClasses.includes(cls)
     ? kontaktClasses.filter(c => c !== cls)
     : kontaktClasses.concat(cls);
@@ -1676,21 +1691,13 @@ function buildOnboardSubjectChips(container, subjectList) {
   container.appendChild(row);
 }
 
-// The onboarding Kontaktlærer step: the taught classes as ★ toggles.
+// Kontaktlærer ★ toggles. ALL classes are available (independent of teaching) –
+// some staff are kontakt for a class they don't teach and still need the tab +
+// tilpassede planer. One row per grade-year, like class pickers elsewhere.
 function buildKontaktStep(container) {
   container.innerHTML = '';
-  const taught = CLASSES.filter(c => classesTaught.includes(c));   // grade order
-  if (!taught.length) {
-    const p = document.createElement('p');
-    p.className = 'onboard-empty';
-    p.textContent = 'Du har ikke valgt noen klasser ennå. Gå tilbake for å velge klasser, eller hopp over – du kan sette dette senere.';
-    container.appendChild(p);
-    return;
-  }
-  // One row per grade-year (only the taught classes in it), like class pickers
-  // elsewhere – the grade label + ★ chips.
   CLASS_GRADES.forEach(group => {
-    const inYear = group.classes.filter(c => taught.includes(c));
+    const inYear = group.classes.filter(c => CLASSES.includes(c));
     if (!inYear.length) return;
     const row = document.createElement('div');
     row.className = 'vf-chip-row kontakt-year-row';
