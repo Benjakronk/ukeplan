@@ -32,20 +32,25 @@
 
   <!-- Student profile / settings modal (name · class · valgfag · tema) -->
   <div id="classModalOverlay" class="class-modal-overlay"></div>
-  <div id="classModal" class="class-modal" role="dialog" aria-modal="true" aria-labelledby="classModalTitle">
+  <div id="classModal" class="class-modal sp-modal" role="dialog" aria-modal="true" aria-labelledby="classModalTitle">
     <div class="class-modal-header">
       <h2 id="classModalTitle" class="class-modal-title">Din profil</h2>
       <button id="classModalClose" class="panel-close" aria-label="Lukk">&times;</button>
     </div>
 
+    <div class="sp-body">
     <label class="class-modal-hint" for="studentName">Navnet ditt</label>
     <input type="text" id="studentName" class="input" placeholder="Navnet ditt" autocomplete="off">
 
-    <p class="class-modal-hint" style="margin-top:16px">Klassen du går i:</p>
-    <div id="classModalGrid" class="class-modal-grid"></div>
+    <details class="sp-section" id="spClassDetails" open>
+      <summary class="sp-summary"><span class="class-modal-hint">Klassen du går i</span><span id="spClassSel" class="sp-sel"></span></summary>
+      <div id="classModalGrid" class="class-modal-grid"></div>
+    </details>
 
-    <p class="class-modal-hint" style="margin-top:16px">Valgfag og tilvalgsfag du har (huk av):</p>
-    <div id="electiveGrid" class="class-modal-grid elective-grid"></div>
+    <details class="sp-section" id="spElectiveDetails" open>
+      <summary class="sp-summary"><span class="class-modal-hint">Valgfag og tilvalgsfag (huk av)</span><span id="spElectiveSel" class="sp-sel"></span></summary>
+      <div id="electiveGrid" class="class-modal-grid elective-grid"></div>
+    </details>
 
     <details class="variant-box">
       <summary>Har du fått en egen kode?</summary>
@@ -69,6 +74,7 @@
     </div>
 
     <p style="margin-top:16px"><button type="button" id="rerunOnboardBtn" class="link-btn">Kjør introduksjonen på nytt</button></p>
+    </div><!-- /.sp-body -->
 
     <div class="class-modal-actions">
       <button id="classConfirm" class="btn btn-primary" disabled>Lagre</button>

@@ -434,6 +434,21 @@ body.scroll-locked { overflow: hidden; }
 .class-modal-header { display: flex; align-items: center; justify-content: space-between; }
 .class-modal-title { font-size: 19px; font-weight: 700; }
 .class-modal-hint { font-size: 13px; color: var(--text-muted); margin: 4px 0 16px; }
+
+/* Student profile modal: fixed-height scrollable body + collapsible sections so
+   expanding/collapsing the class & valgfag pickers scrolls inside it instead of
+   resizing the modal. */
+.sp-modal { display: flex; flex-direction: column; }
+.sp-body { height: 60vh; overflow-y: auto; padding-right: 6px; margin-right: -6px; }
+.sp-section { margin: 16px 0 0; }
+.sp-summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: 8px; }
+.sp-summary::-webkit-details-marker { display: none; }
+.sp-summary::before { content: '\25be'; font-size: 10px; color: var(--text-muted); }
+.sp-section:not([open]) .sp-summary::before { content: '\25b8'; }
+.sp-summary .class-modal-hint { margin: 0; }
+.sp-summary:hover .class-modal-hint { color: var(--text); }
+.sp-sel { font-size: 13px; font-weight: 600; color: var(--text-muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-section[open] .sp-summary { margin-bottom: 8px; }
 .class-modal-grid { display: flex; flex-direction: column; gap: 14px; }
 .elective-grid { flex-direction: row; flex-wrap: wrap; gap: 6px; }
 .class-modal-actions { display: flex; justify-content: flex-end; margin-top: 18px; }

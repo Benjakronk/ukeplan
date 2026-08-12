@@ -597,8 +597,9 @@ function buildClassGridInto(grid, onPick) {
     grid.appendChild(wrap);
   });
 }
-// Multi-select elective grid toggling into `modalElectives`. Shared too.
-function buildElectiveGridInto(grid) {
+// Multi-select elective grid toggling into `modalElectives`. Shared too;
+// `onChange` (optional) fires after each toggle (profile modal summary).
+function buildElectiveGridInto(grid, onChange) {
   grid.innerHTML = '';
   ELECTIVE_SUBJECTS.forEach(sub => {
     const btn = document.createElement('button');
@@ -609,9 +610,17 @@ function buildElectiveGridInto(grid) {
       if (modalElectives.includes(sub)) modalElectives = modalElectives.filter(s => s !== sub);
       else modalElectives.push(sub);
       btn.classList.toggle('active');
+      if (onChange) onChange();
     });
     grid.appendChild(btn);
   });
+}
+// Collapsed-summary text for the profile modal's class + valgfag sections.
+function updateClassModalSummaries() {
+  const cs = document.getElementById('spClassSel');
+  if (cs) cs.textContent = modalClass || 'ingen valgt';
+  const es = document.getElementById('spElectiveSel');
+  if (es) es.textContent = modalElectives.length ? modalElectives.join(', ') : 'ingen';
 }
 // Reflect the current theme on a segmented Auto/Lyst/Mørkt control.
 function syncThemeSeg(container) {
@@ -639,8 +648,9 @@ function showClassModal() {
   modalElectives = electives ? electives.slice() : [];
   document.getElementById('studentName').value = studentName;
   buildClassGridInto(document.getElementById('classModalGrid'),
-    () => { document.getElementById('variantError').hidden = true; updateClassConfirm(); });
-  buildElectiveGridInto(document.getElementById('electiveGrid'));
+    () => { document.getElementById('variantError').hidden = true; updateClassConfirm(); updateClassModalSummaries(); });
+  buildElectiveGridInto(document.getElementById('electiveGrid'), updateClassModalSummaries);
+  updateClassModalSummaries();
 
   const vInput = document.getElementById('variantInput');
   vInput.value = variantSuffix(variantCode);
