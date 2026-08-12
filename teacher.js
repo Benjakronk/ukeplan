@@ -1182,13 +1182,19 @@ function renderAdminTeachers() {
       toggleBtn.addEventListener('click', () => adminToggleActive(t));
       actions.appendChild(toggleBtn);
     }
-    // Super-admin can grant/revoke the school-config role (not on their own row –
-    // no self-revoke, which the server enforces too).
+    // Super-admin sets each teacher's role (Lærer / Admin / Skoleadmin) via a
+    // dropdown – not on their own row (no self-demotion; the server enforces too).
     if (isSuperadmin && !isSelf) {
-      const saBtn = document.createElement('button'); saBtn.className = 'btn btn-ghost btn-tiny';
-      saBtn.textContent = t.isSuperadmin ? 'Fjern skoleadmin' : 'Gjør til skoleadmin';
-      saBtn.addEventListener('click', () => adminToggleSuperadmin(t));
-      actions.appendChild(saBtn);
+      const cur = t.isSuperadmin ? 'superadmin' : (t.isAdmin ? 'admin' : 'teacher');
+      const sel = document.createElement('select');
+      sel.className = 'admin-role-select'; sel.title = 'Rolle';
+      [['teacher', 'Lærer'], ['admin', 'Admin'], ['superadmin', 'Skoleadmin']].forEach(([val, lbl]) => {
+        const o = document.createElement('option'); o.value = val; o.textContent = lbl;
+        if (val === cur) o.selected = true;
+        sel.appendChild(o);
+      });
+      sel.addEventListener('change', () => adminSetRole(t, sel.value));
+      actions.appendChild(sel);
     }
     // Permanent delete is offered only for an already-deactivated account, and
     // never for your own row (the server enforces both too).
@@ -1235,17 +1241,21 @@ async function adminToggleActive(t) {
     loadAdminTeachers();
   } catch (err) { showToast(translateError(err.message)); }
 }
-async function adminToggleSuperadmin(t) {
-  const on = !t.isSuperadmin;
-  const msg = on
-    ? 'Gjøre ' + t.name + ' til skoleadmin? Da kan de endre klasser og fag for hele skolen (blir også admin).'
-    : 'Fjerne skoleadmin fra ' + t.name + '? De beholder vanlig admin.';
-  if (!await uiConfirm(msg, { title: 'Skoleadmin', okText: on ? 'Gjør til skoleadmin' : 'Fjern' })) return;
+const ROLE_LABEL = { teacher: 'Lærer', admin: 'Admin', superadmin: 'Skoleadmin' };
+async function adminSetRole(t, role) {
+  const cur = t.isSuperadmin ? 'superadmin' : (t.isAdmin ? 'admin' : 'teacher');
+  if (role === cur) return;
+  let msg = 'Endre rollen til ' + t.name + ' til «' + ROLE_LABEL[role] + '»?';
+  if (role === 'superadmin') msg += '\n\nSkoleadmin kan endre klasser og fag for hele skolen (og alt en admin kan).';
+  else if (role === 'admin') msg += '\n\nAdmin kan administrere kontoer og tilpassede planer.';
+  else msg += '\n\nDe mister admin-tilgang.';
+  // On cancel/error, reload so the dropdown snaps back to the real role.
+  if (!await uiConfirm(msg, { title: 'Endre rolle', okText: 'Endre', danger: role === 'teacher' })) { loadAdminTeachers(); return; }
   try {
-    const r = await api('admin_set_superadmin', { id: t.id, superadmin: on ? '1' : '0' });
+    const r = await api('admin_set_role', { id: t.id, role });
     if (r.error) throw new Error(r.error);
     loadAdminTeachers();
-  } catch (err) { showToast(translateError(err.message)); }
+  } catch (err) { showToast(translateError(err.message)); loadAdminTeachers(); }
 }
 
 // ─── Admin "Skoleoppsett": edit classes + subjects (super-admin only) ──────────

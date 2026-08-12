@@ -497,6 +497,9 @@
 .admin-row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .admin-del-btn { color: var(--danger); }
 .admin-del-btn:hover { border-color: var(--danger); color: var(--danger-dark); }
+.admin-role-select { padding: 5px 8px; font-family: var(--font); font-size: 13px; font-weight: 600;
+  border: 1px solid var(--border); border-radius: var(--radius-btn); background: var(--surface); color: var(--text); cursor: pointer; }
+.admin-role-select:hover { border-color: var(--primary); }
 /* Skoleoppsett (school config) editor */
 .admin-config-warn { background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text);
   border-radius: var(--radius-btn); padding: 8px 12px; line-height: 1.45; }
