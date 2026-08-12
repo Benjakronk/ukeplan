@@ -454,16 +454,33 @@
   <div id="adminOverlay" class="class-modal-overlay"></div>
   <div id="adminModal" class="class-modal admin-modal" role="dialog" aria-modal="true" aria-labelledby="adminTitle">
     <div class="class-modal-header">
-      <h2 id="adminTitle" class="class-modal-title">Adminpanel - lærere</h2>
+      <h2 id="adminTitle" class="class-modal-title">Adminpanel</h2>
       <button id="adminClose" class="panel-close" aria-label="Lukk">&times;</button>
     </div>
-    <p class="class-modal-hint">Nullstill passord eller deaktiver kontoer. Nye lærere oppretter konto selv med skolekoden.</p>
-    <div class="admin-search-row">
-      <input type="text" id="adminSearch" class="input admin-search" placeholder="Søk etter navn eller brukernavn…"
-             autocomplete="off" aria-label="Søk etter lærer">
-      <span id="adminCount" class="admin-count" aria-live="polite"></span>
+    <div class="admin-tabs" role="tablist">
+      <button id="adminTabTeachers" class="admin-tab active" type="button" role="tab" aria-selected="true">Lærere</button>
+      <button id="adminTabVariants" class="admin-tab" type="button" role="tab" aria-selected="false">Tilpassede planer</button>
     </div>
-    <div id="adminList" class="admin-list"></div>
+
+    <div id="adminPaneTeachers" class="admin-pane" role="tabpanel">
+      <p class="class-modal-hint">Nullstill passord eller deaktiver kontoer. Nye lærere oppretter konto selv med skolekoden.</p>
+      <div class="admin-search-row">
+        <input type="text" id="adminSearch" class="input admin-search" placeholder="Søk etter navn eller brukernavn…"
+               autocomplete="off" aria-label="Søk etter lærer">
+        <span id="adminCount" class="admin-count" aria-live="polite"></span>
+      </div>
+      <div id="adminList" class="admin-list"></div>
+    </div>
+
+    <div id="adminPaneVariants" class="admin-pane" role="tabpanel" hidden>
+      <p class="class-modal-hint">Alle tilpassede planer på skolen. Som admin kan du åpne eller slette dem, uansett klasse. Notatet er bare lagret i din nettleser.</p>
+      <div class="admin-search-row">
+        <input type="text" id="adminVariantSearch" class="input admin-search" placeholder="Søk etter klasse, kode eller notat…"
+               autocomplete="off" aria-label="Søk etter tilpasset plan">
+        <span id="adminVariantCount" class="admin-count" aria-live="polite"></span>
+      </div>
+      <div id="adminVariantList" class="admin-list"></div>
+    </div>
   </div>
 
   <!-- «Velg fag» for the board's «Valgte fag» visibility mode -->

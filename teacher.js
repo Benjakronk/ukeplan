@@ -1050,18 +1050,33 @@ function syncLandingSeg() {
 
 // ─── Admin panel (administrators only) ────────────────────────
 let adminTeachers = [];   // last-fetched full teacher list (for client-side search)
+let adminVariants = [];   // last-fetched all-school adapted plans
+let adminTab = 'teachers';
 function openAdminModal() {
   document.getElementById('adminOverlay').classList.add('open');
   document.getElementById('adminModal').classList.add('open');
   document.body.classList.add('scroll-locked');
   const search = document.getElementById('adminSearch');
   if (search) search.value = '';
-  loadAdminTeachers();
+  const vsearch = document.getElementById('adminVariantSearch');
+  if (vsearch) vsearch.value = '';
+  setAdminTab('teachers');
 }
 function closeAdminModal() {
   document.getElementById('adminOverlay').classList.remove('open');
   document.getElementById('adminModal').classList.remove('open');
   document.body.classList.remove('scroll-locked');
+}
+function setAdminTab(tab) {
+  adminTab = tab;
+  document.getElementById('adminTabTeachers').classList.toggle('active', tab === 'teachers');
+  document.getElementById('adminTabTeachers').setAttribute('aria-selected', tab === 'teachers' ? 'true' : 'false');
+  document.getElementById('adminTabVariants').classList.toggle('active', tab === 'variants');
+  document.getElementById('adminTabVariants').setAttribute('aria-selected', tab === 'variants' ? 'true' : 'false');
+  document.getElementById('adminPaneTeachers').hidden = tab !== 'teachers';
+  document.getElementById('adminPaneVariants').hidden = tab !== 'variants';
+  if (tab === 'teachers') loadAdminTeachers();
+  else loadAdminVariants();
 }
 async function loadAdminTeachers() {
   const list = document.getElementById('adminList');
@@ -1166,6 +1181,73 @@ async function adminToggleActive(t) {
     if (r.error) throw new Error(r.error);
     loadAdminTeachers();
   } catch (err) { showToast(translateError(err.message)); }
+}
+
+// Admin "Tilpassede planer" tab: every adapted plan on the school (any class).
+async function loadAdminVariants() {
+  const list = document.getElementById('adminVariantList');
+  list.innerHTML = '<p class="muted">Laster…</p>';
+  try {
+    const res = await fetch(`${SCRIPT_URL}?action=admin_variants`, { credentials: 'include' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    adminVariants = Array.isArray(data) ? data : [];
+    renderAdminVariants();
+  } catch (err) {
+    adminVariants = [];
+    list.innerHTML = '';
+    const p = document.createElement('p'); p.className = 'login-error'; p.textContent = translateError(err.message);
+    list.appendChild(p);
+  }
+}
+function renderAdminVariants() {
+  const list = document.getElementById('adminVariantList');
+  const countEl = document.getElementById('adminVariantCount');
+  const labels = variantLabels();
+  const q = (document.getElementById('adminVariantSearch')?.value || '').trim().toLowerCase();
+  list.innerHTML = '';
+  if (!adminVariants.length) {
+    list.innerHTML = '<p class="muted">Ingen tilpassede planer ennå.</p>';
+    if (countEl) countEl.textContent = '';
+    return;
+  }
+  const match = v => !q || v.class.toLowerCase().includes(q)
+    || variantSuffix(v.code).toLowerCase().includes(q)
+    || (labels[v.code] || '').toLowerCase().includes(q);
+  const shown = adminVariants.filter(match);
+  if (countEl) countEl.textContent = q
+    ? `${shown.length} av ${adminVariants.length}`
+    : `${adminVariants.length} ${adminVariants.length === 1 ? 'plan' : 'planer'}`;
+  if (!shown.length) { list.innerHTML = '<p class="muted">Ingen treff.</p>'; return; }
+  // Group by class.
+  const byClass = {};
+  shown.forEach(v => (byClass[v.class] = byClass[v.class] || []).push(v));
+  Object.keys(byClass).sort((a, b) => a.localeCompare(b, 'no', { numeric: true })).forEach(cls => {
+    const h = document.createElement('div'); h.className = 'admin-variant-class'; h.textContent = cls;
+    list.appendChild(h);
+    byClass[cls].forEach(v => list.appendChild(buildAdminVariantRow(v, labels)));
+  });
+}
+function buildAdminVariantRow(v, labels) {
+  const row = document.createElement('div');
+  row.className = 'admin-row';
+  const info = document.createElement('div');
+  const nm = document.createElement('div'); nm.className = 'admin-row-name';
+  nm.textContent = variantSuffix(v.code) + (labels[v.code] ? ' · ' + labels[v.code] : '');
+  const sub = document.createElement('div'); sub.className = 'admin-row-user';
+  const n = (v.adaptedSubjects || []).length;
+  sub.textContent = v.class + ' · ' + (n ? n + ' tilpasset: ' + v.adaptedSubjects.join(', ') : 'følger klassen i alle fag');
+  info.appendChild(nm); info.appendChild(sub);
+  const actions = document.createElement('div'); actions.className = 'admin-row-actions';
+  const open = document.createElement('button'); open.className = 'btn btn-ghost btn-tiny';
+  open.textContent = 'Åpne';
+  open.addEventListener('click', () => { applyVariant(v.code, v.class); closeAdminModal(); });
+  const del = document.createElement('button'); del.className = 'btn btn-ghost btn-tiny admin-del-btn';
+  del.textContent = 'Slett';
+  del.addEventListener('click', () => deleteVariantPlan(v.code, v.class, { afterDelete: () => loadAdminVariants() }));
+  actions.appendChild(open); actions.appendChild(del);
+  row.appendChild(info); row.appendChild(actions);
+  return row;
 }
 
 async function changeOwnPassword() {
@@ -2431,6 +2513,9 @@ function setupDashboardListeners() {
   document.getElementById('adminClose').addEventListener('click', closeAdminModal);
   document.getElementById('adminOverlay').addEventListener('click', closeAdminModal);
   document.getElementById('adminSearch').addEventListener('input', renderAdminTeachers);
+  document.getElementById('adminTabTeachers').addEventListener('click', () => setAdminTab('teachers'));
+  document.getElementById('adminTabVariants').addEventListener('click', () => setAdminTab('variants'));
+  document.getElementById('adminVariantSearch').addEventListener('input', renderAdminVariants);
   document.getElementById('viewSubjectsClose').addEventListener('click', closeViewSubjectsModal);
   document.getElementById('viewSubjectsOverlay').addEventListener('click', closeViewSubjectsModal);
   document.getElementById('viewSubjectsDone').addEventListener('click', closeViewSubjectsModal);
@@ -2685,9 +2770,9 @@ async function createVariantForClass(cls) {
 // Delete an adapted plan (class modal + Kontaktlærer tab). opts.kontakt gates it
 // (server also enforces isKontakt); opts.afterDelete refreshes the caller's view.
 async function deleteVariantPlan(code, cls, opts = {}) {
-  // Only a kontaktlærer for the class may delete (server-enforced via isKontakt;
-  // the button is hidden for others – this guard is belt-and-suspenders).
-  if (!opts.kontakt) { await uiAlert('Bare kontaktlæreren for klassen kan slette en tilpasset plan.'); return; }
+  // A kontaktlærer for the class OR an admin (override) may delete (server-enforced
+  // too; the button is hidden for others – this guard is belt-and-suspenders).
+  if (!opts.kontakt && !isAdmin) { await uiAlert('Bare kontaktlæreren for klassen eller en administrator kan slette en tilpasset plan.'); return; }
   const label = variantLabels()[code];
   const who = label ? '«' + label + '» (' + variantSuffix(code) + ')' : variantSuffix(code);
   const ok1 = await uiConfirm(
