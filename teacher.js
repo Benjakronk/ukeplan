@@ -1251,8 +1251,16 @@ async function adminSetRole(t, role) {
   else msg += '\n\nDe mister admin-tilgang.';
   // On cancel/error, reload so the dropdown snaps back to the real role.
   if (!await uiConfirm(msg, { title: 'Endre rolle', okText: 'Endre', danger: role === 'teacher' })) { loadAdminTeachers(); return; }
+  const params = { id: t.id, role };
+  // Promoting to skoleadmin needs step-up auth: re-enter your own password.
+  if (role === 'superadmin') {
+    const pw = await uiPrompt('Skriv inn passordet ditt for å bekrefte at ' + t.name + ' skal bli skoleadmin.',
+      { title: 'Bekreft med passord', label: 'Ditt passord', password: true, okText: 'Bekreft' });
+    if (!pw) { loadAdminTeachers(); return; }
+    params.password = pw;
+  }
   try {
-    const r = await api('admin_set_role', { id: t.id, role });
+    const r = await api('admin_set_role', params);
     if (r.error) throw new Error(r.error);
     loadAdminTeachers();
   } catch (err) { showToast(translateError(err.message)); loadAdminTeachers(); }
