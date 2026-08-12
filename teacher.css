@@ -491,6 +491,28 @@
 .admin-row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .admin-del-btn { color: var(--danger); }
 .admin-del-btn:hover { border-color: var(--danger); color: var(--danger-dark); }
+/* Skoleoppsett (school config) editor */
+.admin-config-warn { background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text);
+  border-radius: var(--radius-btn); padding: 8px 12px; line-height: 1.45; }
+.admin-config-body { max-height: 54vh; overflow-y: auto; padding-right: 4px; margin-top: 12px; }
+.admin-config-h { font-size: 13px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;
+  letter-spacing: .03em; margin: 14px 0 8px; }
+.admin-config-h:first-child { margin-top: 0; }
+.admin-config-grade { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
+.admin-config-grade-label { flex: 0 0 64px; padding-top: 6px; font-weight: 700; color: var(--text); font-size: 13px; }
+.admin-config-chips { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 0; }
+.admin-config-chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 4px 4px 10px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--text); }
+.admin-config-chip-x { width: 18px; height: 18px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 14px; line-height: 1; border: none; border-radius: 50%; background: transparent; color: var(--text-muted); cursor: pointer; }
+.admin-config-chip-x:hover { background: var(--danger); color: var(--on-accent); }
+.admin-config-add { display: inline-flex; align-items: center; gap: 2px; }
+.admin-config-add-input { width: 130px; padding: 4px 10px; font-family: var(--font); font-size: 13px;
+  border: 1px dashed var(--border); border-radius: 999px; background: var(--surface); color: var(--text); }
+.admin-config-add-btn { width: 26px; height: 26px; padding: 0; font-size: 16px; line-height: 1; border: 1px solid var(--border);
+  border-radius: 50%; background: var(--surface); color: var(--text-muted); cursor: pointer; }
+.admin-config-add-btn:hover { border-color: var(--primary); color: var(--primary); }
+.admin-config-actions { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
 
 /* ── Self-service "Bytt passord" (profile modal) ───────────────── */
 .pw-change summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-muted); }

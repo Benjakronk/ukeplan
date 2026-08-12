@@ -19,12 +19,15 @@ const SCHOOL_CAL_KEY    = 'up_school_cal';
 const SCHOOL_CAL_TS_KEY = 'up_school_cal_ts';
 const SCHOOL_CAL_TTL    = 24 * 60 * 60 * 1000;
 
-const CLASS_GRADES = [
+// Classes + subjects come from the school config (server `?action=config`,
+// editable by a super-admin). These are the DEFAULTS (used offline / before the
+// config loads / if it's unset); `applySchoolConfig` reassigns them – hence `let`.
+let CLASS_GRADES = [
   { label: '8.',  classes: ['8A','8B','8C','8D','8E','8F'] },
   { label: '9.',  classes: ['9A','9B','9C','9D','9E','9F'] },
   { label: '10.', classes: ['10A','10B','10C','10D','10E','10F'] },
 ];
-const CLASSES = CLASS_GRADES.flatMap(g => g.classes);
+let CLASSES = CLASS_GRADES.flatMap(g => g.classes);
 
 // The grade-year group a class belongs to (null for a variant/adapted-plan code).
 function gradeGroupOf(cls) { return CLASS_GRADES.find(g => g.classes.includes(cls)) || null; }
@@ -46,20 +49,51 @@ function electiveWriteGroups(subject, classesList) {
   return years.length ? years : classesList.slice();
 }
 
-const CORE_SUBJECTS = [
+let CORE_SUBJECTS = [
   'Norsk','Matematikk','Engelsk','Naturfag','Samfunnsfag','KRLE',
   'Kroppsøving','Musikk','Kunst og håndverk','Mat og helse','Utdanningsvalg',
 ];
-const ELECTIVE_SUBJECTS = [
+let ELECTIVE_SUBJECTS = [
   'Spansk','Fransk','Tysk','Engelsk fordypning',
   'Arbeidslivsfag (ALF)','Fysisk aktivitet og helse (Fysak)','Friluftsliv',
   'Innsats for andre','Programmering','Teknologi og design','Design og redesign',
   'Matematikk 1T','Medier og kommunikasjon',
 ];
-const SUBJECTS = [...CORE_SUBJECTS, ...ELECTIVE_SUBJECTS];
+let SUBJECTS = [...CORE_SUBJECTS, ...ELECTIVE_SUBJECTS];
 // Alphabetical (Norwegian) order for the dropdown menus. The board rows keep the
 // curriculum order of SUBJECTS (see subjectSort).
-const SUBJECTS_SORTED = [...SUBJECTS].sort((a, b) => a.localeCompare(b, 'no'));
+let SUBJECTS_SORTED = [...SUBJECTS].sort((a, b) => a.localeCompare(b, 'no'));
+
+// ── School config (classes + subjects) ───────────────────────────────────────
+const CONFIG_KEY = 'up_school_config';
+// Reassign the class/subject lists from a fetched/cached config. Returns false
+// (and changes nothing) if the config is malformed, so we never wipe the lists.
+function applySchoolConfig(cfg) {
+  if (!cfg || typeof cfg !== 'object' || !Array.isArray(cfg.grades)) return false;
+  const grades = cfg.grades
+    .filter(g => g && g.label && Array.isArray(g.classes) && g.classes.length)
+    .map(g => ({ label: String(g.label), classes: g.classes.map(c => String(c).toUpperCase()) }));
+  const core = Array.isArray(cfg.coreSubjects) ? cfg.coreSubjects.map(String) : [];
+  const elec = Array.isArray(cfg.electiveSubjects) ? cfg.electiveSubjects.map(String) : [];
+  if (!grades.length || (!core.length && !elec.length)) return false;
+  CLASS_GRADES = grades;
+  CLASSES = CLASS_GRADES.flatMap(g => g.classes);
+  CORE_SUBJECTS = core;
+  ELECTIVE_SUBJECTS = elec;
+  SUBJECTS = [...CORE_SUBJECTS, ...ELECTIVE_SUBJECTS];
+  SUBJECTS_SORTED = [...SUBJECTS].sort((a, b) => a.localeCompare(b, 'no'));
+  return true;
+}
+// Apply the last cached config synchronously (so declarations reflect it before
+// anything renders); then `refreshSchoolConfig()` revalidates from the server.
+(function () { try { const c = JSON.parse(localStorage.getItem(CONFIG_KEY)); if (c) applySchoolConfig(c); } catch {} })();
+async function refreshSchoolConfig() {
+  try {
+    const res = await fetch(`${SCRIPT_URL}?action=config`);
+    const cfg = await res.json();
+    if (cfg && !cfg.error && applySchoolConfig(cfg)) localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg));
+  } catch { /* keep cache/defaults */ }
+}
 
 const DAYS = ['man','tir','ons','tor','fre'];
 const DAY_LABEL = { man: 'Man', tir: 'Tir', ons: 'Ons', tor: 'Tor', fre: 'Fre' };
@@ -93,6 +127,7 @@ const PENDING_WRITES_KEY = 'up_pending_writes';
 
 let loggedIn      = false;   // set once ?action=me / login / enroll confirms a session
 let isAdmin       = false;   // current teacher is an administrator
+let isSuperadmin  = false;   // super-admin: may edit the school config (classes/subjects)
 let classesTaught = [];      // union of subjectClasses (derived; kept as a var for reuse)
 let kontaktClasses = [];     // classes the teacher is Kontaktlærer for (independent of teaching)
 let subjectClasses = {};     // { subject: [classes] } – which classes each subject is taught in (server relation)
@@ -380,7 +415,12 @@ function init() {
 async function bootstrapSession() {
   showOverlay();
   try {
-    const res = await fetch(`${SCRIPT_URL}?action=me`, { credentials: 'include' });
+    // Load the school config (classes/subjects) in parallel with the session, so
+    // the dashboard renders with the current lists.
+    const [res] = await Promise.all([
+      fetch(`${SCRIPT_URL}?action=me`, { credentials: 'include' }),
+      refreshSchoolConfig(),
+    ]);
     const data = await res.json();
     if (data && !data.error) { enterDashboard(data); return; }
   } catch { /* offline / network – fall through to login */ }
@@ -509,6 +549,7 @@ function onSessionLost() {
 // a write-through cache (instant reads + pre-paint theme).
 function applyProfile(profile) {
   isAdmin = !!profile.isAdmin;
+  isSuperadmin = !!profile.isSuperadmin;
   if (profile.name) { teacherName = profile.name; localStorage.setItem(TNAME_KEY, teacherName); }
   if (profile.username) { teacherUsername = profile.username; localStorage.setItem(UNAME_KEY, teacherUsername); }
   const p = profile.preferences || {};
@@ -1060,6 +1101,7 @@ function openAdminModal() {
   if (search) search.value = '';
   const vsearch = document.getElementById('adminVariantSearch');
   if (vsearch) vsearch.value = '';
+  document.getElementById('adminTabConfig').hidden = !isSuperadmin;   // school config = super-admin only
   setAdminTab('teachers');
 }
 function closeAdminModal() {
@@ -1068,15 +1110,18 @@ function closeAdminModal() {
   document.body.classList.remove('scroll-locked');
 }
 function setAdminTab(tab) {
+  if (tab === 'config' && !isSuperadmin) tab = 'teachers';
   adminTab = tab;
-  document.getElementById('adminTabTeachers').classList.toggle('active', tab === 'teachers');
-  document.getElementById('adminTabTeachers').setAttribute('aria-selected', tab === 'teachers' ? 'true' : 'false');
-  document.getElementById('adminTabVariants').classList.toggle('active', tab === 'variants');
-  document.getElementById('adminTabVariants').setAttribute('aria-selected', tab === 'variants' ? 'true' : 'false');
-  document.getElementById('adminPaneTeachers').hidden = tab !== 'teachers';
-  document.getElementById('adminPaneVariants').hidden = tab !== 'variants';
+  [['teachers', 'adminTabTeachers', 'adminPaneTeachers'], ['variants', 'adminTabVariants', 'adminPaneVariants'], ['config', 'adminTabConfig', 'adminPaneConfig']]
+    .forEach(([t, btnId, paneId]) => {
+      const btn = document.getElementById(btnId);
+      btn.classList.toggle('active', t === tab);
+      btn.setAttribute('aria-selected', t === tab ? 'true' : 'false');
+      document.getElementById(paneId).hidden = t !== tab;
+    });
   if (tab === 'teachers') loadAdminTeachers();
-  else loadAdminVariants();
+  else if (tab === 'variants') loadAdminVariants();
+  else if (tab === 'config') renderAdminConfig(true);
 }
 async function loadAdminTeachers() {
   const list = document.getElementById('adminList');
@@ -1118,7 +1163,7 @@ function renderAdminTeachers() {
     row.className = 'admin-row' + (t.active ? '' : ' inactive');
     const info = document.createElement('div');
     const nm = document.createElement('div'); nm.className = 'admin-row-name';
-    nm.textContent = t.name + (t.isAdmin ? ' · admin' : '');
+    nm.textContent = t.name + (t.isSuperadmin ? ' · skoleadmin' : (t.isAdmin ? ' · admin' : ''));
     const un = document.createElement('div'); un.className = 'admin-row-user';
     un.textContent = '@' + t.username + (t.active ? '' : ' · deaktivert');
     info.appendChild(nm); info.appendChild(un);
@@ -1136,6 +1181,14 @@ function renderAdminTeachers() {
       toggleBtn.textContent = t.active ? 'Deaktiver' : 'Aktiver';
       toggleBtn.addEventListener('click', () => adminToggleActive(t));
       actions.appendChild(toggleBtn);
+    }
+    // Super-admin can grant/revoke the school-config role (not on their own row –
+    // no self-revoke, which the server enforces too).
+    if (isSuperadmin && !isSelf) {
+      const saBtn = document.createElement('button'); saBtn.className = 'btn btn-ghost btn-tiny';
+      saBtn.textContent = t.isSuperadmin ? 'Fjern skoleadmin' : 'Gjør til skoleadmin';
+      saBtn.addEventListener('click', () => adminToggleSuperadmin(t));
+      actions.appendChild(saBtn);
     }
     // Permanent delete is offered only for an already-deactivated account, and
     // never for your own row (the server enforces both too).
@@ -1181,6 +1234,107 @@ async function adminToggleActive(t) {
     if (r.error) throw new Error(r.error);
     loadAdminTeachers();
   } catch (err) { showToast(translateError(err.message)); }
+}
+async function adminToggleSuperadmin(t) {
+  const on = !t.isSuperadmin;
+  const msg = on
+    ? 'Gjøre ' + t.name + ' til skoleadmin? Da kan de endre klasser og fag for hele skolen (blir også admin).'
+    : 'Fjerne skoleadmin fra ' + t.name + '? De beholder vanlig admin.';
+  if (!await uiConfirm(msg, { title: 'Skoleadmin', okText: on ? 'Gjør til skoleadmin' : 'Fjern' })) return;
+  try {
+    const r = await api('admin_set_superadmin', { id: t.id, superadmin: on ? '1' : '0' });
+    if (r.error) throw new Error(r.error);
+    loadAdminTeachers();
+  } catch (err) { showToast(translateError(err.message)); }
+}
+
+// ─── Admin "Skoleoppsett": edit classes + subjects (super-admin only) ──────────
+let adminConfigDraft = null;
+function currentConfigDraft() {
+  return {
+    grades: CLASS_GRADES.map(g => ({ label: g.label, classes: g.classes.slice() })),
+    coreSubjects: CORE_SUBJECTS.slice(),
+    electiveSubjects: ELECTIVE_SUBJECTS.slice(),
+  };
+}
+function configChip(text, onRemove) {
+  const chip = document.createElement('span'); chip.className = 'admin-config-chip';
+  chip.appendChild(document.createTextNode(text));
+  const x = document.createElement('button');
+  x.type = 'button'; x.className = 'admin-config-chip-x'; x.textContent = '×'; x.title = 'Fjern';
+  x.addEventListener('click', onRemove);
+  chip.appendChild(x);
+  return chip;
+}
+function configAddInput(placeholder, onAdd) {
+  const wrap = document.createElement('span'); wrap.className = 'admin-config-add';
+  const inp = document.createElement('input');
+  inp.type = 'text'; inp.className = 'admin-config-add-input'; inp.placeholder = placeholder; inp.autocomplete = 'off';
+  const add = () => { const v = inp.value.trim(); if (v) { onAdd(v); } };
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
+  const btn = document.createElement('button');
+  btn.type = 'button'; btn.className = 'admin-config-add-btn'; btn.textContent = '+';
+  btn.addEventListener('click', add);
+  wrap.appendChild(inp); wrap.appendChild(btn);
+  return wrap;
+}
+function renderAdminConfig(reset) {
+  if (reset || !adminConfigDraft) adminConfigDraft = currentConfigDraft();
+  const d = adminConfigDraft;
+  const body = document.getElementById('adminConfigBody');
+  body.innerHTML = '';
+
+  const gh = document.createElement('h3'); gh.className = 'admin-config-h'; gh.textContent = 'Klasser per trinn';
+  body.appendChild(gh);
+  d.grades.forEach(g => {
+    const row = document.createElement('div'); row.className = 'admin-config-grade';
+    const lbl = document.createElement('span'); lbl.className = 'admin-config-grade-label'; lbl.textContent = g.label + ' trinn';
+    row.appendChild(lbl);
+    const chips = document.createElement('div'); chips.className = 'admin-config-chips';
+    g.classes.forEach(c => chips.appendChild(configChip(c, () => { g.classes = g.classes.filter(x => x !== c); renderAdminConfig(); })));
+    chips.appendChild(configAddInput('+ klasse', v => {
+      const c = v.trim().toUpperCase();
+      if (c && !g.classes.includes(c)) { g.classes.push(c); renderAdminConfig(); }
+    }));
+    row.appendChild(chips);
+    body.appendChild(row);
+  });
+
+  const ch = document.createElement('h3'); ch.className = 'admin-config-h'; ch.textContent = 'Fag (felles for alle)';
+  body.appendChild(ch);
+  const coreChips = document.createElement('div'); coreChips.className = 'admin-config-chips';
+  d.coreSubjects.forEach(s => coreChips.appendChild(configChip(s, () => { d.coreSubjects = d.coreSubjects.filter(x => x !== s); renderAdminConfig(); })));
+  coreChips.appendChild(configAddInput('+ fag', v => { const s = v.trim(); if (s && !d.coreSubjects.includes(s)) { d.coreSubjects.push(s); renderAdminConfig(); } }));
+  body.appendChild(coreChips);
+
+  const eh = document.createElement('h3'); eh.className = 'admin-config-h'; eh.textContent = 'Valgfag og tilvalgsfag';
+  body.appendChild(eh);
+  const elecChips = document.createElement('div'); elecChips.className = 'admin-config-chips';
+  d.electiveSubjects.forEach(s => elecChips.appendChild(configChip(s, () => { d.electiveSubjects = d.electiveSubjects.filter(x => x !== s); renderAdminConfig(); })));
+  elecChips.appendChild(configAddInput('+ valgfag', v => { const s = v.trim(); if (s && !d.electiveSubjects.includes(s)) { d.electiveSubjects.push(s); renderAdminConfig(); } }));
+  body.appendChild(elecChips);
+}
+async function saveAdminConfig() {
+  const d = adminConfigDraft;
+  if (!d) return;
+  if (!d.grades.length || d.grades.some(g => !g.classes.length)) { await uiAlert('Hvert trinn må ha minst én klasse.'); return; }
+  if (!d.coreSubjects.length && !d.electiveSubjects.length) { await uiAlert('Legg inn minst ett fag.'); return; }
+  const draftClasses = d.grades.flatMap(g => g.classes);
+  const draftSubjects = [...d.coreSubjects, ...d.electiveSubjects];
+  const removedClasses = CLASSES.filter(c => !draftClasses.includes(c));
+  const removedSubjects = SUBJECTS.filter(s => !draftSubjects.includes(s));
+  let warn = 'Lagre nytt skoleoppsett for HELE skolen (alle lærere og elever)?';
+  if (removedClasses.length) warn += '\n\nKlasser som fjernes: ' + removedClasses.join(', ') + '\nInnhold i disse blir skjult (ikke slettet).';
+  if (removedSubjects.length) warn += '\n\nFag som fjernes: ' + removedSubjects.join(', ') + '\nInnhold i disse blir skjult (ikke slettet).';
+  warn += '\n\nSiden lastes på nytt etterpå.';
+  if (!await uiConfirm(warn, { title: 'Lagre skoleoppsett', okText: 'Lagre', danger: !!(removedClasses.length || removedSubjects.length) })) return;
+  try {
+    const r = await api('setconfig', { config: JSON.stringify(d) });
+    if (r && r.error) { await uiAlert(translateError(r.error)); return; }
+    if (r && r.config) { applySchoolConfig(r.config); try { localStorage.setItem(CONFIG_KEY, JSON.stringify(r.config)); } catch {} }
+    await uiAlert('Skoleoppsettet er lagret. Siden lastes på nytt for å ta det i bruk.');
+    location.reload();
+  } catch (err) { await uiAlert(translateError(err.message)); }
 }
 
 // Admin "Tilpassede planer" tab: every adapted plan on the school (any class).
@@ -2515,7 +2669,10 @@ function setupDashboardListeners() {
   document.getElementById('adminSearch').addEventListener('input', renderAdminTeachers);
   document.getElementById('adminTabTeachers').addEventListener('click', () => setAdminTab('teachers'));
   document.getElementById('adminTabVariants').addEventListener('click', () => setAdminTab('variants'));
+  document.getElementById('adminTabConfig').addEventListener('click', () => setAdminTab('config'));
   document.getElementById('adminVariantSearch').addEventListener('input', renderAdminVariants);
+  document.getElementById('adminConfigSave').addEventListener('click', saveAdminConfig);
+  document.getElementById('adminConfigReset').addEventListener('click', () => renderAdminConfig(true));
   document.getElementById('viewSubjectsClose').addEventListener('click', closeViewSubjectsModal);
   document.getElementById('viewSubjectsOverlay').addEventListener('click', closeViewSubjectsModal);
   document.getElementById('viewSubjectsDone').addEventListener('click', closeViewSubjectsModal);

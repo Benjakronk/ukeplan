@@ -32,28 +32,58 @@ const SCHOOL_CAL_KEY    = 'up_school_cal';
 const SCHOOL_CAL_TS_KEY = 'up_school_cal_ts';
 const SCHOOL_CAL_TTL    = 24 * 60 * 60 * 1000;
 
-const CLASS_GRADES = [
+// Classes + subjects come from the school config (server `?action=config`,
+// editable by a super-admin). These are the DEFAULTS (offline / before config
+// loads / if unset); `applySchoolConfig` reassigns them – hence `let`.
+let CLASS_GRADES = [
   { label: '8.',  classes: ['8A','8B','8C','8D','8E','8F'] },
   { label: '9.',  classes: ['9A','9B','9C','9D','9E','9F'] },
   { label: '10.', classes: ['10A','10B','10C','10D','10E','10F'] },
 ];
-const CLASSES = CLASS_GRADES.flatMap(g => g.classes);
+let CLASSES = CLASS_GRADES.flatMap(g => g.classes);
 
 // Core subjects (everyone has these) + electives/tilvalgsfag (chosen per student).
-const CORE_SUBJECTS = [
+let CORE_SUBJECTS = [
   'Norsk','Matematikk','Engelsk','Naturfag','Samfunnsfag','KRLE',
   'Kroppsøving','Musikk','Kunst og håndverk','Mat og helse','Utdanningsvalg',
 ];
-const ELECTIVE_SUBJECTS = [
+let ELECTIVE_SUBJECTS = [
   'Spansk','Fransk','Tysk','Engelsk fordypning',
   'Arbeidslivsfag (ALF)','Fysisk aktivitet og helse (Fysak)','Friluftsliv',
   'Innsats for andre','Programmering','Teknologi og design','Design og redesign',
   'Matematikk 1T','Medier og kommunikasjon',
 ];
-const SUBJECTS = [...CORE_SUBJECTS, ...ELECTIVE_SUBJECTS];
+let SUBJECTS = [...CORE_SUBJECTS, ...ELECTIVE_SUBJECTS];
 // Alphabetical (Norwegian) order for the Fag dropdown; the board keeps the
 // curriculum order of SUBJECTS (see subjectSort).
-const SUBJECTS_SORTED = [...SUBJECTS].sort((a, b) => a.localeCompare(b, 'no'));
+let SUBJECTS_SORTED = [...SUBJECTS].sort((a, b) => a.localeCompare(b, 'no'));
+
+// ── School config (classes + subjects), fetched from the server ──────────────
+const CONFIG_KEY = 'up_school_config';
+function applySchoolConfig(cfg) {
+  if (!cfg || typeof cfg !== 'object' || !Array.isArray(cfg.grades)) return false;
+  const grades = cfg.grades
+    .filter(g => g && g.label && Array.isArray(g.classes) && g.classes.length)
+    .map(g => ({ label: String(g.label), classes: g.classes.map(c => String(c).toUpperCase()) }));
+  const core = Array.isArray(cfg.coreSubjects) ? cfg.coreSubjects.map(String) : [];
+  const elec = Array.isArray(cfg.electiveSubjects) ? cfg.electiveSubjects.map(String) : [];
+  if (!grades.length || (!core.length && !elec.length)) return false;
+  CLASS_GRADES = grades;
+  CLASSES = CLASS_GRADES.flatMap(g => g.classes);
+  CORE_SUBJECTS = core;
+  ELECTIVE_SUBJECTS = elec;
+  SUBJECTS = [...CORE_SUBJECTS, ...ELECTIVE_SUBJECTS];
+  SUBJECTS_SORTED = [...SUBJECTS].sort((a, b) => a.localeCompare(b, 'no'));
+  return true;
+}
+(function () { try { const c = JSON.parse(localStorage.getItem(CONFIG_KEY)); if (c) applySchoolConfig(c); } catch {} })();
+async function refreshSchoolConfig() {
+  try {
+    const res = await fetch(`${SCRIPT_URL}?action=config`);
+    const cfg = await res.json();
+    if (cfg && !cfg.error && applySchoolConfig(cfg)) localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg));
+  } catch { /* keep cache/defaults */ }
+}
 
 const DAYS = ['man','tir','ons','tor','fre'];
 const DAY_LABEL = { man: 'Man', tir: 'Tir', ons: 'Ons', tor: 'Tor', fre: 'Fre' };
@@ -168,6 +198,9 @@ async function init() {
   loadSchoolCalendar();
   // Service worker is registered (+ auto-reload on update) from rich.js, shared
   // by both pages.
+  // Fetch the school config (classes/subjects) before validating the stored class
+  // below; a cached copy was already applied synchronously at module load.
+  await refreshSchoolConfig();
 
   selectedClass = localStorage.getItem(CLASS_KEY);
   if (selectedClass && !CLASSES.includes(selectedClass)) selectedClass = null;

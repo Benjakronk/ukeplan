@@ -460,6 +460,7 @@
     <div class="admin-tabs" role="tablist">
       <button id="adminTabTeachers" class="admin-tab active" type="button" role="tab" aria-selected="true">Lærere</button>
       <button id="adminTabVariants" class="admin-tab" type="button" role="tab" aria-selected="false">Tilpassede planer</button>
+      <button id="adminTabConfig" class="admin-tab" type="button" role="tab" aria-selected="false" hidden>Skoleoppsett</button>
     </div>
 
     <div id="adminPaneTeachers" class="admin-pane" role="tabpanel">
@@ -480,6 +481,16 @@
         <span id="adminVariantCount" class="admin-count" aria-live="polite"></span>
       </div>
       <div id="adminVariantList" class="admin-list"></div>
+    </div>
+
+    <div id="adminPaneConfig" class="admin-pane" role="tabpanel" hidden>
+      <p class="class-modal-hint admin-config-warn">⚠ Dette endrer klasser og fag for <strong>hele skolen</strong> – alle lærere og elever. Innhold knyttet til en klasse eller et fag du fjerner blir <strong>skjult</strong> (ikke slettet – det kommer tilbake om du legger klassen/faget inn igjen). Endre dette helst mellom skoleår.</p>
+      <div id="adminConfigBody" class="admin-config-body"></div>
+      <div class="admin-config-actions">
+        <button id="adminConfigReset" class="btn btn-ghost btn-tiny" type="button">Tilbakestill</button>
+        <span class="add-modal-spacer"></span>
+        <button id="adminConfigSave" class="btn btn-primary" type="button">Lagre skoleoppsett</button>
+      </div>
     </div>
   </div>
 
