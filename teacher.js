@@ -2469,7 +2469,7 @@ function updateClassLabel() {
   // to miss, and the variant survives browser restarts via localStorage.
   const banner = document.getElementById('variantBanner');
   if (banner) {
-    banner.hidden = !variantCode;
+    banner.hidden = !variantCode || teacherTab === 'hjem';   // meaningless on the all-classes Hjem tab
     if (variantCode) {
       document.getElementById('variantBannerText').textContent =
         '✎ Du redigerer en tilpasset plan (kode ' + variantSuffix(variantCode) +
@@ -4479,8 +4479,10 @@ function setTeacherTab(tab) {
     });
   document.getElementById('toolbar').style.display = tab === 'ukeplan' ? '' : 'none';
   // Hjem keys off classesTaught (all classes at once), not the selected class, so
-  // the class pill is meaningless there – hide it.
+  // the class pill – and the variant banner – are meaningless there; hide them.
   document.getElementById('classBtn').style.display = tab === 'hjem' ? 'none' : '';
+  const vb = document.getElementById('variantBanner');
+  if (vb) vb.hidden = !variantCode || tab === 'hjem';
   // visibility (not display) so the controls-row keeps a constant size across tabs
   document.querySelector('.week-nav').style.visibility = tab === 'vurd' ? 'hidden' : 'visible';
   if (tab === 'hjem') { loadHjem(); startHjemPoll(); return; }   // keys off classesTaught, not selectedClass
