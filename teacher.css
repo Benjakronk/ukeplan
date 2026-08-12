@@ -312,6 +312,10 @@
 .date-label .input { padding: 6px 8px; }
 .vf-empty { font-size: 13px; color: var(--off-text); font-style: italic; }
 .vf-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Kontaktlærer picker: one aligned row per grade-year (label + ★ chips) */
+.kontakt-year-row { align-items: center; }
+.kontakt-year-row + .kontakt-year-row { margin-top: 6px; }
+.kontakt-year-row .class-grade-label { flex: 0 0 auto; }
 .vf-chip {
   padding: 5px 10px; font-family: var(--font); font-size: 13px; font-weight: 600;
   background: var(--surface); color: var(--text); border: 1px solid var(--border);

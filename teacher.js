@@ -1608,16 +1608,16 @@ function buildProfileClasses() {
   if (!box) return;
   box.innerHTML = '';
 
-  const kwrap = document.createElement('div');
-  kwrap.className = 'profile-subj';
-  const kh = document.createElement('div');
-  kh.className = 'profile-subj-label';
-  kh.textContent = 'Kontaktlærer for';
-  kwrap.appendChild(kh);
+  const kdet = document.createElement('details');
+  kdet.className = 'profile-matrix';
+  kdet.open = true;
+  const ksum = document.createElement('summary');
+  ksum.textContent = 'Kontaktlærer for';
+  kdet.appendChild(ksum);
   const kbox = document.createElement('div');
-  kwrap.appendChild(kbox);
-  buildKontaktStep(kbox);   // ★ chips over the taught union
-  box.appendChild(kwrap);
+  kdet.appendChild(kbox);
+  buildKontaktStep(kbox);   // ★ chips, grade-year rows, over the taught union
+  box.appendChild(kdet);
 
   const subs = orderedSubjects(mySubjects());
   if (!subs.length) {
@@ -1687,20 +1687,30 @@ function buildKontaktStep(container) {
     container.appendChild(p);
     return;
   }
-  const row = document.createElement('div');
-  row.className = 'vf-chip-row';
-  taught.forEach(cls => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'vf-chip kontakt-chip' + (kontaktClasses.includes(cls) ? ' active' : '');
-    btn.textContent = '★ ' + cls;
-    btn.addEventListener('click', () => {
-      toggleKontaktClass(cls);
-      btn.classList.toggle('active', kontaktClasses.includes(cls));
+  // One row per grade-year (only the taught classes in it), like class pickers
+  // elsewhere – the grade label + ★ chips.
+  CLASS_GRADES.forEach(group => {
+    const inYear = group.classes.filter(c => taught.includes(c));
+    if (!inYear.length) return;
+    const row = document.createElement('div');
+    row.className = 'vf-chip-row kontakt-year-row';
+    const lbl = document.createElement('span');
+    lbl.className = 'class-grade-label';
+    lbl.textContent = group.label;
+    row.appendChild(lbl);
+    inYear.forEach(cls => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'vf-chip kontakt-chip' + (kontaktClasses.includes(cls) ? ' active' : '');
+      btn.textContent = '★ ' + cls;
+      btn.addEventListener('click', () => {
+        toggleKontaktClass(cls);
+        btn.classList.toggle('active', kontaktClasses.includes(cls));
+      });
+      row.appendChild(btn);
     });
-    row.appendChild(btn);
+    container.appendChild(row);
   });
-  container.appendChild(row);
 }
 
 // ─── First-run onboarding (guided wizard) ────────────────────────────────────
