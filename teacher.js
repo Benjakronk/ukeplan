@@ -2661,7 +2661,7 @@ function renderVariantList(container, variants, cls, kontakt) {
     if (kontakt) {
       const del = document.createElement('button'); del.type = 'button'; del.className = 'btn btn-ghost btn-tiny variant-del';
       del.textContent = 'Slett';
-      del.addEventListener('click', () => deleteVariantPlan(v.code, cls, container, kontakt));
+      del.addEventListener('click', () => deleteVariantPlan(v.code, cls, { kontakt, afterDelete: () => reloadVariantList(cls, container, kontakt) }));
       actions.appendChild(del);
     }
     row.appendChild(actions);
@@ -2682,10 +2682,12 @@ async function createVariantForClass(cls) {
   applyVariant(code, cls);
 }
 
-async function deleteVariantPlan(code, cls, container, kontakt) {
+// Delete an adapted plan (class modal + Kontaktlærer tab). opts.kontakt gates it
+// (server also enforces isKontakt); opts.afterDelete refreshes the caller's view.
+async function deleteVariantPlan(code, cls, opts = {}) {
   // Only a kontaktlærer for the class may delete (server-enforced via isKontakt;
   // the button is hidden for others – this guard is belt-and-suspenders).
-  if (!kontakt) { await uiAlert('Bare kontaktlæreren for klassen kan slette en tilpasset plan.'); return; }
+  if (!opts.kontakt) { await uiAlert('Bare kontaktlæreren for klassen kan slette en tilpasset plan.'); return; }
   const label = variantLabels()[code];
   const who = label ? '«' + label + '» (' + variantSuffix(code) + ')' : variantSuffix(code);
   const ok1 = await uiConfirm(
@@ -2700,8 +2702,8 @@ async function deleteVariantPlan(code, cls, container, kontakt) {
   if (!ok2) return;
   const r = await api('variant_delete', { code });
   if (r && r.error) { await uiAlert(translateError(r.error)); return; }
-  if (variantCode === code) { pickClass(cls); return; }   // was editing it → back to the regular plan
-  await reloadVariantList(cls, container, kontakt);
+  if (variantCode === code) pickClass(cls);   // was editing it → back to the regular plan
+  if (opts.afterDelete) await opts.afterDelete();
 }
 
 function pickClass(cls) {
@@ -5721,6 +5723,13 @@ function renderKontakt() {
       open.textContent = 'Åpne';
       open.addEventListener('click', () => applyVariant(v.code, cls));
       top.appendChild(open);
+      // The Kontaktlærer tab only lists classes you're kontaktlærer for, so delete
+      // is allowed here (server also enforces isKontakt).
+      const del = document.createElement('button');
+      del.type = 'button'; del.className = 'btn btn-ghost btn-tiny variant-del';
+      del.textContent = 'Slett';
+      del.addEventListener('click', () => deleteVariantPlan(v.code, cls, { kontakt: true, afterDelete: () => loadKontakt({ force: true }) }));
+      top.appendChild(del);
       card.appendChild(top);
 
       const body = document.createElement('div');
