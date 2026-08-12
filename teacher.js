@@ -5954,12 +5954,13 @@ function renderKontakt() {
       code.className = 'variant-code';
       code.textContent = variantSuffix(v.code);
       top.appendChild(code);
-      if (labels[v.code]) {
-        const lab = document.createElement('span');
-        lab.className = 'kontakt-variant-label';
-        lab.textContent = labels[v.code];
-        top.appendChild(lab);
-      }
+      // Browser-local note (never sent to the server) – inline editable here too.
+      const lab = document.createElement('input');
+      lab.type = 'text'; lab.className = 'variant-label-input'; lab.placeholder = 'notat (kun din enhet)';
+      lab.value = labels[v.code] || '';
+      lab.title = 'Kun lagret i din nettleser – aldri på serveren.';
+      lab.addEventListener('change', () => setVariantLabel(v.code, lab.value.trim()));
+      top.appendChild(lab);
       const open = document.createElement('button');
       open.type = 'button'; open.className = 'btn btn-ghost btn-tiny';
       open.textContent = 'Åpne';
