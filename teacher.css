@@ -197,6 +197,10 @@
 }
 .recur-preview { font-style: italic; }
 .recur-preview:empty { display: none; }
+.recur-edit-hint {
+  margin: 0; padding: 8px 10px; border-radius: var(--radius-btn);
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+}
 
 .type-btns, .day-btns { display: flex; flex-wrap: wrap; gap: 6px; }
 .type-btn, .day-btn {

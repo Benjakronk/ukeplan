@@ -3935,6 +3935,7 @@ function openElementEdit(el) {
   document.getElementById('addModalTitle').textContent = 'Rediger element';
   document.getElementById('addDelete').hidden = false;
   document.getElementById('addSave').textContent = 'Lagre';
+  resetRecurFields();
 
   selectModalType(el.type);
   buildModalClassBtns();
@@ -4310,14 +4311,15 @@ function currentModalClassGroups() {
   return internCombine ? [modalClasses.join(' ')] : electiveWriteGroups(subject, modalClasses);
 }
 
-// Concrete { classes, week, weekTo } list for a multi-week create, or null when no
-// recurrence/gap options apply (caller keeps the plain one-element-per-group path).
+// Concrete { classes, week, weekTo } list for a multi-week save, or null when no
+// recurrence/gap options apply (caller keeps the plain path). Used on create AND
+// on edit (where an active expansion replaces the element with the enumerated set).
 function maybeBuildRecurrence(weekFrom, weekTo, classGroups) {
-  if (editingElement) return null;          // expansion only makes sense on create
   if (!(weekTo > weekFrom)) return null;    // single week – nothing to expand
   const cfg = readRecurConfig();
   if (!cfg.recur && cfg.gaps.size === 0) return null;
-  return buildRecurrenceElements(weekFrom, weekTo, classGroups, cfg);
+  const specs = buildRecurrenceElements(weekFrom, weekTo, classGroups, cfg);
+  return specs.length ? specs : null;       // all weeks gapped → nothing to do
 }
 
 function buildRecurrenceElements(weekFrom, weekTo, classGroups, cfg) {
@@ -4362,14 +4364,17 @@ function buildRecurrenceElements(weekFrom, weekTo, classGroups, cfg) {
   return out;
 }
 
-// Show the recurrence section only for a fresh multi-week plan element.
+// Show the recurrence section for any multi-week plan element (create OR edit;
+// on edit an active expansion replaces the element with the enumerated set).
 function syncRecurVisibility() {
   const row = document.getElementById('recurRow');
   if (!row) return;
   const isPlan = modalType !== 'vurdering' && modalType !== 'hendelse';
-  const multi  = !editingElement && isPlan && modalWeekTo > modalWeekFrom;
+  const multi  = isPlan && modalWeekTo > modalWeekFrom;
   row.hidden = !multi;
   if (!multi) row.open = false;
+  const hint = document.getElementById('recurEditHint');
+  if (hint) hint.hidden = !(multi && editingElement);
   updateRecurUI();
 }
 
@@ -4432,6 +4437,34 @@ function resetRecurFields() {
   const row = document.getElementById('recurRow'); if (row) row.open = false;
 }
 
+// Editing a multi-week element with recurrence/gaps active can't be a plain
+// in-place update (one element → many), so replace it: delete the original and
+// create the enumerated set. `common` carries the modal's edited type/day/
+// subject/description/teacher onto every new element. One compound undo.
+async function editIntoRecurrence(orig, specs, common) {
+  const origParams = elementCreateParams(orig);   // to restore on undo
+  const origRef = { id: orig.id };
+  await api('delete', { id: orig.id });
+  const creates = [];
+  for (const spec of specs) {
+    const params = { type: common.type, classes: spec.classes, week: spec.week, weekTo: spec.weekTo,
+                     day: common.day, subject: common.subject, description: common.desc, teacher: common.teacher };
+    const r = await api('create', params);
+    creates.push({ params, id: r && r.id });
+  }
+  pushUndo({
+    label: 'endret til ' + creates.length + ' oppføringer',
+    undo: async () => {
+      const r = await api('create', origParams); origRef.id = r && r.id;
+      await Promise.all(creates.map(c => api('delete', { id: c.id })));
+    },
+    redo: async () => {
+      await api('delete', { id: origRef.id });
+      await Promise.all(creates.map(async c => { const x = await api('create', c.params); c.id = x && x.id; }));
+    },
+  });
+}
+
 async function saveFromModal() {
   if (modalSaving) return;   // a save is already running – ignore extra clicks
   const d = modalDescGet();
@@ -4460,10 +4493,17 @@ async function saveFromModal() {
     setSaving();
     try {
       if (editingElement) {
-        const before = elementUpdateFields(editingElement);
-        const after  = { type: modalType, classes: modalClasses.join(' '), week: weekFrom, weekTo, day, subject, description: desc, teacher };
-        await api('update', Object.assign({ id: editingElement.id }, after));
-        recordUpdate(editingElement.id, before, after, 'endring');
+        // If recurrence/gaps are switched on while editing a multi-week element,
+        // replace it with the enumerated set instead of a plain update.
+        recurSpecs = maybeBuildRecurrence(weekFrom, weekTo, currentModalClassGroups());
+        if (recurSpecs) {
+          await editIntoRecurrence(editingElement, recurSpecs, { type: modalType, day, subject, desc, teacher });
+        } else {
+          const before = elementUpdateFields(editingElement);
+          const after  = { type: modalType, classes: modalClasses.join(' '), week: weekFrom, weekTo, day, subject, description: desc, teacher };
+          await api('update', Object.assign({ id: editingElement.id }, after));
+          recordUpdate(editingElement.id, before, after, 'endring');
+        }
       } else {
         const creates = [];
         // Intern (combine on) → ONE shared entry for all ticked classes; electives →
