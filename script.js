@@ -86,7 +86,7 @@ async function refreshSchoolConfig() {
 }
 
 const DAYS = ['man','tir','ons','tor','fre'];
-const DAY_LABEL = { man: 'Man', tir: 'Tir', ons: 'Ons', tor: 'Tor', fre: 'Fre' };
+const DAY_LABEL = { man: 'Mandag', tir: 'Tirsdag', ons: 'Onsdag', tor: 'Torsdag', fre: 'Fredag' };
 const DAY_LONG  = { man: 'mandag', tir: 'tirsdag', ons: 'onsdag', tor: 'torsdag', fre: 'fredag' };
 
 // Element types that are class-wide (no subject) → shown in the banner.

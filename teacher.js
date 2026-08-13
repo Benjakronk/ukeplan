@@ -96,7 +96,7 @@ async function refreshSchoolConfig() {
 }
 
 const DAYS = ['man','tir','ons','tor','fre'];
-const DAY_LABEL = { man: 'Man', tir: 'Tir', ons: 'Ons', tor: 'Tor', fre: 'Fre' };
+const DAY_LABEL = { man: 'Mandag', tir: 'Tirsdag', ons: 'Onsdag', tor: 'Torsdag', fre: 'Fredag' };
 
 // Types managed as subject cells vs. class-wide banner elements.
 // 'vurdering' is special: it is date-specific rather than week-level and uses
@@ -3503,7 +3503,7 @@ function buildElementChip(el) {
 // Lekser cell: a list of per-item rows, each with its own day. Because the
 // board edits one class at a time, this also gives a per-class day for shared
 // homework. Each row maps to one element.
-const DAY_OPTIONS = [['', '–'], ['man', 'Man'], ['tir', 'Tir'], ['ons', 'Ons'], ['tor', 'Tor'], ['fre', 'Fre']];
+const DAY_OPTIONS = [['', '–'], ['man', 'Mandag'], ['tir', 'Tirsdag'], ['ons', 'Onsdag'], ['tor', 'Torsdag'], ['fre', 'Fredag']];
 
 // opts.cls / opts.week bind the cell to a specific class + ISO week (used by the
 // Progresjon view, where each row is one week); the board passes neither and
