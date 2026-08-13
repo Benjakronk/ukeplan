@@ -186,6 +186,18 @@
 .addcol-sel { font-size: 13px; font-weight: 600; color: var(--text-muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .addcol[open] > summary { margin-bottom: 8px; }
 
+/* Recurrence / gap-week section in the add modal */
+.recur-body { display: flex; flex-direction: column; gap: 8px; }
+.recur-body .form-hint { margin-top: 0; }
+.recur-toggle { margin-top: 2px; }
+#recurOpts {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 10px 12px; border: 1px solid var(--border);
+  border-radius: var(--radius-btn); background: var(--surface-2);
+}
+.recur-preview { font-style: italic; }
+.recur-preview:empty { display: none; }
+
 .type-btns, .day-btns { display: flex; flex-wrap: wrap; gap: 6px; }
 .type-btn, .day-btn {
   padding: 7px 12px; font-family: var(--font); font-size: 13px; font-weight: 600;

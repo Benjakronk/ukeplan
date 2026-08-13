@@ -247,6 +247,49 @@
       </div>
     </div>
 
+    <!-- Only for a fresh, multi-week plan element (weekTo > weekFrom): skip
+         vacation weeks and/or repeat at an interval, optionally rotating through
+         the chosen classes. Everything is enumerated into concrete elements at
+         save time – bounded by «til uke», so no open-ended recurrence. -->
+    <details class="form-row addcol" id="recurRow" hidden>
+      <summary class="addcol-summary">
+        <span class="form-label">Gjentakelse og ferieuker</span>
+        <span id="recurSummary" class="addcol-sel">av</span>
+      </summary>
+      <div class="recur-body">
+        <label class="form-label" for="gapWeeks">Hopp over uker</label>
+        <input type="text" id="gapWeeks" class="input" placeholder="f.eks. 40, 41" autocomplete="off" inputmode="numeric">
+        <p class="form-hint">Ukenummer i perioden som skal utelates (ferie o.l.). Skill med komma.</p>
+
+        <label class="settings-toggle recur-toggle">
+          <input type="checkbox" id="recurToggle">
+          <span>Gjenta med mellomrom (i stedet for en sammenhengende periode)</span>
+        </label>
+
+        <div id="recurOpts" hidden>
+          <label class="form-label" for="recurInterval">Hvor ofte</label>
+          <select id="recurInterval" class="input">
+            <option value="1">Hver uke</option>
+            <option value="2">Annenhver uke</option>
+            <option value="3">Hver 3. uke</option>
+            <option value="4">Hver 4. uke</option>
+          </select>
+
+          <label class="settings-toggle" id="recurAlternateRow">
+            <input type="checkbox" id="recurAlternate">
+            <span>Veksle mellom klassene (én klasse per gang)</span>
+          </label>
+
+          <label class="settings-toggle">
+            <input type="checkbox" id="recurRespectGaps" checked>
+            <span>Behold rekkefølgen over ferieuker</span>
+          </label>
+        </div>
+
+        <p class="form-hint recur-preview" id="recurPreview"></p>
+      </div>
+    </details>
+
     <div class="form-row" id="dateRow" style="display:none">
       <label class="form-label" for="dateInput"><span id="dateLabel">Dato</span></label>
       <input type="date" id="dateInput" class="input">

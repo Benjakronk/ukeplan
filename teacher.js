@@ -3811,15 +3811,24 @@ function setupModalListeners() {
     modalWeekFrom = isoToDate(e.target.value);
     if (modalWeekTo < modalWeekFrom) { modalWeekTo = modalWeekFrom; buildModalWeekOptions(); }
     setDateInputBounds();
+    syncRecurVisibility();
     refreshConflicts();
   });
   document.getElementById('weekTo').addEventListener('change', e => {
     modalWeekTo = isoToDate(e.target.value);
     if (modalWeekTo < modalWeekFrom) { modalWeekFrom = modalWeekTo; buildModalWeekOptions(); }
+    syncRecurVisibility();
     refreshConflicts();
   });
   document.getElementById('dateInput').addEventListener('change', () => { updateDateInfo(); refreshConflicts(); });
   document.getElementById('dateToInput').addEventListener('change', () => updateDateInfo());
+
+  // Recurrence / gap-week controls (multi-week plan elements).
+  document.getElementById('recurToggle').addEventListener('change', updateRecurUI);
+  document.getElementById('recurInterval').addEventListener('change', updateRecurUI);
+  document.getElementById('recurAlternate').addEventListener('change', updateRecurUI);
+  document.getElementById('recurRespectGaps').addEventListener('change', updateRecurUI);
+  document.getElementById('gapWeeks').addEventListener('input', updateRecurUI);
 
   // Subject select – grouped «Mine fag» / «Andre fag» (rebuilt on open too).
   fillSubjectSelect(document.getElementById('subjectSelect'), '(uten fag)');
@@ -3898,6 +3907,7 @@ function openAddModal(preset = {}) {
   document.getElementById('addModalTitle').textContent = 'Legg til element';
   document.getElementById('addDelete').hidden = true;
   document.getElementById('addSave').textContent = 'Lagre';
+  resetRecurFields();
 
   selectModalType(modalType);
   buildModalClassBtns();
@@ -4151,6 +4161,7 @@ function selectModalType(t) {
   // Intern: offer one shared entry for all ticked classes vs one per class (create only).
   const internRow = document.getElementById('internCombineRow');
   if (internRow) internRow.hidden = !(t === 'intern' && !editingElement && !variantPlan);
+  syncRecurVisibility();
   refreshConflicts();
   updateDateInfo();
 }
@@ -4211,6 +4222,7 @@ function buildModalClassBtns() {
           else modalClasses.push(cls);
           btn.classList.toggle('active');
           updateClassSummary();
+          updateRecurUI();
           refreshConflicts();
         });
       }
@@ -4237,6 +4249,7 @@ function buildModalClassBtns() {
     grid.appendChild(wrap);
   });
   updateClassSummary();
+  updateRecurUI();   // class count affects the «veksle» option + preview
 }
 
 // Collapsed-summary text for the Klasse(r) section: full grade-years collapse to
@@ -4259,6 +4272,164 @@ function updateClassSummary() {
 
 function syncDayBtns() {
   document.querySelectorAll('#dayBtns .day-btn').forEach(b => b.classList.toggle('active', modalDays.includes(b.dataset.day)));
+}
+
+// ── Recurrence / gap weeks (create-only, multi-week) ──────────────────────────
+// A fresh multi-week plan element can (a) skip vacation weeks and (b) repeat at
+// an interval, optionally rotating through the selected classes (e.g. svømming
+// annenhver uke, 10A / 10B). It's all enumerated into concrete single-week (or
+// sub-range) elements at save time – there is no live-expanding recurrence rule,
+// so it stays bounded by «til uke» (guarding against endless recurrence).
+
+// "40, 41 43" → Set{40,41,43} (any non-digit is a separator).
+function parseGapWeeks(str) {
+  const set = new Set();
+  String(str || '').split(/[^0-9]+/).forEach(tok => {
+    const n = parseInt(tok, 10);
+    if (!isNaN(n) && n >= 1 && n <= 53) set.add(n);
+  });
+  return set;
+}
+function weekNumOf(wk) { return Number(String(wk).split('-W')[1]); }
+
+function readRecurConfig() {
+  return {
+    gaps:        parseGapWeeks(document.getElementById('gapWeeks').value),
+    recur:       document.getElementById('recurToggle').checked,
+    interval:    Math.max(1, parseInt(document.getElementById('recurInterval').value, 10) || 1),
+    alternate:   document.getElementById('recurAlternate').checked,
+    respectGaps: document.getElementById('recurRespectGaps').checked,
+  };
+}
+
+// The class groups a create writes to (one entry per group): intern-combine →
+// one shared group; electives → one per grade-year; else one per class.
+function currentModalClassGroups() {
+  const subject = document.getElementById('subjectSelect').value;
+  const internCombine = modalType === 'intern' && document.getElementById('internCombine').checked && modalClasses.length;
+  return internCombine ? [modalClasses.join(' ')] : electiveWriteGroups(subject, modalClasses);
+}
+
+// Concrete { classes, week, weekTo } list for a multi-week create, or null when no
+// recurrence/gap options apply (caller keeps the plain one-element-per-group path).
+function maybeBuildRecurrence(weekFrom, weekTo, classGroups) {
+  if (editingElement) return null;          // expansion only makes sense on create
+  if (!(weekTo > weekFrom)) return null;    // single week – nothing to expand
+  const cfg = readRecurConfig();
+  if (!cfg.recur && cfg.gaps.size === 0) return null;
+  return buildRecurrenceElements(weekFrom, weekTo, classGroups, cfg);
+}
+
+function buildRecurrenceElements(weekFrom, weekTo, classGroups, cfg) {
+  const span = weeksBetween(weekFrom, weekTo);   // ["2026-W35", …] inclusive
+  const out = [];
+
+  if (!cfg.recur) {
+    // Sammenhengende periode med hull → del i delperioder rundt ferieukene.
+    let start = null, prev = null;
+    const flush = () => {
+      if (start) classGroups.forEach(cls =>
+        out.push({ classes: cls, week: start, weekTo: (prev === start ? '' : prev) }));
+      start = prev = null;
+    };
+    span.forEach(wk => {
+      if (cfg.gaps.has(weekNumOf(wk))) { flush(); return; }
+      if (!start) start = wk;
+      prev = wk;
+    });
+    flush();
+    return out;
+  }
+
+  // Gjentakelse: én uke per forekomst. `placed` driver rotasjonen (vekslende
+  // klasse), `idx` teller stegene for intervallet – begge over ikke-ferieuker.
+  let placed = 0, idx = 0;
+  span.forEach(wk => {
+    if (cfg.gaps.has(weekNumOf(wk))) {
+      // Behold rekkefølgen = hopp helt over (turene fortsetter uforstyrret).
+      // Ellers "brukes plassen opp" – klassen som stod for tur mister den uka.
+      if (!cfg.respectGaps) { placed++; idx++; }
+      return;
+    }
+    if (idx % cfg.interval !== 0) { idx++; return; }
+    if (cfg.alternate && classGroups.length > 1) {
+      out.push({ classes: classGroups[placed % classGroups.length], week: wk, weekTo: '' });
+    } else {
+      classGroups.forEach(cls => out.push({ classes: cls, week: wk, weekTo: '' }));
+    }
+    placed++; idx++;
+  });
+  return out;
+}
+
+// Show the recurrence section only for a fresh multi-week plan element.
+function syncRecurVisibility() {
+  const row = document.getElementById('recurRow');
+  if (!row) return;
+  const isPlan = modalType !== 'vurdering' && modalType !== 'hendelse';
+  const multi  = !editingElement && isPlan && modalWeekTo > modalWeekFrom;
+  row.hidden = !multi;
+  if (!multi) row.open = false;
+  updateRecurUI();
+}
+
+function updateRecurUI() {
+  const row = document.getElementById('recurRow');
+  if (!row || row.hidden) return;
+  const recur = document.getElementById('recurToggle').checked;
+  document.getElementById('recurOpts').hidden = !recur;
+  const groups = currentModalClassGroups();
+  const altRow = document.getElementById('recurAlternateRow');
+  if (altRow) altRow.style.display = (recur && groups.length > 1) ? '' : 'none';
+  updateRecurPreview(groups);
+  updateRecurSummary();
+}
+
+function updateRecurSummary() {
+  const sum = document.getElementById('recurSummary');
+  if (!sum) return;
+  const cfg = readRecurConfig();
+  const parts = [];
+  if (cfg.recur) {
+    parts.push(cfg.interval === 1 ? 'hver uke' : cfg.interval === 2 ? 'annenhver uke' : 'hver ' + cfg.interval + '. uke');
+    if (cfg.alternate) parts.push('vekslende');
+  }
+  if (cfg.gaps.size) parts.push('hopper over ' + [...cfg.gaps].sort((a, b) => a - b).join(', '));
+  sum.textContent = parts.length ? parts.join(' · ') : 'av';
+}
+
+function updateRecurPreview(groups) {
+  const el = document.getElementById('recurPreview');
+  if (!el) return;
+  let from = dateToWeek(modalWeekFrom), to = dateToWeek(modalWeekTo);
+  if (from > to) { const t = from; from = to; to = t; }
+  const cfg = readRecurConfig();
+  if (!cfg.recur && cfg.gaps.size === 0) { el.textContent = ''; return; }
+  const specs = buildRecurrenceElements(from, to, groups, cfg);
+  if (!specs.length) { el.textContent = 'Ingen uker igjen i perioden når ferieukene er trukket fra.'; return; }
+  // One line per distinct occurrence (alternate → per week+class; else per week).
+  const seen = new Set(), rows = [];
+  specs.forEach(s => {
+    const key = s.week + (cfg.alternate && groups.length > 1 ? '|' + s.classes : '');
+    if (seen.has(key)) return;
+    seen.add(key);
+    rows.push('uke ' + weekNumOf(s.week) + (s.weekTo ? '–' + weekNumOf(s.weekTo) : '')
+      + (cfg.alternate && groups.length > 1 ? ' (' + s.classes + ')' : ''));
+  });
+  const shown = rows.slice(0, 6).join(', ');
+  const more  = rows.length > 6 ? ' …' : '';
+  el.textContent = 'Lager ' + specs.length + ' oppføring' + (specs.length === 1 ? '' : 'er') + ': ' + shown + more + '.';
+}
+
+function resetRecurFields() {
+  const set = (id, prop, val) => { const el = document.getElementById(id); if (el) el[prop] = val; };
+  set('gapWeeks', 'value', '');
+  set('recurToggle', 'checked', false);
+  set('recurInterval', 'value', '1');
+  set('recurAlternate', 'checked', false);
+  set('recurRespectGaps', 'checked', true);
+  set('recurOpts', 'hidden', true);
+  const row = document.getElementById('recurRow'); if (row) row.open = false;
 }
 
 async function saveFromModal() {
@@ -4284,6 +4455,7 @@ async function saveFromModal() {
     // Læringsmål/ressurs are week-level (no day); lekser and general types may carry day(s).
     const day = (modalType === 'lekse' || GENERAL_TYPES.includes(modalType)) ? modalDays.join(',') : '';
     const teacher = modalTeacherValue();
+    let recurSpecs = null;   // non-null when a gap/recurrence expansion ran (create)
 
     setSaving();
     try {
@@ -4296,14 +4468,17 @@ async function saveFromModal() {
         const creates = [];
         // Intern (combine on) → ONE shared entry for all ticked classes; electives →
         // one element per grade-year (whole year); everything else → one per class.
-        const internCombine = modalType === 'intern' && document.getElementById('internCombine').checked && modalClasses.length;
-        const classGroups = internCombine ? [modalClasses.join(' ')] : electiveWriteGroups(subject, modalClasses);
-        for (const classes of classGroups) {
-          const params = { type: modalType, classes, week: weekFrom, weekTo, day, subject, description: desc, teacher };
+        const classGroups = currentModalClassGroups();
+        // Multi-week: expand vacation gaps and/or a recurrence (svømming annenhver
+        // uke, vekslende klasser) into concrete elements; else one per class group.
+        recurSpecs = maybeBuildRecurrence(weekFrom, weekTo, classGroups);
+        const specs = recurSpecs || classGroups.map(cls => ({ classes: cls, week: weekFrom, weekTo }));
+        for (const spec of specs) {
+          const params = { type: modalType, classes: spec.classes, week: spec.week, weekTo: spec.weekTo, day, subject, description: desc, teacher };
           const r = await api('create', params);
           creates.push({ params, id: r && r.id });
         }
-        recordCreateMany(creates, 'la til ' + (TYPE_LABEL[modalType] || 'element'));
+        recordCreateMany(creates, 'la til ' + (recurSpecs ? creates.length + ' oppføringer' : (TYPE_LABEL[modalType] || 'element')));
       }
       // On a variant, adding a subject element implicitly makes that subject
       // tilpasset – otherwise the new content would be hidden behind the class.
@@ -4312,7 +4487,10 @@ async function saveFromModal() {
       }
       setSaved();
       closeAddModal({ force: true });
-      if (weekFrom !== dateToWeek(weekMonday) || weekTo !== weekFrom) {
+      if (recurSpecs) {
+        const n = recurSpecs.length;
+        showToast('Lagret ' + n + ' oppføring' + (n === 1 ? '' : 'er') + '.');
+      } else if (weekFrom !== dateToWeek(weekMonday) || weekTo !== weekFrom) {
         showToast('Lagret for uke ' + getWeekNumber(modalWeekFrom) + (weekTo !== weekFrom ? '–' + getWeekNumber(modalWeekTo) : '') + '.');
       }
       refreshAfterChange();
