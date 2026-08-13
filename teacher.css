@@ -813,6 +813,7 @@
 .kontakt-line { font-size: 14px; color: var(--text); }
 .kontakt-empty { font-size: 13px; color: var(--text-muted); }
 .kontakt-variant-card { border: 1px solid var(--border); border-radius: var(--radius-card); padding: 10px 12px; margin-top: 10px; }
+.kontakt-variant-new { margin-top: 14px; }
 .kontakt-variant-top { display: flex; align-items: center; gap: 10px; }
 .kontakt-variant-label { font-size: 13px; color: var(--text); font-weight: 600; }
 .kontakt-variant-top .btn { margin-left: auto; }

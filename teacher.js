@@ -2929,7 +2929,7 @@ function renderVariantList(container, variants, cls, kontakt) {
   });
 }
 
-async function createVariantForClass(cls) {
+async function createVariantForClass(cls, opts = {}) {
   const suffix = genSuffix();
   const code = (cls + '-' + suffix).toUpperCase();
   const r = await api('variant_create', { code, class: cls });
@@ -2939,6 +2939,8 @@ async function createVariantForClass(cls) {
     'Eleven velger klasse ' + cls + ' og skriver inn denne koden. Noter hvem koden tilhører i skolens eget dokument – aldri i appen.',
     { title: 'Ny tilpasset plan' }
   );
+  // Class modal → open the new plan; Kontaktlærer tab → stay and refresh the list.
+  if (opts.afterCreate) { await opts.afterCreate(); return; }
   applyVariant(code, cls);
 }
 
@@ -2952,15 +2954,16 @@ async function deleteVariantPlan(code, cls, opts = {}) {
   const who = label ? '«' + label + '» (' + variantSuffix(code) + ')' : variantSuffix(code);
   const ok1 = await uiConfirm(
     'Slette den tilpassede planen ' + who + '? Alt innhold i den slettes også. Dette kan ikke angres.',
-    { title: 'Slett tilpasset plan', okText: 'Slett', danger: true });
+    { title: 'Slett tilpasset plan', okText: 'Fortsett', danger: true });
   if (!ok1) return;
-  // Second, deliberate confirmation – deleting a pupil's plan is irreversible.
-  const ok2 = await uiConfirm(
-    'Helt sikker? Planen' + (label ? ' for «' + label + '»' : ' ' + variantSuffix(code)) +
+  // Second, deliberate confirmation – deleting a pupil's plan is irreversible, so
+  // the teacher must re-enter their own password (the server re-verifies it).
+  const pw = await uiPrompt(
+    'Skriv inn passordet ditt for å bekrefte at planen' + (label ? ' for «' + label + '»' : ' ' + variantSuffix(code)) +
     ' og alt innholdet slettes permanent. Kontroller at det er riktig elev.',
-    { title: 'Bekreft sletting', okText: 'Slett for godt', danger: true });
-  if (!ok2) return;
-  const r = await api('variant_delete', { code });
+    { title: 'Bekreft sletting med passord', label: 'Ditt passord', password: true, okText: 'Slett for godt' });
+  if (!pw) return;
+  const r = await api('variant_delete', { code, password: pw });
   if (r && r.error) { await uiAlert(translateError(r.error)); return; }
   if (variantCode === code) pickClass(cls);   // was editing it → back to the regular plan
   if (opts.afterDelete) await opts.afterDelete();
@@ -6178,7 +6181,7 @@ function renderKontakt() {
   const labels = variantLabels();
   if (!kontaktVariants.length) {
     const p = document.createElement('p'); p.className = 'kontakt-empty';
-    p.textContent = 'Ingen tilpassede planer for klassen. Lag en fra «Bytt klasse» → Tilpasset plan.';
+    p.textContent = 'Ingen tilpassede planer for klassen ennå.';
     secE.appendChild(p);
   } else {
     kontaktVariants.forEach(v => {
@@ -6233,6 +6236,14 @@ function renderKontakt() {
       secE.appendChild(card);
     });
   }
+  // Create a new adapted plan straight from this tab (you're always kontaktlærer
+  // for the listed class; the server also enforces it).
+  const newBtn = document.createElement('button');
+  newBtn.type = 'button';
+  newBtn.className = 'btn btn-ghost variant-new kontakt-variant-new';
+  newBtn.textContent = '+ Lag ny tilpasset plan';
+  newBtn.addEventListener('click', () => createVariantForClass(cls, { afterCreate: () => loadKontakt({ force: true }) }));
+  secE.appendChild(newBtn);
   pane.appendChild(secE);
   }
 }
