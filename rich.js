@@ -19,33 +19,72 @@ function escapeAttr(s) {
   return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
+const BLOCK_TAGS = { DIV: 1, P: 1, LI: 1 };
+
 function sanitizeHtml(html) {
   const tpl = document.createElement('template');
   tpl.innerHTML = html || '';
-  return serializeClean(tpl.content).replace(/(<br>\s*)+$/i, '').trim();
+  const lines = serializeLines(tpl.content);
+  // A trailing blank line is never meaningful; drop it. But KEEP leading and
+  // interior blanks – a teacher may deliberately open a beskjed with a blank
+  // line or separate paragraphs with one.
+  while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
+  return lines.join('<br>').trim();
 }
 
-function serializeClean(parent) {
-  let out = '';
+// Serialize a contenteditable subtree into an array of visual lines (inline HTML).
+// Line breaks come from <br> and from block boundaries; a block's own filler <br>
+// (Chrome's empty-line marker) is NOT double-counted, so one blank line stays one
+// blank line and re-editing is idempotent (the old serializer grew blanks each
+// save because <div><br></div> became <br> + a block <br>).
+function serializeLines(parent) {
+  const lines = [''];
+  const append = html => { lines[lines.length - 1] += html; };
+  const brk = () => lines.push('');
   parent.childNodes.forEach(node => {
-    if (node.nodeType === 3) { out += escapeHtml(node.nodeValue); return; }
+    if (node.nodeType === 3) { append(escapeHtml(node.nodeValue)); return; }
     if (node.nodeType !== 1) return;
     const tag = node.tagName;
-    if (tag === 'BR') { out += '<br>'; return; }
-    if (tag === 'A') {
-      const href = node.getAttribute('href') || '';
-      if (/^(https?:|mailto:)/i.test(href)) {
-        out += '<a href="' + escapeAttr(href) + '" target="_blank" rel="noopener noreferrer">' + serializeClean(node) + '</a>';
-      } else {
-        out += serializeClean(node); // drop unsafe link, keep its text
-      }
+    if (tag === 'BR') { brk(); return; }
+    if (BLOCK_TAGS[tag]) {
+      if (lines[lines.length - 1] !== '') brk();          // block starts a fresh line
+      const sub = serializeLines(node);
+      if (sub.length > 1 && sub[sub.length - 1] === '') sub.pop();  // drop filler-<br> line
+      append(sub[0]);
+      for (let i = 1; i < sub.length; i++) lines.push(sub[i]);
+      brk();                                              // next sibling on a new line
       return;
     }
-    if (tag === 'B' || tag === 'STRONG') { out += '<strong>' + serializeClean(node) + '</strong>'; return; }
-    if (tag === 'I' || tag === 'EM')     { out += '<em>' + serializeClean(node) + '</em>'; return; }
-    if (tag === 'U')                     { out += '<u>' + serializeClean(node) + '</u>'; return; }
-    if (tag === 'DIV' || tag === 'P')    { out += serializeClean(node) + '<br>'; return; } // block → line break
-    out += serializeClean(node); // unknown tag: keep contents only
+    append(serializeInlineTag(node));                     // strong/em/u/a → inline HTML
+  });
+  return lines;
+}
+
+// Inline (non-block) element → cleaned inline HTML, keeping <br> literal.
+function serializeInlineTag(node) {
+  const tag = node.tagName;
+  if (tag === 'BR') return '<br>';
+  if (tag === 'A') {
+    const href = node.getAttribute('href') || '';
+    if (/^(https?:|mailto:)/i.test(href)) {
+      return '<a href="' + escapeAttr(href) + '" target="_blank" rel="noopener noreferrer">' + serializeInlineChildren(node) + '</a>';
+    }
+    return serializeInlineChildren(node);   // drop unsafe link, keep its text
+  }
+  if (tag === 'B' || tag === 'STRONG') return '<strong>' + serializeInlineChildren(node) + '</strong>';
+  if (tag === 'I' || tag === 'EM')     return '<em>' + serializeInlineChildren(node) + '</em>';
+  if (tag === 'U')                     return '<u>' + serializeInlineChildren(node) + '</u>';
+  // A block that turned up in inline context (e.g. a pasted <div> inside <strong>):
+  // keep its content, mark the break so nothing merges onto one line.
+  if (BLOCK_TAGS[tag]) return serializeInlineChildren(node) + '<br>';
+  return serializeInlineChildren(node);     // unknown tag: keep contents only
+}
+
+function serializeInlineChildren(node) {
+  let out = '';
+  node.childNodes.forEach(ch => {
+    if (ch.nodeType === 3) { out += escapeHtml(ch.nodeValue); return; }
+    if (ch.nodeType === 1) out += serializeInlineTag(ch);
   });
   return out;
 }
