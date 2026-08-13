@@ -4476,7 +4476,9 @@ async function saveFromModal() {
   if (modalClasses.length === 0) { showToast('Velg minst én klasse.'); return; }
 
   const subject = document.getElementById('subjectSelect').value;
-  if (modalType !== 'vurdering' && SUBJECT_TYPES.includes(modalType) && !subject) {
+  // Subject required for the subject cell-types AND for vurderinger (a vurdering
+  // without a fag can't be placed in the right subject row / progression).
+  if (!subject && (modalType === 'vurdering' || SUBJECT_TYPES.includes(modalType))) {
     showToast('Velg fag.'); return;
   }
 
