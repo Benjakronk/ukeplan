@@ -1074,7 +1074,7 @@ function buildLekseDeck() {
   if (!todo.length) {
     const clear = document.createElement('div');
     clear.className = 'dash-deck-allclear' + (freshComplete ? ' dash-deck-anim' : '');
-    clear.innerHTML = '<span class="dash-deck-check">✓</span> Alt gjort denne uka!';
+    clear.innerHTML = '<span class="dash-deck-check">✓</span> Du har ingen flere lekser denne uka!';
     wrap.appendChild(clear);
   } else {
     if (dashLekseIdx >= todo.length) dashLekseIdx = todo.length - 1;
@@ -1095,7 +1095,7 @@ function buildDeckHead(doneN, total) {
   const txt = document.createElement('div'); txt.className = 'dash-deck-headtext';
   const left = total - doneN;
   const big = document.createElement('div'); big.className = 'dash-deck-left';
-  big.textContent = left === 0 ? 'Alt gjort!' : (left + (left === 1 ? ' lekse igjen' : ' lekser igjen'));
+  big.textContent = left === 0 ? 'Du er ferdig!' : (left + (left === 1 ? ' lekse igjen' : ' lekser igjen'));
   const sub = document.createElement('div'); sub.className = 'dash-deck-sub';
   // Honest progress line; the ring itself runs one step ahead (endowed progress).
   sub.textContent = doneN === 0 ? 'Kom i gang!' : (doneN + ' av ' + total + ' gjort');
