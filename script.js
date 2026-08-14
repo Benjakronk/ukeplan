@@ -133,10 +133,15 @@ function applyVariantMerge(raw) {
   const SUBJ = ['læringsmål', 'ressurs', 'lekse'];
   const out = [];
   raw.forEach(el => {
-    const wantClass = (SUBJ.includes(el.type) && el.subject && !variantAdaptedSubjects.includes(el.subject)) ? base
-                    : (SUBJ.includes(el.type) && el.subject) ? code
-                    : base;   // general/beskjeder inherit the class
-    if (classMatches(el.classes, wantClass)) out.push(Object.assign({}, el, { classes: code }));
+    let keep;
+    if (SUBJ.includes(el.type) && el.subject) {
+      // Subject cells: adapted subject → the pupil's own content; else the class's.
+      keep = classMatches(el.classes, variantAdaptedSubjects.includes(el.subject) ? code : base);
+    } else {
+      // General/beskjeder inherit the class AND surface any made for this plan.
+      keep = classMatches(el.classes, base) || classMatches(el.classes, code);
+    }
+    if (keep) out.push(Object.assign({}, el, { classes: code }));
   });
   return out;
 }
