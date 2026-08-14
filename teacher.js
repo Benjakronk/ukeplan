@@ -3063,6 +3063,9 @@ function setupDashboardListeners() {
   document.getElementById('profileDone').addEventListener('click', () => closeProfileModal());
   document.getElementById('profileSaveBtn').addEventListener('click', saveProfileNow);
   document.getElementById('logoutBtn2').addEventListener('click', async () => { if (await closeProfileModal()) handleLogout(); });
+  // Klassekart is its own page (own CSS + full-screen board), sharing this
+  // session cookie. It gates itself on ?action=me and sends you back here.
+  document.getElementById('klassekartBtn').addEventListener('click', () => { location.href = 'klassekart.html'; });
   document.getElementById('adminPanelBtn').addEventListener('click', openAdminModal);
   document.getElementById('adminClose').addEventListener('click', closeAdminModal);
   document.getElementById('adminOverlay').addEventListener('click', closeAdminModal);

@@ -1,18 +1,26 @@
 'use strict';
 
-const CACHE = 'ukeplan-shell-v137';
+const CACHE = 'ukeplan-shell-v138';
 const ASSETS = [
   './',
   'index.html',
   'teacher.html',
+  'klassekart.html',
   'rich.js',
   'docx.js',
   'script.js',
   'teacher.js',
+  'klassekart.js',
   'styles.css',
   'teacher.css',
+  'klassekart.css',
+  'vendor/jspdf.umd.min.js',
   'manifest.json',
-  'icon.svg'
+  'manifest-teacher.json',
+  'icon.svg',
+  'icon-192.png',
+  'icon-512.png',
+  'apple-touch-icon.png'
 ];
 
 self.addEventListener('install', e => {

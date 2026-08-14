@@ -16,10 +16,38 @@
   </script>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="teacher.css">
-  <link rel="manifest" href="manifest.json">
-  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <!-- Own manifest so a teacher who installs the app lands on the teacher page -->
+  <link rel="manifest" href="manifest-teacher.json">
+  <meta name="description" content="Lærerside for Ukeportalen – rediger ukeplaner ved Runni ungdomsskole.">
   <meta name="theme-color" content="#eef2f0" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0f1514" media="(prefers-color-scheme: dark)">
+
+  <!-- Icons: SVG for modern browsers, PNG fallbacks, PNG touch icon for iOS -->
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+
+  <!-- Install to home screen (iOS) -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Ukeportalen lærer">
+
+  <!-- Open Graph / link previews -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Ukeportalen">
+  <meta property="og:title" content="Ukeportalen for lærere – Runni ungdomsskole">
+  <meta property="og:description" content="Lærerside for Ukeportalen – rediger ukeplaner ved Runni ungdomsskole.">
+  <meta property="og:url" content="https://ukeportalen.no/teacher.html">
+  <meta property="og:image" content="https://ukeportalen.no/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Ukeportalen – Runni ungdomsskole">
+  <meta property="og:locale" content="nb_NO">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Ukeportalen for lærere – Runni ungdomsskole">
+  <meta name="twitter:description" content="Lærerside for Ukeportalen – rediger ukeplaner ved Runni ungdomsskole.">
+  <meta name="twitter:image" content="https://ukeportalen.no/og-image.png">
 </head>
 <body>
 
@@ -74,6 +102,10 @@
           <button id="myEntriesBtn" class="admin-header-btn" type="button" title="Mine registreringer">
             <span class="admin-header-btn-icon" aria-hidden="true">&#128194;</span>
             <span class="admin-header-btn-label">Mine</span>
+          </button>
+          <button id="klassekartBtn" class="admin-header-btn" type="button" title="Klassekart">
+            <span class="admin-header-btn-icon" aria-hidden="true">&#129681;</span>
+            <span class="admin-header-btn-label">Klassekart</span>
           </button>
           <button id="adminPanelBtn" class="admin-header-btn" type="button" title="Adminpanel" hidden>
             <span class="admin-header-btn-icon" aria-hidden="true">&#128736;</span>

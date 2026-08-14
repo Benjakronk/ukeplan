@@ -1,0 +1,448 @@
+<!-- Klassekart 2.0 — Copyright Benjamin Ensrud, 2026 -->
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Klassekart | Ukeportalen</title>
+    <script>
+        // Same pre-paint theme apply as teacher.html – avoids a light flash before
+        // klassekart.css picks up the tokens. "auto" leaves data-theme off.
+        (function () {
+            try {
+                var t = localStorage.getItem('up_theme');
+                if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+            } catch (e) {}
+        })();
+    </script>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="klassekart.css">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/svg+xml" href="icon.svg">
+    <meta name="theme-color" content="#eef2f0" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#0f1514" media="(prefers-color-scheme: dark)">
+    <script src="vendor/jspdf.umd.min.js"></script>
+</head>
+<body class="kk-booting">
+
+<!-- Session check overlay. Shown until ?action=me confirms a session; on failure
+     we redirect to teacher.html, so the app screens never flash for a logged-out
+     visitor. Markup mirrors teacher.html's #overlay; `kk-booting` on <body>
+     hides the screens behind it (the overlay is only a scrim). -->
+<div id="kkOverlay" class="overlay active" role="status" aria-live="polite">
+    <div class="overlay-inner">
+        <div class="spinner"></div>
+        <p class="overlay-text">Laster...</p>
+    </div>
+</div>
+
+<!-- ============ SETUP SCREEN ============ -->
+<section id="setup" class="screen">
+    <div class="setup-card">
+        <div class="setup-brand">
+            <div class="setup-logo">🪑</div>
+            <h1>Klassekart</h1>
+            <p class="setup-tagline">Lim inn navn, velg et oppsett, og få et ferdig kart på sekunder.</p>
+        </div>
+
+        <!-- What the chart is for. A klasse picks a code from the school config;
+             a faggruppe (valgfag, K&H) is free text – Ukeportalen has no
+             faggruppe register, and by design holds no pupil rosters at all. -->
+        <div class="setup-group">
+            <label>Hva lager du kart for?</label>
+            <div class="kind-list" id="setupKindList">
+                <button class="kind is-active" data-kind="klasse" type="button">🏫 Klasse</button>
+                <button class="kind" data-kind="fag" type="button">🎨 Fag / valgfag</button>
+            </div>
+
+            <div class="setup-field" id="setupClassField">
+                <label for="setupClassSelect">Klasse</label>
+                <select id="setupClassSelect"><option value="">Velg klasse…</option></select>
+            </div>
+
+            <div class="setup-field hidden" id="setupLabelField">
+                <label for="setupGroupLabel">Navn på gruppa</label>
+                <input type="text" id="setupGroupLabel" placeholder="f.eks. Valgfag programmering" autocomplete="off">
+            </div>
+        </div>
+
+        <div class="setup-grid">
+            <div class="setup-names">
+                <label for="setupNames">Elevliste <span class="hint">– ett navn per linje</span></label>
+                <div class="setup-names-actions">
+                    <button class="btn btn-sm" id="setupCsvBtn" type="button">📄 Hent fra CSV</button>
+                    <span class="hint">– eksport fra Vigilo (klasse eller faggruppe)</span>
+                </div>
+                <textarea id="setupNames" placeholder="Anna Berg&#10;Bjørn Dahl&#10;Cecilie Eng&#10;David Fjeld&#10;..."></textarea>
+                <div class="setup-count"><span id="setupCount">0</span> elever</div>
+            </div>
+
+            <div class="setup-room">
+                <label>Romoppsett</label>
+                <div class="preset-list" id="presetList">
+                    <button class="preset" data-preset="rows" type="button">
+                        <span class="preset-vis vis-rows"></span>
+                        <span class="preset-name">Rekker</span>
+                    </button>
+                    <button class="preset is-active" data-preset="pairs" type="button">
+                        <span class="preset-vis vis-pairs"></span>
+                        <span class="preset-name">Par</span>
+                    </button>
+                    <button class="preset" data-preset="pods" type="button">
+                        <span class="preset-vis vis-pods"></span>
+                        <span class="preset-name">Grupper (4)</span>
+                    </button>
+                    <button class="preset" data-preset="u" type="button">
+                        <span class="preset-vis vis-u"></span>
+                        <span class="preset-name">Hestesko</span>
+                    </button>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="setup-actions">
+            <button id="setupGoBtn" class="btn btn-primary btn-lg" type="button">Lag klassekart →</button>
+        </div>
+
+        <!-- localStorage does not cross origins, so anyone moving over from the
+             standalone app arrives here with nothing. Their backup is the bridge. -->
+        <p class="setup-restore">
+            Har du brukt Klassekart før?
+            <button class="link-btn" id="setupImportBtn" type="button">Importer sikkerhetskopi</button>
+        </p>
+    </div>
+    <footer class="setup-footer">© Benjamin Ensrud, 2026</footer>
+</section>
+
+<!-- ============ APP SCREEN ============ -->
+<section id="app" class="screen hidden">
+    <header class="topbar">
+        <button class="icon-btn" id="backBtn" title="Tilbake til start" type="button">‹</button>
+        <div class="menu-anchor">
+            <button class="class-title" id="classMenuBtn" title="Bytt klasse" type="button">Klasse <span class="caret">▾</span></button>
+            <div class="dropdown" id="classDropdown"></div>
+        </div>
+        <button class="icon-btn" id="undoBtn" title="Angre (Ctrl+Z)" type="button" disabled>↩</button>
+        <button class="icon-btn" id="redoBtn" title="Gjenta (Ctrl+Y)" type="button" disabled>↪</button>
+        <div class="topbar-spacer"></div>
+        <button class="btn btn-primary" id="smartBtn" type="button"><span class="btn-ico">✨</span><span class="btn-txt"> Smart plassering</span></button>
+        <button class="btn" id="shuffleBtn" type="button"><span class="btn-ico">🎲</span><span class="btn-txt"> Bland</span></button>
+        <button class="btn" id="rulesBtn" type="button"><span class="btn-ico">📐</span><span class="btn-txt"> Regler</span></button>
+        <button class="btn" id="studentsBtn" type="button"><span class="btn-ico">👥</span><span class="btn-txt"> Elever</span></button>
+        <button class="btn" id="presentBtn" type="button"><span class="btn-ico">▶</span><span class="btn-txt"> Vis</span></button>
+        <div class="menu-anchor">
+            <button class="icon-btn" id="menuBtn" title="Mer" type="button">⋯</button>
+            <div class="dropdown dropdown-right" id="mainMenu"></div>
+        </div>
+    </header>
+
+    <main class="workspace">
+        <aside class="pool" id="pool">
+            <div class="pool-head">
+                <span>Ikke plassert</span>
+                <span class="pool-count" id="poolCount">0</span>
+            </div>
+            <div class="pool-list" id="poolList"></div>
+            <div class="pool-empty" id="poolEmpty">Alle elever er plassert 🎉</div>
+        </aside>
+
+        <section class="stage" id="stage">
+            <div class="board-front" id="boardFront">Tavle / front</div>
+            <div class="board-wrap" id="boardWrap">
+                <div class="board" id="board"></div>
+            </div>
+        </section>
+    </main>
+
+    <!-- floating action bar for the selected student -->
+    <div class="sel-bar hidden" id="selBar">
+        <span class="sel-name" id="selName"></span>
+        <button class="sel-act" id="selLockBtn" type="button">🔒 Lås plass</button>
+        <button class="sel-act" id="selPoolBtn" type="button">↩ Til listen</button>
+    </div>
+
+    <!-- zoom control -->
+    <div class="zoom-ctrl" id="zoomCtrl">
+        <button class="zoom-btn" id="zoomOut" title="Zoom ut" type="button">−</button>
+        <button class="zoom-label" id="zoomLabel" title="Tilpass til vinduet" type="button">100%</button>
+        <button class="zoom-btn" id="zoomIn" title="Zoom inn" type="button">+</button>
+    </div>
+
+    <!-- desk-edit toolbar -->
+    <div class="edit-bar hidden" id="editBar">
+        <span class="edit-hint"><strong>Rediger pulter</strong> · dra inntil hverandre = par · trykk tomt felt for ny · ✕ fjerner · klikk stolen for å snu den · <kbd>Alt</kbd> = fri plassering</span>
+        <button class="btn" id="editAlignBtn" type="button" title="Rett alle pulter til rutenettet">▦ Rett opp</button>
+        <button class="btn" id="editSaveTplBtn" type="button">💾 Lagre oppsett</button>
+        <button class="btn btn-primary" id="editDoneBtn" type="button">✓ Ferdig</button>
+    </div>
+
+    <!-- present-mode toolbar -->
+    <div class="present-bar hidden" id="presentBar">
+        <button class="btn" id="pShuffle" type="button"><span class="btn-ico">🎲</span> Bland</button>
+        <button class="btn btn-primary" id="pSmart" type="button"><span class="btn-ico">✨</span> Smart</button>
+        <button class="btn" id="pExit" type="button"><span class="btn-ico">✕</span> Lukk</button>
+    </div>
+</section>
+
+<!-- ============ RULES MODAL ============ -->
+<div class="modal-overlay" id="rulesModal">
+    <div class="modal modal-wide">
+        <div class="modal-head">
+            <h2>Regler for smart plassering</h2>
+            <button class="modal-x" data-close="rulesModal" type="button">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="rules-globals">
+                <label class="check"><input type="checkbox" id="prefBalanceGender"> Bland kjønn (vekslende gutt/jente)</label>
+                <label class="check"><input type="checkbox" id="prefAvoidRepeat"> Unngå naboer fra forrige lagrede kart</label>
+                <label class="check"><input type="checkbox" id="prefAvoidAll"> Unngå alle tidligere naboer (hele historikken)</label>
+                <label class="check"><input type="checkbox" id="prefBalanceTags"> Spre merkelapper (blandede grupper)</label>
+            </div>
+
+            <h3 class="sub">Regler mellom elever</h3>
+            <div class="rules-list" id="rulesList"></div>
+
+            <div class="rule-add">
+                <select id="ruleStrength" title="Hvor strengt">
+                    <option value="must">Må</option>
+                    <option value="should">Bør</option>
+                </select>
+                <select id="ruleType">
+                    <option value="apart">🚫 ikke ved siden av</option>
+                    <option value="together">🤝 ved siden av</option>
+                </select>
+                <select id="ruleA"></select>
+                <button class="btn btn-primary" id="ruleAddBtn" type="button">Legg til</button>
+                <button class="btn hidden" id="ruleCancelBtn" type="button">Avbryt</button>
+                <div id="ruleMembers" class="rule-members"></div>
+            </div>
+            <p class="modal-hint" id="ruleAnyHint" style="margin-top:10px;"></p>
+            <p class="modal-hint" style="margin-top:14px;"><strong>Må</strong> = hard regel · <strong>Bør</strong> = mykt ønske. «Foran/bak» settes per elev i <strong>Elever</strong>-listen.</p>
+        </div>
+        <div class="modal-foot">
+            <button class="btn" data-close="rulesModal" type="button">Lukk</button>
+            <button class="btn btn-primary" id="rulesRunBtn" type="button">✨ Kjør smart plassering</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============ STUDENTS (ROSTER) MODAL ============ -->
+<div class="modal-overlay" id="studentsModal">
+    <div class="modal modal-wide">
+        <div class="modal-head">
+            <h2>Elever</h2>
+            <button class="modal-x" data-close="studentsModal" type="button">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p class="modal-hint">Sett kjønn (for «bland kjønn») og hvem som bør/må sitte foran eller bak.</p>
+            <div class="roster" id="roster"></div>
+            <div class="roster-add">
+                <label for="rosterAdd">Legg til flere <span class="hint">– ett navn per linje</span></label>
+                <textarea id="rosterAdd" rows="3" placeholder="Nytt elevnavn..."></textarea>
+                <button class="btn" id="rosterAddBtn" type="button">Legg til</button>
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn" data-close="studentsModal" type="button">Avbryt</button>
+            <button class="btn btn-primary" id="rosterSaveBtn" type="button">Lagre</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============ STUDENT PREFERENCES MODAL ============ -->
+<div class="modal-overlay" id="studentPrefModal">
+    <div class="modal modal-wide">
+        <div class="modal-head">
+            <h2 id="prefTitle">Preferanser</h2>
+            <button class="modal-x" id="prefCloseX" type="button">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p class="modal-hint">Elevinnspill ført inn av lærer (fra egen kartlegging). Påvirker smart plassering som <strong>myke</strong> ønsker – «Må/Bør»-regler går foran.</p>
+            <div class="pref-sec">
+                <h3 class="sub">🪑 Plassering</h3>
+                <label class="check"><input type="checkbox" id="prefQuiet"> Trenger ro / mye plass (færre naboer)</label>
+                <p class="modal-hint" style="margin-top:6px">«Foran/bak» settes i kolonnen i elevlista.</p>
+            </div>
+            <div class="pref-sec">
+                <h3 class="sub">💚 Trivsel</h3>
+                <div id="prefBelong"></div>
+                <p class="modal-hint" style="margin-top:6px">Elevens egen vurdering (1–5). Brukes i statistikk, ikke i plassering.</p>
+            </div>
+            <div class="pref-sec">
+                <h3 class="sub">🤝 Vil sitte med</h3>
+                <div class="member-picker" id="prefWith"></div>
+            </div>
+            <div class="pref-sec">
+                <h3 class="sub">🚫 Vil helst unngå</h3>
+                <div class="member-picker" id="prefAvoid"></div>
+                <p class="modal-hint" style="margin-top:6px">Sensitivt – vises bare for lærer.</p>
+            </div>
+            <div class="pref-sec">
+                <h3 class="sub">🏷️ Merkelapper</h3>
+                <div class="tag-list" id="prefTags"></div>
+                <div class="tag-add">
+                    <input id="prefTagInput" type="text" placeholder="f.eks. språkstøtte">
+                    <button class="btn" id="prefTagAddBtn" type="button">Legg til</button>
+                </div>
+                <p class="modal-hint" style="margin-top:6px">Brukes til blandede grupper – slå på «Spre merkelapper» i Regler.</p>
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn btn-primary" id="prefDoneBtn" type="button">Ferdig</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============ ROOM MODAL ============ -->
+<div class="modal-overlay" id="roomModal">
+    <div class="modal">
+        <div class="modal-head">
+            <h2>Romoppsett</h2>
+            <button class="modal-x" data-close="roomModal" type="button">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p class="modal-hint">Velg en form. La feltene under stå tomme for automatisk antall pulter, eller fyll dem inn for å bestemme oppsettet selv.</p>
+            <div class="preset-list" id="roomPresetList">
+                <button class="preset" data-preset="rows" type="button"><span class="preset-vis vis-rows"></span><span class="preset-name">Rekker</span></button>
+                <button class="preset" data-preset="pairs" type="button"><span class="preset-vis vis-pairs"></span><span class="preset-name">Par</span></button>
+                <button class="preset" data-preset="pods" type="button"><span class="preset-vis vis-pods"></span><span class="preset-name">Grupper (4)</span></button>
+                <button class="preset" data-preset="u" type="button"><span class="preset-vis vis-u"></span><span class="preset-name">Hestesko</span></button>
+            </div>
+
+            <div class="room-config" id="roomConfig">
+                <div class="rc-field">
+                    <label for="roomRows">Antall rader</label>
+                    <input type="number" id="roomRows" min="1" max="20" placeholder="auto" inputmode="numeric">
+                </div>
+                <div class="rc-field">
+                    <label for="roomPerRow" id="roomPerRowLabel">Pulter per rad</label>
+                    <input type="number" id="roomPerRow" min="1" max="20" placeholder="auto" inputmode="numeric">
+                </div>
+                <div class="rc-field">
+                    <label for="roomGapY">Radavstand</label>
+                    <input type="number" id="roomGapY" min="0" max="200" placeholder="58" inputmode="numeric">
+                </div>
+                <div class="rc-field">
+                    <label for="roomGapX">Pultavstand</label>
+                    <input type="number" id="roomGapX" min="0" max="200" placeholder="46" inputmode="numeric">
+                </div>
+            </div>
+            <p class="room-uhint hidden" id="roomUHint">Hestesko-formen beregnes automatisk ut fra antall elever.</p>
+
+            <div class="room-extra">
+                <label class="check"><input type="checkbox" id="roomKeepSeats"> Behold nåværende plasseringer hvis mulig</label>
+            </div>
+
+            <div class="room-templates">
+                <div class="rt-head">
+                    <h3 class="sub" style="margin:0;">Lagrede oppsett</h3>
+                    <button class="btn" id="roomSaveTplBtn" type="button">💾 Lagre nåværende</button>
+                </div>
+                <div class="rt-list" id="roomTplList"></div>
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn" id="roomEditBtn" type="button">✏️ Rediger på kartet</button>
+            <div class="topbar-spacer"></div>
+            <button class="btn" data-close="roomModal" type="button">Avbryt</button>
+            <button class="btn btn-primary" id="roomApplyBtn" type="button">Bruk oppsett</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============ HISTORY MODAL ============ -->
+<div class="modal-overlay" id="historyModal">
+    <div class="modal">
+        <div class="modal-head">
+            <h2>Historikk</h2>
+            <button class="modal-x" data-close="historyModal" type="button">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p class="modal-hint">Lagre kart du vil ta vare på. «Unngå naboer» bruker det sist lagrede.</p>
+            <button class="btn btn-primary" id="historySaveBtn" type="button">💾 Lagre nåværende kart</button>
+            <div class="history-list" id="historyList"></div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn" data-close="historyModal" type="button">Lukk</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============ STATISTICS MODAL ============ -->
+<div class="modal-overlay" id="statsModal">
+    <div class="modal modal-stats">
+        <div class="modal-head">
+            <h2>Statistikk</h2>
+            <button class="modal-x" data-close="statsModal" type="button">&times;</button>
+        </div>
+        <div class="stats-tabs" id="statsTabs">
+            <button class="stats-tab is-active" data-tab="overview" type="button">Oversikt</button>
+            <button class="stats-tab" data-tab="patterns" type="button">Mønstre</button>
+            <button class="stats-tab" data-tab="aims" type="button">Mål &amp; råd</button>
+        </div>
+        <div class="modal-body stats-body">
+            <div class="stats-pane is-active" id="statsOverview"></div>
+            <div class="stats-pane hidden" id="statsPatterns"></div>
+            <div class="stats-pane hidden" id="statsAims"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ============ RELATIONSHIP-MAP MODAL (gated, encrypted) ============ -->
+<div class="modal-overlay" id="relModal">
+    <div class="modal modal-wide">
+        <div class="modal-head">
+            <h2>🔐 Relasjonskart</h2>
+            <button class="modal-x" data-close="relModal" type="button">&times;</button>
+        </div>
+        <div class="modal-body" id="relBody"></div>
+    </div>
+</div>
+
+<!-- ============ RESULTS MODAL ============ -->
+<div class="modal-overlay" id="resultsModal">
+    <div class="modal">
+        <div class="modal-head">
+            <h2>Smart plassering</h2>
+            <button class="modal-x" data-close="resultsModal" type="button">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="results-body" id="resultsBody"></div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn" id="resultsRerunBtn" type="button">🔁 Prøv igjen</button>
+            <button class="btn btn-primary" data-close="resultsModal" type="button">Bra!</button>
+        </div>
+    </div>
+</div>
+
+<!-- CSV column mapping. Only shown when the file has more than one column –
+     a names-only export imports straight through. Everything not mapped is
+     dropped at parse time and never stored. -->
+<div class="modal-overlay" id="csvModal">
+    <div class="modal">
+        <div class="modal-head">
+            <h2>Hvilken kolonne er navnet?</h2>
+            <button class="modal-x" data-close="csvModal" type="button">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p class="modal-hint">Fila har flere kolonner. Velg hvilken som er elevnavnet.
+                <strong>Resten forkastes</strong> og lagres aldri i Klassekart.</p>
+            <div class="csv-map" id="csvMap"></div>
+            <p class="modal-hint" id="csvSummary"></p>
+        </div>
+        <div class="modal-foot">
+            <button class="btn" data-close="csvModal" type="button">Avbryt</button>
+            <button class="btn btn-primary" id="csvConfirmBtn" type="button">Hent navnene</button>
+        </div>
+    </div>
+</div>
+
+<input type="file" id="importFile" accept="application/json" hidden>
+<input type="file" id="csvFile" accept=".csv,.txt,text/csv,text/plain" hidden>
+<div id="toast" class="toast"></div>
+
+<script src="klassekart.js"></script>
+</body>
+</html>
