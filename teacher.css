@@ -483,7 +483,7 @@
 /* ── Admin panel (teacher accounts) ────────────────────────────── */
 /* Fixed-height panel (a big chunk of the screen) so switching tabs / content
    scrolls inside a pane instead of resizing the modal. */
-.admin-modal { width: 760px; height: 82vh; display: flex; flex-direction: column; }
+.admin-modal { width: min(960px, 96vw); height: 86vh; display: flex; flex-direction: column; }
 /* Each pane is a flex column filling the remaining height; only the list/body
    inside scrolls (search rows, warnings and actions stay pinned). */
 .admin-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -503,6 +503,24 @@
 .admin-search { flex: 1; }
 .admin-count { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
 .admin-list { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; overflow-y: auto; margin-top: 4px; padding-right: 4px; }
+
+/* Signed-content rows (admin «Innhold» + «Mine registreringer») – read-only. */
+.signed-row {
+  display: flex; flex-direction: column; gap: 5px;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-btn); background: var(--surface);
+}
+.signed-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.signed-kind {
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+  padding: 2px 7px; border-radius: 999px; background: var(--surface-2); color: var(--text-muted);
+}
+.signed-kind-vurdering { background: var(--vurd-soft); color: var(--vurd); }
+.signed-kind-hendelse  { background: var(--event-bg); color: var(--event); }
+.signed-meta { font-size: 12px; color: var(--text-muted); }
+.signed-classes { font-weight: 700; }
+.signed-desc { font-size: 14px; color: var(--text); overflow-wrap: anywhere; }
+.signed-desc-empty { color: var(--text-muted); font-style: italic; }
+.signed-sig { font-size: 12px; color: var(--text-muted); font-family: var(--font-mono); }
 .admin-row {
   display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
   padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-btn); background: var(--surface);

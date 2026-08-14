@@ -1093,6 +1093,139 @@ function syncLandingSeg() {
 let adminTeachers = [];   // last-fetched full teacher list (for client-side search)
 let adminVariants = [];   // last-fetched all-school adapted plans
 let adminTab = 'teachers';
+// ── Signed content (authorship signature) ────────────────────────────────────
+// Every plan element / vurdering / hendelse carries a server-stamped created_by
+// username + an edited_by list. `signed_content` returns them (admins: scope=all,
+// anyone: scope=mine = their own). Read-only; never shown on the student page.
+let signedAll = null;    // admin «Innhold» tab cache
+let signedMine = null;   // «Mine registreringer» cache
+
+async function fetchSignedContent(scope) {
+  const res = await fetch(`${SCRIPT_URL}?action=signed_content&scope=${scope}`, { credentials: 'include' });
+  const data = await res.json();
+  if (data && data.error) throw new Error(data.error);
+  const out = [];
+  (data.elements    || []).forEach(e => out.push(Object.assign({ kind: 'element' }, e)));
+  (data.vurderinger || []).forEach(v => out.push(Object.assign({ kind: 'vurdering' }, v)));
+  (data.hendelser   || []).forEach(h => out.push(Object.assign({ kind: 'hendelse' }, h)));
+  return out;
+}
+
+function signedKindLabel(e) {
+  if (e.kind === 'vurdering') return 'Vurdering';
+  if (e.kind === 'hendelse')  return 'Hendelse';
+  return TYPE_LABEL[e.type] || e.type || 'Element';
+}
+function signedText(e) {
+  return e.kind === 'element' ? richToText(e.description || '') : (e.description || '');
+}
+function signedWhen(e) {
+  if (e.kind === 'element') {
+    const a = weekNumOf(e.week), b = e.weekTo ? weekNumOf(e.weekTo) : a;
+    return a ? 'uke ' + (b && b !== a ? a + '–' + b : a) : '';
+  }
+  return (e.date || '') + (e.dateTo ? '–' + e.dateTo : '');
+}
+function signedCreator(e) {
+  if (e.createdBy) return '@' + e.createdBy;
+  return e.teacher ? e.teacher + ' (usignert)' : '– (usignert)';
+}
+
+function buildSignedRow(e) {
+  const row = document.createElement('div');
+  row.className = 'signed-row';
+
+  const head = document.createElement('div');
+  head.className = 'signed-head';
+  const kind = document.createElement('span');
+  kind.className = 'signed-kind signed-kind-' + e.kind;
+  kind.textContent = signedKindLabel(e);
+  head.appendChild(kind);
+  if (e.subject) { const s = document.createElement('span'); s.className = 'signed-meta'; s.textContent = e.subject; head.appendChild(s); }
+  if (e.classes) { const c = document.createElement('span'); c.className = 'signed-meta signed-classes'; c.textContent = e.classes; head.appendChild(c); }
+  const when = signedWhen(e);
+  if (when) { const w = document.createElement('span'); w.className = 'signed-meta'; w.textContent = when; head.appendChild(w); }
+  row.appendChild(head);
+
+  const desc = document.createElement('div');
+  desc.className = 'signed-desc';
+  const txt = signedText(e).replace(/\s+/g, ' ').trim();
+  desc.textContent = txt ? (txt.length > 200 ? txt.slice(0, 200) + '…' : txt) : '(uten tekst)';
+  if (!txt) desc.classList.add('signed-desc-empty');
+  row.appendChild(desc);
+
+  const sig = document.createElement('div');
+  sig.className = 'signed-sig';
+  let s = 'Opprettet av ' + signedCreator(e);
+  if (e.editedBy && e.editedBy.length) s += ' · Endret av ' + e.editedBy.map(u => '@' + u).join(', ');
+  sig.textContent = s;
+  row.appendChild(sig);
+  return row;
+}
+
+// Shared filter+render. Matches free text across text/subject/classes/usernames;
+// a leading @ is stripped so "@ola" and "ola" both match usernames.
+function renderSignedList(listEl, countEl, entries, query) {
+  const raw = (query || '').trim().toLowerCase();
+  const q = raw.startsWith('@') ? raw.slice(1) : raw;
+  const filtered = !q ? entries : entries.filter(e => [
+    signedText(e), e.subject, e.classes, e.createdBy, (e.editedBy || []).join(' '), e.teacher, signedKindLabel(e),
+  ].join(' ').toLowerCase().includes(q));
+  listEl.innerHTML = '';
+  if (!entries.length) { listEl.innerHTML = '<p class="muted">Ingen registreringer ennå.</p>'; if (countEl) countEl.textContent = ''; return; }
+  if (!filtered.length) { listEl.innerHTML = '<p class="muted">Ingen treff.</p>'; if (countEl) countEl.textContent = ''; return; }
+  filtered.forEach(e => listEl.appendChild(buildSignedRow(e)));
+  if (countEl) countEl.textContent = filtered.length + (filtered.length === 1 ? ' oppføring' : ' oppføringer');
+}
+
+async function loadAdminContent() {
+  const list = document.getElementById('adminContentList');
+  list.innerHTML = '<p class="muted">Laster…</p>';
+  try {
+    signedAll = await fetchSignedContent('all');
+    renderAdminContent();
+  } catch (err) {
+    signedAll = [];
+    list.innerHTML = '';
+    const p = document.createElement('p'); p.className = 'login-error'; p.textContent = translateError(err.message);
+    list.appendChild(p);
+  }
+}
+function renderAdminContent() {
+  renderSignedList(document.getElementById('adminContentList'), document.getElementById('adminContentCount'),
+    signedAll || [], document.getElementById('adminContentSearch')?.value);
+}
+
+function openMyEntries() {
+  document.getElementById('myEntriesOverlay').classList.add('open');
+  document.getElementById('myEntriesModal').classList.add('open');
+  document.body.classList.add('scroll-locked');
+  const s = document.getElementById('myEntriesSearch'); if (s) s.value = '';
+  loadMyEntries();
+}
+function closeMyEntries() {
+  document.getElementById('myEntriesOverlay').classList.remove('open');
+  document.getElementById('myEntriesModal').classList.remove('open');
+  if (!document.querySelector('.ui-dialog, .class-modal.open')) document.body.classList.remove('scroll-locked');
+}
+async function loadMyEntries() {
+  const list = document.getElementById('myEntriesList');
+  list.innerHTML = '<p class="muted">Laster…</p>';
+  try {
+    signedMine = await fetchSignedContent('mine');
+    renderMyEntries();
+  } catch (err) {
+    signedMine = [];
+    list.innerHTML = '';
+    const p = document.createElement('p'); p.className = 'login-error'; p.textContent = translateError(err.message);
+    list.appendChild(p);
+  }
+}
+function renderMyEntries() {
+  renderSignedList(document.getElementById('myEntriesList'), document.getElementById('myEntriesCount'),
+    signedMine || [], document.getElementById('myEntriesSearch')?.value);
+}
+
 function openAdminModal() {
   document.getElementById('adminOverlay').classList.add('open');
   document.getElementById('adminModal').classList.add('open');
@@ -1101,6 +1234,8 @@ function openAdminModal() {
   if (search) search.value = '';
   const vsearch = document.getElementById('adminVariantSearch');
   if (vsearch) vsearch.value = '';
+  const csearch = document.getElementById('adminContentSearch');
+  if (csearch) csearch.value = '';
   document.getElementById('adminTabConfig').hidden = !isSuperadmin;   // school config = super-admin only
   setAdminTab('teachers');
 }
@@ -1112,7 +1247,7 @@ function closeAdminModal() {
 function setAdminTab(tab) {
   if (tab === 'config' && !isSuperadmin) tab = 'teachers';
   adminTab = tab;
-  [['teachers', 'adminTabTeachers', 'adminPaneTeachers'], ['variants', 'adminTabVariants', 'adminPaneVariants'], ['config', 'adminTabConfig', 'adminPaneConfig']]
+  [['teachers', 'adminTabTeachers', 'adminPaneTeachers'], ['variants', 'adminTabVariants', 'adminPaneVariants'], ['content', 'adminTabContent', 'adminPaneContent'], ['config', 'adminTabConfig', 'adminPaneConfig']]
     .forEach(([t, btnId, paneId]) => {
       const btn = document.getElementById(btnId);
       btn.classList.toggle('active', t === tab);
@@ -1121,6 +1256,7 @@ function setAdminTab(tab) {
     });
   if (tab === 'teachers') loadAdminTeachers();
   else if (tab === 'variants') loadAdminVariants();
+  else if (tab === 'content') loadAdminContent();
   else if (tab === 'config') renderAdminConfig(true);
 }
 async function loadAdminTeachers() {
@@ -2687,7 +2823,13 @@ function setupDashboardListeners() {
   document.getElementById('adminSearch').addEventListener('input', renderAdminTeachers);
   document.getElementById('adminTabTeachers').addEventListener('click', () => setAdminTab('teachers'));
   document.getElementById('adminTabVariants').addEventListener('click', () => setAdminTab('variants'));
+  document.getElementById('adminTabContent').addEventListener('click', () => setAdminTab('content'));
   document.getElementById('adminTabConfig').addEventListener('click', () => setAdminTab('config'));
+  document.getElementById('adminContentSearch').addEventListener('input', renderAdminContent);
+  document.getElementById('myEntriesBtn').addEventListener('click', openMyEntries);
+  document.getElementById('myEntriesClose').addEventListener('click', closeMyEntries);
+  document.getElementById('myEntriesOverlay').addEventListener('click', closeMyEntries);
+  document.getElementById('myEntriesSearch').addEventListener('input', renderMyEntries);
   document.getElementById('adminVariantSearch').addEventListener('input', renderAdminVariants);
   document.getElementById('adminConfigSave').addEventListener('click', saveAdminConfig);
   document.getElementById('adminConfigReset').addEventListener('click', () => renderAdminConfig(true));
@@ -3876,6 +4018,7 @@ function setupModalListeners() {
     else if (open('vurdFilterModal')) closeVurdFilterModal();
     else if (open('viewSubjectsModal')) closeViewSubjectsModal();
     else if (open('adminModal')) closeAdminModal();
+    else if (open('myEntriesModal')) closeMyEntries();
     else if (open('profileModal')) closeProfileModal();
     else if (open('classModal')) closeClassModal();
   });
