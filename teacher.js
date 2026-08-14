@@ -1099,6 +1099,7 @@ let adminTab = 'teachers';
 // anyone: scope=mine = their own). Read-only; never shown on the student page.
 let signedAll = null;    // admin «Innhold» tab cache
 let signedMine = null;   // «Mine registreringer» cache
+let reopenMineAfterEdit = false;  // set when an edit was launched from the Mine list
 
 async function fetchSignedContent(scope) {
   const res = await fetch(`${SCRIPT_URL}?action=signed_content&scope=${scope}`, { credentials: 'include' });
@@ -1185,6 +1186,7 @@ function buildSignedRow(e, opts) {
 // Rediger → close the modal and open the matching edit modal for the kind.
 function editSignedEntry(e) {
   if (!e.id) { showToast('Denne kan ikke redigeres herfra.'); return; }
+  reopenMineAfterEdit = true;   // reopen the Mine list when the editor closes
   closeMyEntries();
   if (e.kind === 'vurdering') openVurdEdit(e);
   else if (e.kind === 'hendelse') openHendEdit(e);
@@ -4286,6 +4288,9 @@ function reallyCloseAddModal() {
   document.getElementById('modalOverlay').classList.remove('open');
   document.getElementById('addModal').classList.remove('open');
   document.body.classList.remove('scroll-locked');
+  // If this editor was opened from «Mine registreringer», reopen that list
+  // (openMyEntries re-fetches, so the edit/delete is reflected).
+  if (reopenMineAfterEdit) { reopenMineAfterEdit = false; openMyEntries(); }
 }
 
 // Plan elements support rich text (like the board); vurderinger stay plain.
