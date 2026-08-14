@@ -5370,6 +5370,11 @@ function setTeacherTab(tab) {
     if (oversiktMode === 'prog' && CLASSES.includes(selectedClass)) document.getElementById('oversiktClass').value = selectedClass;
     refreshOversikt();
   }
+  // Ukeplan relies on planData being loaded by the class/variant-selection flow.
+  // On a fresh reload (incl. a restored variant) nothing has loaded it yet, so
+  // fetch it here rather than rendering an empty/base-only board; a normal
+  // tab-switch (planData already present) keeps the instant re-render.
+  else if (!planData.length) loadData();
   else render();
 }
 
