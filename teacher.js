@@ -3416,14 +3416,26 @@ function renderGeneral() {
   if (collapsed) return;
 
   const general = planData.filter(p => GENERAL_TYPES.includes(p.type) && p.description);
-  let beskjed = buildBeskjedCards(general);
-  if (!beskjed) {
-    beskjed = document.createElement('p');
-    beskjed.className = 'general-empty';
-    beskjed.textContent = 'Ingen beskjeder denne uka. Bruk «+ Legg til».';
+  const ownCards = buildBeskjedCards(general);
+  let beskjedNode = ownCards;
+  // In a variant, beskjeder inherit the class (like the pupil sees). Show the
+  // class's own beskjeder read-only below any variant-specific ones, so the
+  // teacher isn't missing class-wide info; editing them stays on the class board.
+  if (variantCode) {
+    const baseGeneral = variantBaseData.filter(p => GENERAL_TYPES.includes(p.type) && p.description);
+    const baseCards = buildBeskjedCards(baseGeneral, { readonly: true, teacher: true });
+    if (baseCards) {
+      beskjedNode = document.createElement('div');
+      if (ownCards) beskjedNode.appendChild(ownCards);
+      const head = document.createElement('p');
+      head.className = 'general-inherited-head';
+      head.textContent = 'Fra klassen (vises for eleven):';
+      beskjedNode.appendChild(head);
+      beskjedNode.appendChild(baseCards);
+    }
   }
   const events = buildUpcomingEvents(h => hendMatchesClass(h, selectedClass), { clickable: true });
-  section.appendChild(beskjedEventsGrid(beskjed, events));
+  section.appendChild(beskjedEventsGrid(beskjedNode, events));
 }
 
 function buildGeneralLine(el, opts = {}) {

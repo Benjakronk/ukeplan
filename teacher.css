@@ -92,6 +92,7 @@
 .general-section { margin-bottom: 16px; }
 .general-head { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--text-muted); margin-bottom: 8px; }
 .general-empty { font-size: 14px; color: var(--text-muted); }
+.general-inherited-head { font-size: 12px; font-weight: 600; color: var(--text-muted); margin: 12px 0 6px; padding-top: 8px; border-top: 1px dashed var(--border); }
 .general-card {
   display: flex; align-items: flex-start; gap: 10px;
   padding: 8px 10px 8px 14px; border-radius: var(--radius-btn);
