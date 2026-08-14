@@ -72,7 +72,11 @@ function applySchoolConfig(cfg) {
   if (!cfg || typeof cfg !== 'object' || !Array.isArray(cfg.grades)) return false;
   const grades = cfg.grades
     .filter(g => g && g.label && Array.isArray(g.classes) && g.classes.length)
-    .map(g => ({ label: String(g.label), classes: g.classes.map(c => String(c).toUpperCase()) }));
+    .map(g => {
+      const o = { label: String(g.label), classes: g.classes.map(c => String(c).toUpperCase()) };
+      if (Number.isInteger(g.gradYear)) o.gradYear = g.gradYear;   // cohort graduation year
+      return o;
+    });
   const core = Array.isArray(cfg.coreSubjects) ? cfg.coreSubjects.map(String) : [];
   const elec = Array.isArray(cfg.electiveSubjects) ? cfg.electiveSubjects.map(String) : [];
   if (!grades.length || (!core.length && !elec.length)) return false;
@@ -1296,7 +1300,8 @@ function openAdminModal() {
   if (vsearch) vsearch.value = '';
   const csearch = document.getElementById('adminContentSearch');
   if (csearch) csearch.value = '';
-  document.getElementById('adminTabConfig').hidden = !isSuperadmin;   // school config = super-admin only
+  document.getElementById('adminTabConfig').hidden = !isSuperadmin;    // school config = super-admin only
+  document.getElementById('adminTabCleanup').hidden = !isSuperadmin;   // data cleanup = super-admin only
   setAdminTab('teachers');
 }
 function closeAdminModal() {
@@ -1307,7 +1312,8 @@ function closeAdminModal() {
 function setAdminTab(tab) {
   if (tab === 'config' && !isSuperadmin) tab = 'teachers';
   adminTab = tab;
-  [['teachers', 'adminTabTeachers', 'adminPaneTeachers'], ['variants', 'adminTabVariants', 'adminPaneVariants'], ['content', 'adminTabContent', 'adminPaneContent'], ['config', 'adminTabConfig', 'adminPaneConfig']]
+  if (tab === 'cleanup' && !isSuperadmin) tab = 'teachers';
+  [['teachers', 'adminTabTeachers', 'adminPaneTeachers'], ['variants', 'adminTabVariants', 'adminPaneVariants'], ['content', 'adminTabContent', 'adminPaneContent'], ['config', 'adminTabConfig', 'adminPaneConfig'], ['cleanup', 'adminTabCleanup', 'adminPaneCleanup']]
     .forEach(([t, btnId, paneId]) => {
       const btn = document.getElementById(btnId);
       btn.classList.toggle('active', t === tab);
@@ -1318,6 +1324,7 @@ function setAdminTab(tab) {
   else if (tab === 'variants') loadAdminVariants();
   else if (tab === 'content') loadAdminContent();
   else if (tab === 'config') renderAdminConfig(true);
+  else if (tab === 'cleanup') loadAdminCleanup();
 }
 async function loadAdminTeachers() {
   const list = document.getElementById('adminList');
@@ -1466,11 +1473,16 @@ async function adminSetRole(t, role) {
 let adminConfigDraft = null;
 function currentConfigDraft() {
   return {
-    grades: CLASS_GRADES.map(g => ({ label: g.label, classes: g.classes.slice() })),
+    grades: CLASS_GRADES.map(g => ({ label: g.label, classes: g.classes.slice(), gradYear: g.gradYear })),
     coreSubjects: CORE_SUBJECTS.slice(),
     electiveSubjects: ELECTIVE_SUBJECTS.slice(),
   };
 }
+function currentSchoolYearEnd() {
+  try { return Number(String(getSchoolYearBounds(new Date()).end || '').slice(0, 4)) || null; }
+  catch { return null; }
+}
+function schoolYearLabelFor(endYear) { return (endYear - 1) + '–' + endYear; }
 function configChip(text, onRemove) {
   const chip = document.createElement('span'); chip.className = 'admin-config-chip';
   chip.appendChild(document.createTextNode(text));
@@ -1504,6 +1516,16 @@ function renderAdminConfig(reset) {
     const row = document.createElement('div'); row.className = 'admin-config-grade';
     const lbl = document.createElement('span'); lbl.className = 'admin-config-grade-label'; lbl.textContent = g.label + ' trinn';
     row.appendChild(lbl);
+    // Graduation year (cohort key) for whoever is currently in this grade.
+    const gyWrap = document.createElement('label'); gyWrap.className = 'admin-config-gy';
+    gyWrap.appendChild(document.createTextNode('Kull '));
+    const gy = document.createElement('input');
+    gy.type = 'number'; gy.className = 'admin-config-gy-input'; gy.placeholder = 'år';
+    gy.min = '2000'; gy.max = '2100'; gy.value = g.gradYear || '';
+    gy.title = 'Året dette kullet går ut (uteksamineres). Brukes til opprydding og skoleårsbytte.';
+    gy.addEventListener('change', () => { const v = parseInt(gy.value, 10); g.gradYear = (!isNaN(v) && v >= 2000 && v <= 2100) ? v : undefined; });
+    gyWrap.appendChild(gy);
+    row.appendChild(gyWrap);
     const chips = document.createElement('div'); chips.className = 'admin-config-chips';
     g.classes.forEach(c => chips.appendChild(configChip(c, () => { g.classes = g.classes.filter(x => x !== c); renderAdminConfig(); })));
     chips.appendChild(configAddInput('+ klasse', v => {
@@ -1513,6 +1535,32 @@ function renderAdminConfig(reset) {
     row.appendChild(chips);
     body.appendChild(row);
   });
+
+  // Cohort helpers: suggest years from the current school year, or bump everyone
+  // up one year at rollover. Both edit the draft; the admin still hits «Lagre».
+  const gyTools = document.createElement('div'); gyTools.className = 'admin-config-gy-tools';
+  const suggest = document.createElement('button');
+  suggest.type = 'button'; suggest.className = 'btn btn-ghost btn-tiny';
+  suggest.textContent = 'Foreslå kull-år';
+  suggest.title = 'Fyll inn kull-år ut fra inneværende skoleår (øverste trinn går ut i år).';
+  suggest.addEventListener('click', () => {
+    const end = currentSchoolYearEnd();
+    const nums = d.grades.map(g => parseInt(g.label, 10)).filter(n => !isNaN(n));
+    const top = nums.length ? Math.max(...nums) : null;
+    if (!end || top == null) { uiAlert('Kunne ikke utlede trinn-nummer fra etikettene.'); return; }
+    d.grades.forEach(g => { const n = parseInt(g.label, 10); if (!isNaN(n)) g.gradYear = end + (top - n); });
+    renderAdminConfig();
+  });
+  const advance = document.createElement('button');
+  advance.type = 'button'; advance.className = 'btn btn-ghost btn-tiny';
+  advance.textContent = '↑ Rykk opp ett skoleår';
+  advance.title = 'Øker alle kull-år med 1 – ved skolestart når elevene rykker opp et trinn.';
+  advance.addEventListener('click', () => {
+    d.grades.forEach(g => { if (Number.isInteger(g.gradYear)) g.gradYear += 1; });
+    renderAdminConfig();
+  });
+  gyTools.appendChild(suggest); gyTools.appendChild(advance);
+  body.appendChild(gyTools);
 
   const ch = document.createElement('h3'); ch.className = 'admin-config-h'; ch.textContent = 'Fag (felles for alle)';
   body.appendChild(ch);
@@ -1548,6 +1596,124 @@ async function saveAdminConfig() {
     if (r && r.config) { applySchoolConfig(r.config); try { localStorage.setItem(CONFIG_KEY, JSON.stringify(r.config)); } catch {} }
     await uiAlert('Skoleoppsettet er lagret. Siden lastes på nytt for å ta det i bruk.');
     location.reload();
+  } catch (err) { await uiAlert(translateError(err.message)); }
+}
+
+// ── Datavask: purge old school years (super-admin) ───────────────────────────
+let adminCleanupStats = [];   // [{endYear,label,elements,vurderinger,hendelser}]
+
+async function loadAdminCleanup() {
+  const body = document.getElementById('adminCleanupBody');
+  body.innerHTML = '<p class="muted">Laster…</p>';
+  try {
+    const res = await fetch(`${SCRIPT_URL}?action=admin_content_stats`, { credentials: 'include' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    adminCleanupStats = Array.isArray(data.years) ? data.years : [];
+    renderAdminCleanup();
+  } catch (err) {
+    body.innerHTML = '';
+    const p = document.createElement('p'); p.className = 'login-error'; p.textContent = translateError(err.message);
+    body.appendChild(p);
+  }
+}
+
+function renderAdminCleanup() {
+  const body = document.getElementById('adminCleanupBody');
+  body.innerHTML = '';
+  const stats = adminCleanupStats;
+  const total = stats.reduce((n, y) => n + y.elements + y.vurderinger + y.hendelser, 0);
+  if (!total) { body.innerHTML = '<p class="muted">Ingen innhold å rydde i.</p>'; return; }
+
+  // Overview table, oldest first (unknown bucket last).
+  const table = document.createElement('table'); table.className = 'admin-cleanup-table';
+  table.innerHTML = '<thead><tr><th>Skoleår</th><th>Tema/lekser/beskjeder</th><th>Vurderinger</th><th>Hendelser</th></tr></thead>';
+  const tb = document.createElement('tbody');
+  stats.slice().sort((a, b) => (a.endYear || 9999) - (b.endYear || 9999)).forEach(y => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${y.label}</td><td>${y.elements}</td><td>${y.vurderinger}</td><td>${y.hendelser}</td>`;
+    tb.appendChild(tr);
+  });
+  table.appendChild(tb);
+  body.appendChild(table);
+
+  // Cutoff: only real (parseable) years, and never the newest one (guard against
+  // wiping the current year). Default to the second-newest.
+  const years = stats.map(y => y.endYear).filter(y => y > 0).sort((a, b) => a - b);
+  const selectable = years.slice(0, -1);   // drop the newest
+  if (!selectable.length) {
+    const p = document.createElement('p'); p.className = 'muted';
+    p.textContent = 'Det finnes ikke innhold fra avsluttede skoleår ennå.';
+    body.appendChild(p);
+    return;
+  }
+
+  const ctrl = document.createElement('div'); ctrl.className = 'admin-cleanup-ctrl';
+  const lab = document.createElement('label'); lab.className = 'admin-cleanup-label';
+  lab.appendChild(document.createTextNode('Slett innhold til og med skoleåret '));
+  const sel = document.createElement('select'); sel.className = 'input admin-cleanup-select';
+  selectable.forEach(y => { const o = document.createElement('option'); o.value = y; o.textContent = schoolYearLabelFor(y); sel.appendChild(o); });
+  sel.value = selectable[selectable.length - 1];   // second-newest overall
+  lab.appendChild(sel);
+  ctrl.appendChild(lab);
+
+  const impact = document.createElement('p'); impact.className = 'admin-cleanup-impact';
+  const updateImpact = () => {
+    const before = Number(sel.value);
+    const hit = stats.filter(y => y.endYear > 0 && y.endYear <= before);
+    const e = hit.reduce((n, y) => n + y.elements, 0);
+    const v = hit.reduce((n, y) => n + y.vurderinger, 0);
+    const h = hit.reduce((n, y) => n + y.hendelser, 0);
+    impact.textContent = `Dette fjerner ${e} tema/lekser/beskjeder, ${v} vurderinger og ${h} hendelser.`;
+  };
+  sel.addEventListener('change', updateImpact);
+  updateImpact();
+  ctrl.appendChild(impact);
+
+  const actions = document.createElement('div'); actions.className = 'admin-cleanup-actions';
+  const exp = document.createElement('button');
+  exp.type = 'button'; exp.className = 'btn btn-ghost btn-tiny';
+  exp.textContent = '⬇ Last ned arkiv (JSON)';
+  exp.addEventListener('click', () => exportCleanup(Number(sel.value)));
+  const purge = document.createElement('button');
+  purge.type = 'button'; purge.className = 'btn btn-danger btn-tiny';
+  purge.textContent = 'Slett permanent';
+  purge.addEventListener('click', () => purgeCleanup(Number(sel.value)));
+  actions.appendChild(exp); actions.appendChild(purge);
+  ctrl.appendChild(actions);
+  body.appendChild(ctrl);
+}
+
+async function exportCleanup(before) {
+  try {
+    const res = await fetch(`${SCRIPT_URL}?action=admin_export_content&before=${before}`, { credentials: 'include' });
+    const data = await res.json();
+    if (data.error) { await uiAlert(translateError(data.error)); return; }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'ukeportalen-arkiv-tom-' + before + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    showToast('Arkiv lastet ned.');
+  } catch (err) { await uiAlert(translateError(err.message)); }
+}
+
+async function purgeCleanup(before) {
+  const label = schoolYearLabelFor(before);
+  if (!await uiConfirm(
+    'Slette ALT innhold til og med skoleåret ' + label + ' permanent, for hele skolen? Last ned arkivet først – dette kan ikke angres.',
+    { title: 'Slett gamle data', okText: 'Fortsett', danger: true })) return;
+  const pw = await uiPrompt(
+    'Skriv inn passordet ditt for å bekrefte den permanente slettingen av innhold til og med ' + label + '.',
+    { title: 'Bekreft med passord', label: 'Ditt passord', password: true, okText: 'Slett permanent' });
+  if (!pw) return;
+  try {
+    const r = await api('admin_purge_content', { before, password: pw });
+    if (r && r.error) { await uiAlert(translateError(r.error)); return; }
+    const d = r.deleted || {};
+    await uiAlert('Slettet ' + (d.elements || 0) + ' tema/lekser/beskjeder, ' + (d.vurderinger || 0) + ' vurderinger og ' + (d.hendelser || 0) + ' hendelser.');
+    loadAdminCleanup();
   } catch (err) { await uiAlert(translateError(err.message)); }
 }
 
@@ -2885,6 +3051,7 @@ function setupDashboardListeners() {
   document.getElementById('adminTabVariants').addEventListener('click', () => setAdminTab('variants'));
   document.getElementById('adminTabContent').addEventListener('click', () => setAdminTab('content'));
   document.getElementById('adminTabConfig').addEventListener('click', () => setAdminTab('config'));
+  document.getElementById('adminTabCleanup').addEventListener('click', () => setAdminTab('cleanup'));
   document.getElementById('adminContentSearch').addEventListener('input', renderAdminContent);
   document.getElementById('myEntriesBtn').addEventListener('click', openMyEntries);
   document.getElementById('myEntriesClose').addEventListener('click', closeMyEntries);

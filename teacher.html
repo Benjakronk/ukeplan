@@ -510,6 +510,7 @@
       <button id="adminTabVariants" class="admin-tab" type="button" role="tab" aria-selected="false">Tilpassede planer</button>
       <button id="adminTabContent" class="admin-tab" type="button" role="tab" aria-selected="false">Innhold</button>
       <button id="adminTabConfig" class="admin-tab" type="button" role="tab" aria-selected="false" hidden>Skoleoppsett</button>
+      <button id="adminTabCleanup" class="admin-tab" type="button" role="tab" aria-selected="false" hidden>Datavask</button>
     </div>
 
     <div id="adminPaneTeachers" class="admin-pane" role="tabpanel">
@@ -550,6 +551,11 @@
         <span class="add-modal-spacer"></span>
         <button id="adminConfigSave" class="btn btn-primary" type="button">Lagre skoleoppsett</button>
       </div>
+    </div>
+
+    <div id="adminPaneCleanup" class="admin-pane" role="tabpanel" hidden>
+      <p class="class-modal-hint admin-config-warn">⚠ Her sletter du <strong>gammelt innhold permanent</strong> for hele skolen (tema, lekser, beskjeder, vurderinger og hendelser fra tidligere skoleår). <strong>Last ned arkivet først</strong> – slettingen kan ikke angres. Passord kreves.</p>
+      <div id="adminCleanupBody" class="admin-cleanup-body"></div>
     </div>
   </div>
 
