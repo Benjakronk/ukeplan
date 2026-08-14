@@ -1131,7 +1131,7 @@ function signedCreator(e) {
   return e.teacher ? e.teacher + ' (usignert)' : '– (usignert)';
 }
 
-function buildSignedRow(e) {
+function buildSignedRow(e, opts) {
   const row = document.createElement('div');
   row.className = 'signed-row';
 
@@ -1154,18 +1154,76 @@ function buildSignedRow(e) {
   if (!txt) desc.classList.add('signed-desc-empty');
   row.appendChild(desc);
 
+  const foot = document.createElement('div');
+  foot.className = 'signed-foot';
   const sig = document.createElement('div');
   sig.className = 'signed-sig';
   let s = 'Opprettet av ' + signedCreator(e);
   if (e.editedBy && e.editedBy.length) s += ' · Endret av ' + e.editedBy.map(u => '@' + u).join(', ');
   sig.textContent = s;
-  row.appendChild(sig);
+  foot.appendChild(sig);
+
+  // Edit/delete controls (Mine registreringer only – opts.actions).
+  if (opts && opts.actions && e.id) {
+    const acts = document.createElement('div');
+    acts.className = 'signed-actions';
+    const edit = document.createElement('button');
+    edit.type = 'button'; edit.className = 'btn btn-ghost btn-tiny';
+    edit.textContent = 'Rediger';
+    edit.addEventListener('click', () => editSignedEntry(e));
+    const del = document.createElement('button');
+    del.type = 'button'; del.className = 'btn btn-ghost btn-tiny signed-del';
+    del.textContent = 'Slett';
+    del.addEventListener('click', () => deleteSignedEntry(e));
+    acts.appendChild(edit); acts.appendChild(del);
+    foot.appendChild(acts);
+  }
+  row.appendChild(foot);
   return row;
 }
 
+// Rediger → close the modal and open the matching edit modal for the kind.
+function editSignedEntry(e) {
+  if (!e.id) { showToast('Denne kan ikke redigeres herfra.'); return; }
+  closeMyEntries();
+  if (e.kind === 'vurdering') openVurdEdit(e);
+  else if (e.kind === 'hendelse') openHendEdit(e);
+  else openElementEdit(e);
+}
+
+// Slett → confirm, delete via the right API (undoable), refresh the board data
+// and the still-open Mine list.
+async function deleteSignedEntry(e) {
+  if (!e.id) { showToast('Denne kan ikke slettes herfra.'); return; }
+  let msg, doDelete, refresh;
+  if (e.kind === 'vurdering') {
+    msg = 'Slette denne vurderingen?';
+    doDelete = async () => { await vurdApi('delete', { id: e.id }); recordVurdDelete(e, 'slettet vurdering'); };
+    refresh = () => loadAssessments();
+  } else if (e.kind === 'hendelse') {
+    msg = 'Slette denne hendelsen?';
+    doDelete = async () => { await hendApi('delete', { id: e.id }); recordHendDelete(e, 'slettet hendelse'); };
+    refresh = () => loadHendelser({ force: true });
+  } else {
+    msg = 'Slette dette elementet' + (isMultiWeek(e) ? ' (gjelder ' + weekRangeShort(e) + ')' : '') + '?';
+    doDelete = async () => { await api('delete', { id: e.id }); recordDelete(e, 'slettet element'); };
+    refresh = () => refreshAfterChange();
+  }
+  if (!await uiConfirm(msg, { title: 'Slett', okText: 'Slett', danger: true })) return;
+  try {
+    await doDelete();
+    refresh();
+    await loadMyEntries();   // reflect the deletion in the open list
+    showToast('Slettet.');
+  } catch (err) {
+    showToast(translateError(err.message));
+  }
+}
+
 // Shared filter+render. Matches free text across text/subject/classes/usernames;
-// a leading @ is stripped so "@ola" and "ola" both match usernames.
-function renderSignedList(listEl, countEl, entries, query) {
+// a leading @ is stripped so "@ola" and "ola" both match usernames. opts.actions
+// adds per-row Rediger/Slett (Mine registreringer only).
+function renderSignedList(listEl, countEl, entries, query, opts) {
   const raw = (query || '').trim().toLowerCase();
   const q = raw.startsWith('@') ? raw.slice(1) : raw;
   const filtered = !q ? entries : entries.filter(e => [
@@ -1174,7 +1232,7 @@ function renderSignedList(listEl, countEl, entries, query) {
   listEl.innerHTML = '';
   if (!entries.length) { listEl.innerHTML = '<p class="muted">Ingen registreringer ennå.</p>'; if (countEl) countEl.textContent = ''; return; }
   if (!filtered.length) { listEl.innerHTML = '<p class="muted">Ingen treff.</p>'; if (countEl) countEl.textContent = ''; return; }
-  filtered.forEach(e => listEl.appendChild(buildSignedRow(e)));
+  filtered.forEach(e => listEl.appendChild(buildSignedRow(e, opts)));
   if (countEl) countEl.textContent = filtered.length + (filtered.length === 1 ? ' oppføring' : ' oppføringer');
 }
 
@@ -1223,7 +1281,7 @@ async function loadMyEntries() {
 }
 function renderMyEntries() {
   renderSignedList(document.getElementById('myEntriesList'), document.getElementById('myEntriesCount'),
-    signedMine || [], document.getElementById('myEntriesSearch')?.value);
+    signedMine || [], document.getElementById('myEntriesSearch')?.value, { actions: true });
 }
 
 function openAdminModal() {
