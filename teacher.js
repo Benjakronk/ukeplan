@@ -1103,7 +1103,7 @@ let adminTab = 'teachers';
 // anyone: scope=mine = their own). Read-only; never shown on the student page.
 let signedAll = null;    // admin «Innhold» tab cache
 let signedMine = null;   // «Mine registreringer» cache
-let reopenMineAfterEdit = false;  // set when an edit was launched from the Mine list
+let reopenAfterEdit = null;  // fn to reopen the source list (Mine / admin Innhold) after an edit
 
 async function fetchSignedContent(scope) {
   const res = await fetch(`${SCRIPT_URL}?action=signed_content&scope=${scope}`, { credentials: 'include' });
@@ -1168,18 +1168,19 @@ function buildSignedRow(e, opts) {
   sig.textContent = s;
   foot.appendChild(sig);
 
-  // Edit/delete controls (Mine registreringer only – opts.actions).
+  // Edit/delete controls – «Mine registreringer» and the admin «Innhold» tab
+  // (opts.context routes the reopen/reload to the right modal + list).
   if (opts && opts.actions && e.id) {
     const acts = document.createElement('div');
     acts.className = 'signed-actions';
     const edit = document.createElement('button');
     edit.type = 'button'; edit.className = 'btn btn-ghost btn-tiny';
     edit.textContent = 'Rediger';
-    edit.addEventListener('click', () => editSignedEntry(e));
+    edit.addEventListener('click', () => editSignedEntry(e, opts));
     const del = document.createElement('button');
     del.type = 'button'; del.className = 'btn btn-ghost btn-tiny signed-del';
     del.textContent = 'Slett';
-    del.addEventListener('click', () => deleteSignedEntry(e));
+    del.addEventListener('click', () => deleteSignedEntry(e, opts));
     acts.appendChild(edit); acts.appendChild(del);
     foot.appendChild(acts);
   }
@@ -1187,19 +1188,20 @@ function buildSignedRow(e, opts) {
   return row;
 }
 
-// Rediger → close the modal and open the matching edit modal for the kind.
-function editSignedEntry(e) {
+// Rediger → close the current modal and open the matching editor; reopen the
+// source list (Mine or admin Innhold) once the editor closes.
+function editSignedEntry(e, opts = {}) {
   if (!e.id) { showToast('Denne kan ikke redigeres herfra.'); return; }
-  reopenMineAfterEdit = true;   // reopen the Mine list when the editor closes
-  closeMyEntries();
+  if (opts.context === 'admin') { reopenAfterEdit = reopenAdminContent; closeAdminModal(); }
+  else { reopenAfterEdit = openMyEntries; closeMyEntries(); }
   if (e.kind === 'vurdering') openVurdEdit(e);
   else if (e.kind === 'hendelse') openHendEdit(e);
   else openElementEdit(e);
 }
 
 // Slett → confirm, delete via the right API (undoable), refresh the board data
-// and the still-open Mine list.
-async function deleteSignedEntry(e) {
+// and reload the still-open source list.
+async function deleteSignedEntry(e, opts = {}) {
   if (!e.id) { showToast('Denne kan ikke slettes herfra.'); return; }
   let msg, doDelete, refresh;
   if (e.kind === 'vurdering') {
@@ -1219,7 +1221,7 @@ async function deleteSignedEntry(e) {
   try {
     await doDelete();
     refresh();
-    await loadMyEntries();   // reflect the deletion in the open list
+    await (opts.context === 'admin' ? loadAdminContent() : loadMyEntries());   // reflect the deletion
     showToast('Slettet.');
   } catch (err) {
     showToast(translateError(err.message));
@@ -1257,7 +1259,17 @@ async function loadAdminContent() {
 }
 function renderAdminContent() {
   renderSignedList(document.getElementById('adminContentList'), document.getElementById('adminContentCount'),
-    signedAll || [], document.getElementById('adminContentSearch')?.value);
+    signedAll || [], document.getElementById('adminContentSearch')?.value, { actions: true, context: 'admin' });
+}
+// Reopen the admin panel on the Innhold tab after an edit, keeping the search
+// filter (the async loadAdminContent render reads the input value).
+function reopenAdminContent() {
+  const cur = document.getElementById('adminContentSearch');
+  const q = cur ? cur.value : '';
+  openAdminModal();
+  setAdminTab('content');
+  const s = document.getElementById('adminContentSearch');
+  if (s && q) s.value = q;
 }
 
 function openMyEntries() {
@@ -1287,7 +1299,7 @@ async function loadMyEntries() {
 }
 function renderMyEntries() {
   renderSignedList(document.getElementById('myEntriesList'), document.getElementById('myEntriesCount'),
-    signedMine || [], document.getElementById('myEntriesSearch')?.value, { actions: true });
+    signedMine || [], document.getElementById('myEntriesSearch')?.value, { actions: true, context: 'mine' });
 }
 
 function openAdminModal() {
@@ -4467,9 +4479,9 @@ function reallyCloseAddModal() {
   document.getElementById('modalOverlay').classList.remove('open');
   document.getElementById('addModal').classList.remove('open');
   document.body.classList.remove('scroll-locked');
-  // If this editor was opened from «Mine registreringer», reopen that list
-  // (openMyEntries re-fetches, so the edit/delete is reflected).
-  if (reopenMineAfterEdit) { reopenMineAfterEdit = false; openMyEntries(); }
+  // If this editor was opened from a signed-content list, reopen it (the reopen
+  // fn re-fetches, so the edit is reflected).
+  if (reopenAfterEdit) { const fn = reopenAfterEdit; reopenAfterEdit = null; fn(); }
 }
 
 // Plan elements support rich text (like the board); vurderinger stay plain.
