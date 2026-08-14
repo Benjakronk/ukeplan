@@ -1218,6 +1218,14 @@ async function deleteSignedEntry(e, opts = {}) {
     refresh = () => refreshAfterChange();
   }
   if (!await uiConfirm(msg, { title: 'Slett', okText: 'Slett', danger: true })) return;
+  // Admin override: deleting content you didn't create needs an extra, explicit
+  // confirm (a legacy row with no signature counts as "not yours" – safer).
+  if (opts.context === 'admin' && String(e.createdBy || '') !== teacherUsername) {
+    const who = e.createdBy ? '@' + e.createdBy : 'en ukjent forfatter (usignert)';
+    if (!await uiConfirm(
+      'Denne oppføringen ble laget av ' + who + ', ikke deg. Vil du slette andres innhold?',
+      { title: 'Slette andres innhold?', okText: 'Slett likevel', danger: true })) return;
+  }
   try {
     await doDelete();
     refresh();
