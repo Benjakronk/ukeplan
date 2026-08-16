@@ -51,6 +51,105 @@
 /* The session gate hides the app behind the overlay until ?action=me returns. */
 body.kk-booting .screen { display: none; }
 
+/* ---------- Navigation: context → layers → actions ----------
+   Deliberately the portal's own three devices (see teacher.css: .class-pill,
+   .tabs, .controls-row) rather than a vocabulary invented for this page. A
+   teacher arriving from the ukeplan side should not have to learn a second
+   navigation grammar to use a second tool. */
+
+/* Context — which group. */
+.group-pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 7px 14px; font-family: var(--font);
+    background: var(--primary-light); color: var(--primary-dark);
+    border: 1px solid transparent; border-radius: 999px;
+    font-size: 1rem; font-weight: 700; cursor: pointer;
+    transition: background var(--transition);
+}
+.group-pill:hover { background: color-mix(in oklab, var(--primary-light) 78%, var(--primary)); }
+.group-pill-change {
+    font-size: 0.68rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: .04em; color: var(--primary); opacity: .8;
+}
+
+/* The layers. */
+.kk-tabs {
+    display: flex; flex-wrap: wrap; gap: 4px;
+    padding: 0 14px;
+    border-bottom: 2px solid var(--line);
+    background: var(--surface);
+    flex-shrink: 0;
+}
+.kk-tab {
+    background: transparent; border: none; padding: 10px 16px;
+    font-family: var(--font); font-size: 0.95rem; font-weight: 600; color: var(--ink-soft);
+    cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px;
+}
+.kk-tab:hover { color: var(--ink); }
+.kk-tab.is-active { color: var(--primary); border-bottom-color: var(--primary); }
+
+/* A view fills what the topbar and tab rail leave behind. */
+.kk-view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.kk-view.hidden { display: none !important; }
+
+/* Actions that act on this view, in the portal's card. */
+.kk-actions {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin: 12px 14px 0;
+    padding: 10px 14px;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); box-shadow: var(--shadow);
+    flex-shrink: 0;
+}
+.kk-actions-spacer { flex: 1; }
+
+/* Smart plassering reports here rather than in a dialog. */
+.kk-result {
+    margin: 8px 14px 0; padding: 8px 12px;
+    border-radius: var(--radius-sm); font-size: 0.88rem; font-weight: 600;
+    flex-shrink: 0;
+}
+.kk-result.is-ok   { background: var(--success-bg); border: 1px solid var(--success-border); color: var(--success); }
+.kk-result.is-warn { background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text); }
+.kk-result .link-btn { margin-left: 6px; font-size: 0.85rem; }
+
+/* Sub-navigation inside Innsikt. Reuses the existing .seg component. */
+.kk-sub { margin: 12px 14px 0; flex-shrink: 0; }
+
+/* ---------- Former modals, rendered in flow as tab panels ----------
+   The markup inside each is untouched; only the frame changes. Keeping the
+   .modal-* class names means every render function and every existing style
+   still applies — the alternative was renaming classes across six blocks and
+   the JS that fills them, for no visible gain. */
+.modal-overlay.as-view {
+    position: static; inset: auto;
+    display: flex; flex-direction: column;
+    /* .modal-overlay centres its child to float a dialog. Left alone, that
+       centring applies to the cross axis here too, so `width: auto` below would
+       shrink-wrap the panel to its contents — and the panel would visibly
+       resize as you switch between panes of different widths. */
+    align-items: stretch; justify-content: flex-start;
+    background: none; padding: 0;
+    opacity: 1; pointer-events: auto;
+    flex: 1; min-height: 0;
+}
+.modal-overlay.as-view.hidden { display: none !important; }
+.modal-overlay.as-view > .modal {
+    /* width/height come from the view, not from the dialog size variants
+       (.modal-wide, .modal-stats) — otherwise each panel keeps its old
+       fixed dialog dimensions. */
+    width: auto; max-width: none;
+    height: auto; max-height: none;
+    margin: 12px 14px 14px;
+    flex: 1; min-height: 0;
+    transform: none;
+    /* a panel sits on the page; it should not cast a dialog's lifted shadow */
+    box-shadow: var(--shadow);
+}
+/* A tab is not dismissible, so the dialog's × would be a dead control. */
+.modal-overlay.as-view .modal-x { display: none; }
+.modal-overlay.as-view .modal-head { border-radius: var(--radius) var(--radius) 0 0; }
+
 * { box-sizing: border-box; }
 
 html, body {
@@ -535,7 +634,7 @@ input[type=number]:focus {
 .modal-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(20, 22, 35, 0.45);
+    background: var(--scrim);
     display: none;
     align-items: center;
     justify-content: center;
@@ -695,7 +794,12 @@ input[type=number]:focus {
 
 /* ---------- present mode ---------- */
 body.present .topbar,
+body.present .kk-tabs,
+body.present .kk-actions,
+body.present .kk-result,
 body.present .pool { display: none; }
+/* the board view must still fill the screen once the frame is gone */
+body.present .kk-view { margin: 0; }
 body.present .stage { padding: 30px; }
 body.present .board-front { font-size: 1.1rem; padding: 10px 40px; margin-bottom: 26px; }
 body.present .token { font-size: 1.15rem; font-weight: 700; }
@@ -1045,40 +1149,5 @@ body.present .zoom-ctrl { display: none; }
 .tag-add input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
 
 /* ---- relationship map (Phase 3) ---- */
-.rel-gate { max-width: 420px; margin: 8px auto; text-align: center; display: flex; flex-direction: column; gap: 12px; }
-.rel-lock-ico { font-size: 2.6rem; }
-.rel-gate h3 { margin: 0; font-size: 1.15rem; }
-.rel-gate .modal-hint { text-align: left; }
-.rel-field { display: flex; flex-direction: column; gap: 5px; text-align: left; font-size: 0.86rem; font-weight: 600; color: var(--ink-soft); }
-.rel-field input { border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; font: inherit; font-size: 0.95rem; }
-.rel-field input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
-.rel-warn { font-size: 0.82rem; color: var(--danger); background: var(--kk-danger-soft); border: 1px solid var(--kk-danger-line); border-radius: 8px; padding: 9px 11px; text-align: left; }
-.rel-wipe { color: var(--danger); border-color: var(--kk-danger-line); }
-.rel-wipe:hover { background: var(--kk-danger-soft); }
-.rel-sens { background: var(--primary-soft); border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; }
-.rel-sec { margin-top: 18px; }
-.rel-sec .sub { margin: 0 0 8px; }
-.rel-teachers { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; min-height: 8px; }
-.rel-grid-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.rel-dir button { padding: 6px 12px; }
-.rel-legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 8px 0 12px; font-size: 0.8rem; color: var(--ink-soft); }
-.rel-leg { display: inline-flex; align-items: center; gap: 6px; }
-.rel-leg em { opacity: 0.75; font-style: italic; }
-.rel-sw { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
-.rel-grid-wrap { overflow: auto; max-height: 360px; border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
-.rel-grid { display: grid; gap: 4px; align-items: center; width: max-content; }
-.rel-corner { position: sticky; left: 0; }
-.rel-clabel { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 0.72rem; color: var(--ink-soft);
-    max-height: 92px; overflow: hidden; justify-self: center; }
-.rel-clabel span { white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
-.rel-rlabel { font-size: 0.8rem; color: var(--ink); padding-right: 8px; white-space: nowrap; position: sticky; left: 0; background: var(--surface); }
-.rel-cell { width: 44px; height: 30px; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; transition: transform 0.06s; }
-.rel-cell:hover { transform: scale(1.08); }
-.rel-cell.c-none { background: repeating-linear-gradient(45deg, var(--surface-2), var(--surface-2) 5px, var(--border) 5px, var(--border) 10px); }
-.rel-cell.c-green, .rel-sw.c-green { background: var(--ok); }
-.rel-cell.c-yellow, .rel-sw.c-yellow { background: #eab308; }
-.rel-cell.c-red, .rel-sw.c-red { background: var(--danger); }
-.rel-cell.c-white, .rel-sw.c-white { background: var(--surface); border: 1px solid var(--line); }
-.rel-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--line); }
 #relPaste { width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 8px; font-family: var(--font); font-size: 0.9rem; resize: vertical; margin-bottom: 10px; }
 #relPaste:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
