@@ -56,6 +56,114 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const $ = (id) => document.getElementById(id);
 const pairKey = (a, b) => (a < b ? a + '|' + b : b + '|' + a);
 
+/* ======================================================== envelope crypto ====
+ * Step 2 of ukeplan-server/docs/klassekart-integration.md. The server stores
+ * ciphertext and lifecycle metadata; it never holds a key that opens it, which
+ * is what lets Klassekart sync at all while server-plan.md §0 ("no pupil names")
+ * stays literally true.
+ *
+ * Two levels, deliberately:
+ *
+ *   recovery secret ──PBKDF2(salt, 600k)──► personal key
+ *                                              │ AES-GCM
+ *                                              ▼
+ *                                        wrapped CEK ──► CEK (random, per group)
+ *                                                          │ AES-GCM, fresh iv
+ *                                                          ▼
+ *                                                    chart payload
+ *
+ * The indirection looks redundant while a group has one member. It is what makes
+ * sharing cheap later: inviting a colleague re-wraps one small key for them,
+ * instead of re-encrypting every chart in the school. Getting this wrong now is
+ * expensive to undo, so it lands before anything is stored.
+ *
+ * Nothing here is wired to the UI yet — see the tests before trusting it. */
+
+const KK_KDF_ITERS = 600000;   // OWASP guidance for PBKDF2-HMAC-SHA256, 2023
+const KK_ENV_V = 1;            // envelope format version, travels with the blob
+
+/* bytes ⇄ base64 (same approach as the removed rel store, which worked) */
+function kkB64(bytes) { let s = ''; bytes.forEach(b => s += String.fromCharCode(b)); return btoa(s); }
+function kkUnb64(str) { const s = atob(str), a = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i); return a; }
+
+/* ---- recovery secret -------------------------------------------------------
+ * The FORMAT is isolated to these three functions on purpose — generate,
+ * display, accept — because it is still an open decision (words vs code). Swap
+ * them and nothing downstream changes: everything below consumes bytes.
+ *
+ * Current placeholder: Crockford base32, 16 chars = 80 bits. Crockford drops
+ * I, L, O and U, so there is nothing to misread when a teacher copies it onto
+ * paper, and decoding folds the mistakes people still make (I/l→1, O→0). */
+const KK_B32 = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+
+function kkGenerateSecret() {
+    const bytes = crypto.getRandomValues(new Uint8Array(10));   // 80 bits
+    let bits = 0, acc = 0, out = '';
+    for (const b of bytes) {
+        acc = (acc << 8) | b; bits += 8;
+        while (bits >= 5) { out += KK_B32[(acc >>> (bits - 5)) & 31]; bits -= 5; }
+    }
+    return out.match(/.{1,4}/g).join('-');   // K7X9-M2PQ-4TRV-8WNZ
+}
+/* Forgiving on entry: case, spacing, dashes, and the classic misreads. */
+function kkNormalizeSecret(input) {
+    return String(input || '').toUpperCase()
+        .replace(/[IL]/g, '1').replace(/O/g, '0')
+        .replace(/[^0-9A-Z]/g, '')
+        .split('').filter(c => KK_B32.includes(c)).join('');
+}
+function kkSecretIsWellFormed(input) { return kkNormalizeSecret(input).length === 16; }
+
+/* ---- key derivation ------------------------------------------------------- */
+/* Personal key: one PBKDF2 run per device per session, then every group's CEK
+ * unwraps from it. Hence a per-teacher salt rather than per-group — six groups
+ * must not mean six 600k-iteration runs on an iPad. */
+async function kkPersonalKey(secret, salt) {
+    const norm = kkNormalizeSecret(secret);
+    const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(norm), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt, iterations: KK_KDF_ITERS, hash: 'SHA-256' },
+        km, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+function kkNewSalt() { return crypto.getRandomValues(new Uint8Array(16)); }
+
+/* ---- the group key (CEK) -------------------------------------------------- */
+/* Extractable on purpose: wrapping means exporting the raw bytes and encrypting
+ * them under the personal key. That is also how it gets wrapped for a colleague
+ * later, so the property is required, not sloppiness. */
+async function kkNewCek() {
+    return crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+}
+async function kkWrapCek(cek, wrappingKey) {
+    const raw = new Uint8Array(await crypto.subtle.exportKey('raw', cek));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, wrappingKey, raw);
+    return { v: KK_ENV_V, iv: kkB64(iv), ct: kkB64(new Uint8Array(ct)) };
+}
+async function kkUnwrapCek(blob, wrappingKey) {
+    const raw = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: kkUnb64(blob.iv) }, wrappingKey, kkUnb64(blob.ct));
+    return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, true, ['encrypt', 'decrypt']);
+}
+
+/* ---- the chart payload ---------------------------------------------------- */
+/* `version` is carried INSIDE the ciphertext as well as in a plaintext column,
+ * so a server that serves an older blob than it claims is detectable — AES-GCM
+ * stops tampering, not rollback. */
+async function kkEncryptChart(obj, cek, version) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const body = new TextEncoder().encode(JSON.stringify({ v: KK_ENV_V, version, data: obj }));
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, cek, body);
+    return { v: KK_ENV_V, iv: kkB64(iv), ct: kkB64(new Uint8Array(ct)) };
+}
+async function kkDecryptChart(blob, cek, expectVersion) {
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: kkUnb64(blob.iv) }, cek, kkUnb64(blob.ct));
+    const inner = JSON.parse(new TextDecoder().decode(pt));
+    if (expectVersion != null && inner.version !== expectVersion) {
+        throw new Error(`kk: version mismatch (blob ${inner.version}, server ${expectVersion}) — possible rollback`);
+    }
+    return inner.data;
+}
+
 /* ----------------------------------------------------------- persistence    */
 function save() {
     if (!store) return;
