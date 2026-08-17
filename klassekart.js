@@ -164,9 +164,413 @@ async function kkDecryptChart(blob, cek, expectVersion) {
     return inner.data;
 }
 
+/* ============================================================== sync engine ==
+ * Opt-in. With sync off, Klassekartografen behaves exactly as before and never
+ * talks to the server about charts — which is deliberate: the recovery-code
+ * ceremony must be the price of sync, never a toll on people happy as they are.
+ *
+ * The local store stays the working copy. `cls.sv` records the server version
+ * the local copy corresponds to (0 = never synced), which is what makes
+ * compare-and-set possible and conflicts detectable.
+ *
+ * Everything here fails soft: a network error, an expired session or a locked
+ * key leaves the local chart untouched and working. Sync is a backup and a way
+ * to collaborate, not a dependency. */
+
+const SYNC_ON_KEY = 'kk_sync_on';
+
+let kkPersonal = null;   // CryptoKey from the recovery code — memory only, this session
+let kkSalt = null;       // Uint8Array, from the server (never changes once set)
+let kkCeks = {};         // groupId → CryptoKey
+let kkServer = {};       // groupId → { version, label, wrappedCek, method, epoch, updatedBy }
+let kkConflicts = {};    // groupId → server version that refused our write
+let pushTimer = null;
+
+function syncOn() { try { return localStorage.getItem(SYNC_ON_KEY) === '1'; } catch (e) { return false; } }
+function syncUnlocked() { return !!kkPersonal; }
+
+/* Persist without marking the chart dirty. Every save() inside the sync layer
+ * must use this: a pull that dirties what it just fetched would push it straight
+ * back, and two synced devices would then bounce versions off each other for
+ * ever. */
+function saveQuiet() { savingFromSync = true; try { save(); } finally { savingFromSync = false; } }
+
+async function kkPost(action, params) {
+    const res = await fetch(SCRIPT_URL, { method: 'POST', credentials: 'include',
+        body: new URLSearchParams(Object.assign({ action }, params || {})) });
+    const d = await res.json();
+    if (d && d.error) throw new Error(d.error);
+    return d;
+}
+async function kkGet(action, params) {
+    const q = new URLSearchParams(Object.assign({ action }, params || {}));
+    const res = await fetch(`${SCRIPT_URL}?${q}`, { credentials: 'include' });
+    const d = await res.json();
+    if (d && d.error) throw new Error(d.error);
+    return d;
+}
+
+/* The payload is the class object minus local-only bookkeeping. `sv` must not
+ * travel: it describes this device's relationship to the server, and including
+ * it would make every push differ from the last for no reason. */
+function chartPayload(cls) {
+    const out = {};
+    for (const k in cls) if (k !== 'sv' && k !== 'dirty') out[k] = cls[k];
+    return out;
+}
+
+/* ---- identity -------------------------------------------------------------- */
+/* kk_identity is insert-if-absent, so it doubles as "fetch mine": a candidate
+ * salt is offered and the server returns whichever one is authoritative. */
+async function kkFetchSalt() {
+    const r = await kkPost('kk_identity', { salt: kkB64(kkNewSalt()) });
+    return { salt: kkUnb64(r.salt), created: !!r.created };
+}
+
+/* Turning sync on for the first time. If the server already holds an identity,
+ * this teacher set sync up elsewhere — a freshly generated code would be wrong,
+ * because the existing salt belongs to the old one. Say so rather than issuing a
+ * code that cannot open anything. */
+async function syncBegin() {
+    const { salt, created } = await kkFetchSalt();
+    if (!created) return { alreadySetUp: true };
+    const secret = kkGenerateSecret();
+    kkSalt = salt;
+    kkPersonal = await kkPersonalKey(secret, salt);
+    try { localStorage.setItem(SYNC_ON_KEY, '1'); } catch (e) {}
+    return { secret };
+}
+
+/* Unlocking on a later device or a new session. Verification is by trying to
+ * unwrap a real group key: a wrong code fails every unwrap. With no groups yet
+ * there is nothing the code could be wrong about, so it is accepted — the first
+ * group created then establishes it. */
+async function syncUnlock(input) {
+    if (!kkSecretIsWellFormed(input)) return { error: 'Koden ser ikke riktig ut. Den er 16 tegn.' };
+    const { salt } = await kkFetchSalt();
+    const key = await kkPersonalKey(input, salt);
+    const { groups } = await kkGet('kk_groups');
+    const mine = groups.filter(g => g.method === 'self');
+    if (mine.length) {
+        let anyOpened = false;
+        for (const g of mine) {
+            try { await kkUnwrapCek(JSON.parse(g.wrappedCek), key); anyOpened = true; break; }
+            catch (e) { /* try the next */ }
+        }
+        if (!anyOpened) return { error: 'Feil kode — fikk ikke opp noen av gruppene dine.' };
+    }
+    kkSalt = salt; kkPersonal = key;
+    try { localStorage.setItem(SYNC_ON_KEY, '1'); } catch (e) {}
+    return { ok: true, groups: groups.length };
+}
+function syncLock() { kkPersonal = null; kkCeks = {}; kkSalt = null; }
+
+/* ---- group keys ----------------------------------------------------------- */
+/* A group's CEK, creating and registering it the first time. Note the group row
+ * and its key row are created together server-side: a group nobody holds a key
+ * for would be unopenable, including by whoever just made it. */
+async function ensureCek(cls) {
+    if (kkCeks[cls.id]) return kkCeks[cls.id];
+    const known = kkServer[cls.id];
+    if (known && known.wrappedCek) {
+        const cek = await kkUnwrapCek(JSON.parse(known.wrappedCek), kkPersonal);
+        kkCeks[cls.id] = cek;
+        return cek;
+    }
+    const cek = await kkNewCek();
+    const wrapped = await kkWrapCek(cek, kkPersonal);
+    await kkPost('kk_group_create', {
+        id: cls.id, label: cls.name, kind: cls.kind || 'klasse',
+        class: cls.class || '', wrappedCek: JSON.stringify(wrapped),
+    });
+    kkServer[cls.id] = { version: 0, label: cls.name, wrappedCek: JSON.stringify(wrapped), method: 'self', epoch: 1 };
+    kkCeks[cls.id] = cek;
+    return cek;
+}
+
+/* ---- push ---------------------------------------------------------------- */
+async function syncPush(cls) {
+    if (!syncOn() || !syncUnlocked() || !cls) return { skipped: true };
+    const cek = await ensureCek(cls);
+    const prev = Number(cls.sv || 0);
+    const payload = await kkEncryptChart(chartPayload(cls), cek, prev + 1);
+    const r = await kkPost('kk_save', {
+        group: cls.id, payload: JSON.stringify(payload), prevVersion: String(prev),
+    });
+    if (r.conflict) {
+        // Someone else advanced this chart. Never resolve it silently — a seating
+        // chart cannot be merged meaningfully, and guessing would quietly discard
+        // somebody's afternoon.
+        kkConflicts[cls.id] = r.version;
+        return { conflict: true, version: r.version };
+    }
+    cls.sv = r.version;
+    cls.dirty = false;
+    kkServer[cls.id] = Object.assign(kkServer[cls.id] || {}, { version: r.version });
+    delete kkConflicts[cls.id];
+    saveQuiet();
+    return { ok: true, version: r.version };
+}
+
+/* Pushing when the tab is hidden as well as on the debounce. Otherwise a teacher
+ * who closes the lid within the debounce window leaves that change unsynced until
+ * next time — harmless, since the local copy is authoritative, but it looks like
+ * data loss to whoever opens the other device. visibilitychange is used rather
+ * than beforeunload because async work there is not reliably allowed to finish. */
+function flushPush() {
+    if (!syncOn() || !syncUnlocked() || !state || !state.dirty) return;
+    clearTimeout(pushTimer);
+    syncPush(state).then(r => { if (r && r.conflict) updateSyncBadge(); }).catch(() => {});
+}
+
+/* Saves are frequent (every drag), pushes should not be. */
+function schedulePush(cls) {
+    if (!syncOn() || !syncUnlocked()) return;
+    const target = cls || state;
+    if (!target) return;
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(() => {
+        syncPush(target).then(r => {
+            if (r && r.conflict) {
+                toast(`«${target.name}» er endret et annet sted – åpne Synk for å velge`, 'err');
+                updateSyncBadge();
+            } else if (r && r.ok) updateSyncBadge();
+        }).catch(e => { /* offline or session gone; local copy is intact */ });
+    }, 2500);
+}
+
+/* ---- pull ---------------------------------------------------------------- */
+/* Server wins only where it is genuinely ahead of what this device last synced.
+ * A group the server has never seen is pushed instead, which is what makes
+ * turning sync on migrate the existing local charts. */
+function ensureStore() {
+    if (!store) store = { activeClassId: null, classes: {}, roomTemplates: [] };
+    store.classes = store.classes || {};
+    store.roomTemplates = store.roomTemplates || [];
+    return store;
+}
+async function syncPullAll() {
+    if (!syncOn() || !syncUnlocked()) return { skipped: true };
+    ensureStore();
+    const { groups } = await kkGet('kk_groups');
+    let pulled = 0, pushed = 0, conflicts = 0;
+    for (const g of groups) {
+        kkServer[g.id] = g;
+        const local = store.classes[g.id];
+        if (local && Number(local.sv || 0) >= g.version) continue;   // we are current or ahead
+        if (g.version === 0) continue;                               // nothing stored yet
+        try {
+            const cek = kkCeks[g.id] || await kkUnwrapCek(JSON.parse(g.wrappedCek), kkPersonal);
+            kkCeks[g.id] = cek;
+            const c = await kkGet('kk_chart', { group: g.id });
+            if (!c.payload) continue;
+            const data = await kkDecryptChart(JSON.parse(c.payload), cek, c.version);
+            if (local && Number(local.sv || 0) < g.version && localAheadOf(local)) {
+                kkConflicts[g.id] = g.version; conflicts++; continue;
+            }
+            store.classes[g.id] = normClass(Object.assign({}, data, { id: g.id }));
+            store.classes[g.id].sv = c.version;
+            pulled++;
+        } catch (e) { console.warn('kk: could not pull', g.id, e.message); }
+    }
+    // local groups the server has never heard of
+    for (const id in store.classes) {
+        if (kkServer[id]) continue;
+        try { await syncPush(store.classes[id]); pushed++; } catch (e) { /* leave it local */ }
+    }
+    if (!store.classes[store.activeClassId]) store.activeClassId = Object.keys(store.classes)[0] || null;
+    saveQuiet();
+    return { pulled, pushed, conflicts };
+}
+/* Has this device changed the chart since its last successful push? Anything
+ * saved locally after a push bumps nothing we track, so treat "we hold edits the
+ * server has not seen" conservatively: only true when sv is behind AND we have a
+ * dirty marker. Kept simple on purpose — a false positive costs a prompt, a
+ * false negative costs someone's work. */
+function localAheadOf(cls) { return !!cls.dirty; }
+
+/* ---- conflict resolution ------------------------------------------------- */
+/* Both directions are destructive, so both are the teacher's explicit choice. */
+async function syncTakeServer(id) {
+    const g = kkServer[id]; if (!g) return { error: 'Ukjent gruppe' };
+    ensureStore();
+    const cek = kkCeks[id] || await kkUnwrapCek(JSON.parse(g.wrappedCek), kkPersonal);
+    const c = await kkGet('kk_chart', { group: id });
+    const data = await kkDecryptChart(JSON.parse(c.payload), cek, c.version);
+    store.classes[id] = normClass(Object.assign({}, data, { id }));
+    store.classes[id].sv = c.version;
+    store.classes[id].dirty = false;
+    delete kkConflicts[id];
+    saveQuiet();
+    if (store.activeClassId === id) { state = store.classes[id]; render(); }
+    return { ok: true };
+}
+async function syncKeepMine(id) {
+    const cls = store.classes[id]; if (!cls) return { error: 'Ukjent gruppe' };
+    const c = await kkGet('kk_chart', { group: id });   // adopt the server's version number
+    cls.sv = Number(c.version || 0);
+    cls.dirty = true;
+    const r = await syncPush(cls);
+    return r.conflict ? { error: 'Endret igjen i mellomtiden – prøv på nytt' } : r;
+}
+
+/* ---- sync UI -------------------------------------------------------------- */
+/* One dialog, four states: off, needs-unlock, unlocked, and showing a freshly
+ * generated code. The code is shown exactly once — there is no recovery path by
+ * design, so the copy says so plainly rather than implying we could help. */
+let syncNewSecret = null;   // held only while the "write this down" step is open
+
+function openSyncModal() { renderSyncBody(); openModal('syncModal'); }
+
+/* After a pull, make sure the app is actually showing something. On a device that
+ * started empty this is the moment the teacher's charts appear; on one that was
+ * already working it just re-points `state` at the refreshed object. */
+function enterPulledCharts() {
+    if (!store || !Object.keys(store.classes || {}).length) return;
+    if (!store.activeClassId || !store.classes[store.activeClassId]) {
+        store.activeClassId = Object.keys(store.classes)[0];
+    }
+    state = store.classes[store.activeClassId];
+    saveQuiet();
+    if ($('app').classList.contains('hidden')) showApp();
+    render();
+}
+
+function renderSyncBody() {
+    const box = $('syncBody');
+    if (!box) return;
+
+    if (syncNewSecret) {
+        box.innerHTML = `
+            <p class="modal-hint">Skriv ned koden, eller lagre den i passordbehandleren din.
+            <strong>Den vises bare nå.</strong> Uten den får du ikke tilgang til kartene dine fra en annen enhet,
+            og ingen — heller ikke skolen — kan hente den fram igjen.</p>
+            <div class="sync-code">${escapeHtml(syncNewSecret)}</div>
+            <div class="sync-actions">
+                <button class="btn" data-syncact="copy" type="button">📋 Kopier</button>
+                <button class="btn btn-primary" data-syncact="savedIt" type="button">Jeg har lagret den</button>
+            </div>`;
+        return;
+    }
+
+    if (!syncOn()) {
+        box.innerHTML = `
+            <p class="modal-hint">Uten synkronisering ligger kartene bare i denne nettleseren.
+            Blir den tømt, eller får du ny maskin, er de borte.</p>
+            <p class="modal-hint">Slår du det på, lagres kartene på skolens server —
+            <strong>kryptert</strong>. Serveren kan ikke lese elevnavn eller noe annet i kartene;
+            bare du med koden din kan åpne dem.</p>
+            <div class="sync-actions">
+                <button class="btn btn-primary" data-syncact="begin" type="button">Slå på synkronisering</button>
+            </div>`;
+        return;
+    }
+
+    if (!syncUnlocked()) {
+        box.innerHTML = `
+            <p class="modal-hint">Skriv inn gjenopprettingskoden din for å hente og lagre kart.</p>
+            <input type="text" id="syncCodeInput" class="sync-input" placeholder="XXXX-XXXX-XXXX-XXXX"
+                   autocomplete="off" autocapitalize="characters" spellcheck="false">
+            <p class="modal-hint" id="syncErr" hidden></p>
+            <div class="sync-actions">
+                <button class="btn" data-syncact="off" type="button">Slå av synkronisering</button>
+                <button class="btn btn-primary" data-syncact="unlock" type="button">Lås opp</button>
+            </div>`;
+        setTimeout(() => { const i = $('syncCodeInput'); if (i) i.focus(); }, 60);
+        return;
+    }
+
+    const rows = Object.keys(store.classes).map(id => {
+        const c = store.classes[id];
+        const conflict = kkConflicts[id];
+        const status = conflict
+            ? `<span class="sync-bad">endret et annet sted</span>
+               <button class="btn btn-sm" data-syncact="takeServer" data-id="${id}" type="button">Hent deres</button>
+               <button class="btn btn-sm" data-syncact="keepMine" data-id="${id}" type="button">Behold mitt</button>`
+            : c.dirty ? '<span class="sync-wait">ikke lagret ennå</span>'
+            : c.sv ? `<span class="sync-ok">lagret (v${c.sv})</span>`
+            : '<span class="sync-wait">ikke sendt opp</span>';
+        return `<div class="sync-row"><span class="sync-name">${escapeHtml(c.name)}</span>${status}</div>`;
+    }).join('') || '<div class="empty-line">Ingen grupper enda.</div>';
+
+    box.innerHTML = `
+        <p class="modal-hint">Kartene lagres kryptert på skolens server. Serveren kan ikke lese dem.</p>
+        <div class="sync-list">${rows}</div>
+        <div class="sync-actions">
+            <button class="btn" data-syncact="lock" type="button">🔒 Lås</button>
+            <button class="btn btn-primary" data-syncact="now" type="button">↻ Synk nå</button>
+        </div>`;
+}
+
+/* A quiet marker on the Mer button, so an unresolved conflict is visible without
+ * opening anything. */
+function updateSyncBadge() {
+    const btn = $('menuBtn');
+    if (!btn) return;
+    const n = Object.keys(kkConflicts).length;
+    btn.classList.toggle('has-conflict', n > 0);
+    btn.title = n ? `${n} gruppe(r) endret et annet sted` : 'Mer';
+}
+
+async function syncAction(act, el) {
+    const id = el && el.dataset ? el.dataset.id : null;
+    try {
+        if (act === 'begin') {
+            const r = await syncBegin();
+            if (r.alreadySetUp) {
+                toast('Synk er alt satt opp — skriv inn koden din', 'err');
+                try { localStorage.setItem(SYNC_ON_KEY, '1'); } catch (e) {}
+            } else { syncNewSecret = r.secret; }
+            renderSyncBody(); return;
+        }
+        if (act === 'copy') {
+            try { await navigator.clipboard.writeText(syncNewSecret); toast('Kopiert', 'ok'); }
+            catch (e) { toast('Kunne ikke kopiere – skriv den ned', 'err'); }
+            return;
+        }
+        if (act === 'savedIt') {
+            syncNewSecret = null;
+            const r = await syncPullAll();
+            toast(`Synk slått på — ${r.pushed || 0} gruppe(r) lastet opp`, 'ok');
+            renderSyncBody(); updateSyncBadge(); return;
+        }
+        if (act === 'unlock') {
+            const r = await syncUnlock($('syncCodeInput').value);
+            if (r.error) { const e = $('syncErr'); e.hidden = false; e.textContent = r.error; e.className = 'modal-hint sync-bad'; return; }
+            const p = await syncPullAll();
+            toast(`Låst opp — ${p.pulled || 0} hentet, ${p.pushed || 0} lastet opp`, 'ok');
+            enterPulledCharts();
+            renderSyncBody(); updateSyncBadge(); return;
+        }
+        if (act === 'lock') { syncLock(); renderSyncBody(); return; }
+        if (act === 'off') {
+            // Local charts are untouched; the server copy stays until it is
+            // reset or purged, which is the lifecycle step's job, not this one.
+            try { localStorage.removeItem(SYNC_ON_KEY); } catch (e) {}
+            syncLock(); renderSyncBody(); toast('Synkronisering av', 'ok'); return;
+        }
+        if (act === 'now') {
+            const r = await syncPullAll();
+            enterPulledCharts();
+            toast(`${r.pulled || 0} hentet · ${r.pushed || 0} sendt${r.conflicts ? ` · ${r.conflicts} kollisjon` : ''}`, r.conflicts ? 'err' : 'ok');
+            renderSyncBody(); updateSyncBadge(); return;
+        }
+        if (act === 'takeServer') { await syncTakeServer(id); toast('Hentet serverversjonen', 'ok'); renderSyncBody(); updateSyncBadge(); return; }
+        if (act === 'keepMine') {
+            const r = await syncKeepMine(id);
+            toast(r.error || 'Din versjon er lagret', r.error ? 'err' : 'ok');
+            renderSyncBody(); updateSyncBadge(); return;
+        }
+    } catch (e) {
+        toast(e.message === 'Unauthorized' ? 'Økten er utløpt – logg inn på nytt' : 'Synk feilet: ' + e.message, 'err');
+    }
+}
+
 /* ----------------------------------------------------------- persistence    */
+let savingFromSync = false;
 function save() {
     if (!store) return;
+    if (!savingFromSync && state) { state.dirty = true; schedulePush(state); }
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); }
     catch (e) { console.error('save failed', e); }
 }
@@ -265,7 +669,11 @@ function normClass(c) {
         locked: c.locked || [],
         rules: (c.rules || []).map(normRule),
         prefs: Object.assign({ balanceGender: false, avoidRepeat: false, avoidAllRepeat: false, balanceTags: false }, c.prefs || {}),
-        history: c.history || []
+        history: c.history || [],
+        // sync bookkeeping: server version this copy matches, and whether we hold
+        // edits it has not seen. Local-only — stripped from the payload.
+        sv: Number(c.sv) || 0,
+        dirty: !!c.dirty
     };
 }
 
@@ -2483,6 +2891,8 @@ function buildMainMenu() {
     // tabs — what is left here is genuinely occasional: getting the chart out,
     // data safety, and destructive group admin.
     const items = [
+        [syncOn() ? (syncUnlocked() ? '☁ Synkronisering' : '🔒 Synkronisering (låst)') : '☁ Slå på synkronisering', openSyncModal],
+        ['sep'],
         ['📄 Eksporter PDF', exportPDF],
         ['🖼️ Eksporter PNG', exportPNG],
         ['🖨️ Skriv ut', printChart],
@@ -2528,6 +2938,15 @@ function wireSetup() {
     $('setupCsvBtn').addEventListener('click', () => $('csvFile').click());
     $('csvFile').addEventListener('change', e => { if (e.target.files[0]) csvHandleFile(e.target.files[0]); e.target.value = ''; });
     $('csvConfirmBtn').addEventListener('click', () => { if (csvRows) csvApply(csvRows, csvNameCol); });
+
+    // sync dialog — delegated, since its body is re-rendered per state
+    $('syncModal').addEventListener('click', e => {
+        const b = e.target.closest('[data-syncact]');
+        if (b) syncAction(b.dataset.syncact, b);
+    });
+    $('syncModal').addEventListener('keydown', e => {
+        if (e.key === 'Enter' && e.target.id === 'syncCodeInput') { e.preventDefault(); syncAction('unlock', e.target); }
+    });
 
     // first run after moving from the standalone app: localStorage doesn't
     // cross origins, so the JSON backup is the only bridge
@@ -2704,6 +3123,7 @@ function wireApp() {
 function wireGlobal() {
     window.addEventListener('resize', () => { if (state && !$('app').classList.contains('hidden')) fitBoard(); });
     document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && presentMode) exitPresent(); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushPush(); });
     document.addEventListener('keydown', (e) => {
         const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName);
         if (e.key === 'Escape') {
@@ -2771,6 +3191,10 @@ async function init() {
 
     wireSetup(); wireApp(); wireGlobal();
     loadClassCodes();
+    // Sync is opt-in and never interrupts a boot: if it is on but locked, the
+    // menu label says so and the local copy works meanwhile.
+    if (syncOn()) buildMainMenu();
+    updateSyncBadge();
     if (loadStore()) { state = store.classes[store.activeClassId]; showApp(); render(); }
     else { showSetup(); }
 }

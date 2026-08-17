@@ -431,6 +431,18 @@
     </div>
 </div>
 
+<!-- Synkronisering. A real dialog, not a tab: turning sync on is an interruption
+     with a one-time secret to write down, and it is rare. -->
+<div class="modal-overlay" id="syncModal">
+    <div class="modal">
+        <div class="modal-head">
+            <h2>Synkronisering</h2>
+            <button class="modal-x" data-close="syncModal" type="button">&times;</button>
+        </div>
+        <div class="modal-body" id="syncBody"></div>
+    </div>
+</div>
+
 <!-- CSV column mapping. Only shown when the file has more than one column –
      a names-only export imports straight through. Everything not mapped is
      dropped at parse time and never stored. -->
