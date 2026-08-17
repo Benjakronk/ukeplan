@@ -1,42 +1,50 @@
 'use strict';
 
 // Tidsbank – a per-class "time bank": bank leftover time from timed tasks, spend
-// it to leave early or buy a free period. Storage is browser-local (per class,
-// this device) behind a tiny getBank/setBank layer, so swapping to a shared
-// server store later is a localised change. Gated on the teacher session.
+// it to leave early or buy a free period. Balance + history + free-period length
+// live SERVER-SIDE (class_timebank table), so the bank is shared across teachers
+// and devices for a class. Session-gated on the teacher cookie.
 
 const SCRIPT_URL = 'https://api.ukeportalen.no';
 const RING_C = 339.29;                 // 2·π·54, matches the SVG + CSS dash-array
 const PRESETS = [1, 2, 3, 5];          // timer presets (minutes)
 const SPEND_PRESETS = [1, 2, 5];       // quick-spend presets (minutes)
+const CLASS_KEY = 'up_tb_class';       // remember the last picked class (UI only)
 
 let classes = [];
 let cls = null;
+let state = { class: null, seconds: 0, period: 45, log: [] };   // server-owned
 let pendingDuration = 0;               // seconds the next timer will run
 let duration = 0;                      // seconds the running timer was set to
 let endAt = 0;                         // ms epoch the running timer ends
 let tick = null;                       // interval id
 let audio = null;                      // AudioContext (created on first Start)
 
-// ── storage (browser-local) ───────────────────────────────────────────────────
-const bankKey = c => 'up_tb_bank_' + c;
-const logKey  = c => 'up_tb_log_' + c;
-const PERIOD_KEY = 'up_tb_period';     // free-period length (minutes), global
-const CLASS_KEY  = 'up_tb_class';
+// ── server ────────────────────────────────────────────────────────────────────
+async function api(action, params = {}, method = 'POST') {
+  let res;
+  if (method === 'GET') {
+    res = await fetch(SCRIPT_URL + '?' + new URLSearchParams(Object.assign({ action }, params)), { credentials: 'include' });
+  } else {
+    res = await fetch(SCRIPT_URL, { method: 'POST', credentials: 'include', body: new URLSearchParams(Object.assign({ action }, params)) });
+  }
+  const data = await res.json();
+  if (data && data.error) throw new Error(data.error);
+  return data;
+}
+function showError(e) { uiAlert('Kunne ikke nå tidsbanken. Sjekk nettet og prøv igjen.' + (e && e.message ? '\n\n(' + e.message + ')' : '')); }
 
-function getBank(c) { return Math.max(0, parseInt(localStorage.getItem(bankKey(c)) || '0', 10) || 0); }
-function setBank(c, s) { localStorage.setItem(bankKey(c), String(Math.max(0, Math.round(s)))); }
-function getLog(c) { try { const a = JSON.parse(localStorage.getItem(logKey(c)) || '[]'); return Array.isArray(a) ? a : []; } catch { return []; } }
-function pushLog(c, entry) { const a = getLog(c); a.unshift(entry); localStorage.setItem(logKey(c), JSON.stringify(a.slice(0, 30))); }
-function getPeriod() { const v = parseInt(localStorage.getItem(PERIOD_KEY) || '45', 10); return (v >= 1 && v <= 240) ? v : 45; }
-function setPeriod(m) { localStorage.setItem(PERIOD_KEY, String(Math.min(240, Math.max(1, Math.round(m))))); }
-
-// Apply a change to the bank (+bank / -spend), log it, re-render.
-function adjust(c, deltaSecs, label) {
-  const before = getBank(c);
-  setBank(c, before + deltaSecs);
-  pushLog(c, { ts: Date.now(), delta: Math.round(deltaSecs), label });
+async function loadClass(c) {
+  cls = c;
+  try { state = await api('timebank_get', { class: c }, 'GET'); }
+  catch (e) { state = { class: c, seconds: 0, period: 45, log: [] }; showError(e); }
+  document.getElementById('tbPeriod').value = state.period;
   render();
+}
+// Apply a +bank / -spend on the server, adopt the returned state, re-render.
+async function doAdjust(delta, label) {
+  try { state = await api('timebank_adjust', { class: cls, delta: String(Math.round(delta)), label: label || '' }); render(); return true; }
+  catch (e) { showError(e); return false; }
 }
 
 // ── formatting ────────────────────────────────────────────────────────────────
@@ -58,34 +66,29 @@ function fmtAgo(ts) {
   const hrs = Math.floor(min / 60);
   if (hrs < 24) return hrs + ' t siden';
   const days = Math.floor(hrs / 24);
-  if (days === 1) return 'i går';
-  return days + ' dager siden';
+  return days === 1 ? 'i går' : days + ' dager siden';
 }
 function classCmp(a, b) { return (parseInt(a, 10) - parseInt(b, 10)) || a.localeCompare(b, 'no'); }
 
 // ── rendering ─────────────────────────────────────────────────────────────────
 function render() {
   if (!cls) return;
-  const bank = getBank(cls);
+  const bank = state.seconds;
   document.getElementById('tbBalance').textContent = fmtHuman(bank);
   document.getElementById('tbBalanceClass').textContent = cls;
 
-  const cost = getPeriod() * 60;
-  const hint = document.getElementById('tbFreeHint');
-  hint.textContent = bank >= cost
+  const cost = state.period * 60;
+  document.getElementById('tbFreeHint').textContent = bank >= cost
     ? 'Nok til en fri time! 🎉'
     : 'Mangler ' + fmtHuman(cost - bank) + ' til en fri time.';
-
-  const free = document.getElementById('tbFree');
   document.getElementById('tbFreeCost').textContent = 'Koster ' + fmtHuman(cost);
-  free.disabled = bank < cost;
+  document.getElementById('tbFree').disabled = bank < cost;
 
   renderLog();
 }
-
 function renderLog() {
   const ul = document.getElementById('tbLog');
-  const log = getLog(cls);
+  const log = Array.isArray(state.log) ? state.log : [];
   ul.innerHTML = '';
   if (!log.length) {
     const li = document.createElement('li');
@@ -95,12 +98,12 @@ function renderLog() {
     return;
   }
   log.forEach(e => {
-    const li = document.createElement('li');
-    li.className = 'tb-log-row';
+    const li = document.createElement('li'); li.className = 'tb-log-row';
     const d = document.createElement('span');
     d.className = 'tb-log-delta ' + (e.delta >= 0 ? 'pos' : 'neg');
     d.textContent = (e.delta >= 0 ? '+' : '−') + fmtHuman(Math.abs(e.delta));
-    const l = document.createElement('span'); l.className = 'tb-log-label'; l.textContent = e.label || '';
+    const l = document.createElement('span'); l.className = 'tb-log-label';
+    l.textContent = (e.label || '') + (e.by ? ' · @' + e.by : '');
     const t = document.createElement('span'); t.className = 'tb-log-time'; t.textContent = fmtAgo(e.ts);
     li.append(d, l, t);
     ul.appendChild(li);
@@ -143,16 +146,14 @@ function timeUp() {
   beep();
   document.getElementById('tbDone').disabled = true;      // nothing left to bank
   const msg = document.getElementById('tbRunMsg');
-  msg.textContent = 'Tiden er ute!';
-  msg.className = 'tb-run-msg timeup';
-  msg.hidden = false;
+  msg.textContent = 'Tiden er ute!'; msg.className = 'tb-run-msg timeup'; msg.hidden = false;
 }
-function finishTask() {
+async function finishTask() {
   const remaining = Math.max(0, Math.round((endAt - Date.now()) / 1000));
   clearInterval(tick); tick = null;
   if (remaining > 0) {
-    adjust(cls, remaining, 'Banket ' + fmtClock(remaining) + ' fra en oppgave');
-    flashRunMsg('La ' + fmtHuman(remaining) + ' i banken! 🎉', false);
+    const ok = await doAdjust(remaining, 'Banket ' + fmtClock(remaining) + ' fra en oppgave');
+    flashRunMsg(ok ? 'La ' + fmtHuman(remaining) + ' i banken! 🎉' : 'Kunne ikke lagre – prøv igjen.', !ok);
   } else {
     flashRunMsg('Tiden var ute – ingenting å banke denne gangen.', true);
   }
@@ -165,9 +166,9 @@ function resetTimer() {
   document.getElementById('tbRunMsg').hidden = true;
   document.querySelector('.tb-ring-wrap').classList.remove('low');
 }
-function flashRunMsg(text, timeup) {
+function flashRunMsg(text, warn) {
   const msg = document.getElementById('tbRunMsg');
-  msg.textContent = text; msg.className = 'tb-run-msg' + (timeup ? ' timeup' : ''); msg.hidden = false;
+  msg.textContent = text; msg.className = 'tb-run-msg' + (warn ? ' timeup' : ''); msg.hidden = false;
 }
 function beep() {
   if (!audio) return;
@@ -183,21 +184,20 @@ function beep() {
 }
 
 // ── spend ─────────────────────────────────────────────────────────────────────
-function spend(secs) {
+async function spend(secs) {
   if (secs <= 0) return;
-  const bank = getBank(cls);
-  if (bank < secs) { uiAlert('Ikke nok tid i banken. Du har ' + fmtHuman(bank) + '.'); return; }
-  adjust(cls, -secs, 'Brukte ' + fmtHuman(secs));
+  if (state.seconds < secs) { uiAlert('Ikke nok tid i banken. Du har ' + fmtHuman(state.seconds) + '.'); return; }
+  await doAdjust(-secs, 'Brukte ' + fmtHuman(secs));
 }
 async function buyFreePeriod() {
-  const cost = getPeriod() * 60, bank = getBank(cls);
-  if (bank < cost) return;
-  if (!await uiConfirm('Kjøpe en fri time for ' + fmtHuman(cost) + '? Da står det ' + fmtHuman(bank - cost) + ' igjen i banken.',
-      { title: 'Kjøp fri time', okText: 'Kjøp', danger: false })) return;
-  adjust(cls, -cost, 'Kjøpte fri time (' + getPeriod() + ' min)');
+  const cost = state.period * 60;
+  if (state.seconds < cost) return;
+  if (!await uiConfirm('Kjøpe en fri time for ' + fmtHuman(cost) + '? Da står det ' + fmtHuman(state.seconds - cost) + ' igjen i banken.',
+      { title: 'Kjøp fri time', okText: 'Kjøp' })) return;
+  await doAdjust(-cost, 'Kjøpte fri time (' + state.period + ' min)');
 }
 
-// ── build static controls ─────────────────────────────────────────────────────
+// ── controls / init ───────────────────────────────────────────────────────────
 function buildControls() {
   const presets = document.getElementById('tbPresets');
   PRESETS.forEach(m => {
@@ -229,21 +229,22 @@ function buildControls() {
   document.getElementById('tbFree').addEventListener('click', buyFreePeriod);
 
   const period = document.getElementById('tbPeriod');
-  period.value = getPeriod();
-  period.addEventListener('change', () => { setPeriod(parseInt(period.value, 10) || 45); period.value = getPeriod(); render(); });
-
+  period.addEventListener('change', async () => {
+    const m = parseInt(period.value, 10) || 45;
+    try { state = await api('timebank_period', { class: cls, period: String(m) }); } catch (e) { showError(e); }
+    period.value = state.period;
+    render();
+  });
   document.getElementById('tbAdjust').addEventListener('click', async () => {
     const v = await uiPrompt('Juster banken manuelt (minutter – kan være negativt):', { title: 'Juster tidsbanken', label: 'Minutter', okText: 'Juster' });
     const m = parseInt(v, 10);
     if (isNaN(m) || m === 0) return;
-    adjust(cls, m * 60, 'Manuell justering');
+    await doAdjust(m * 60, 'Manuell justering');
   });
   document.getElementById('tbReset').addEventListener('click', async () => {
     if (!await uiConfirm('Nullstille tidsbanken for ' + cls + '? Både saldo og historikk slettes. Dette kan ikke angres.',
         { title: 'Nullstill', okText: 'Nullstill', danger: true })) return;
-    setBank(cls, 0);
-    localStorage.removeItem(logKey(cls));
-    render();
+    try { state = await api('timebank_reset', { class: cls }); render(); } catch (e) { showError(e); }
   });
 }
 
@@ -253,20 +254,18 @@ function buildClassPicker() {
   classes.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; sel.appendChild(o); });
   sel.addEventListener('change', () => {
     if (tick) cancelTimer();
-    cls = sel.value;
-    localStorage.setItem(CLASS_KEY, cls);
-    render();
+    localStorage.setItem(CLASS_KEY, sel.value);
+    loadClass(sel.value);
   });
 }
 
-// ── init / session gate ───────────────────────────────────────────────────────
 async function init() {
   document.getElementById('tbTheme').addEventListener('click', () => { if (window.UPTheme) UPTheme.cycle(); });
 
   let me;
   try { me = await (await fetch(SCRIPT_URL + '?action=me', { credentials: 'include' })).json(); }
   catch { me = { error: 'network' }; }
-  if (!me || me.error) { location.replace('teacher.html'); return; }   // not a teacher session → send to login
+  if (!me || me.error) { location.replace('teacher.html'); return; }   // not a teacher session → login
 
   let list = [...(me.classes || []), ...(me.kontakt || [])];
   if (!list.length) {
@@ -277,14 +276,17 @@ async function init() {
   if (!classes.length) { document.getElementById('tbGate').textContent = 'Ingen klasser funnet. Legg til klasser i profilen på lærersiden.'; return; }
 
   buildClassPicker();
-  cls = localStorage.getItem(CLASS_KEY);
-  if (!classes.includes(cls)) cls = classes[0];
-  document.getElementById('tbClass').value = cls;
-
   buildControls();
+  let start = localStorage.getItem(CLASS_KEY);
+  if (!classes.includes(start)) start = classes[0];
+  document.getElementById('tbClass').value = start;
+
   document.getElementById('tbGate').hidden = true;
   document.getElementById('tbMain').hidden = false;
-  render();
+  await loadClass(start);
+
+  // Shared bank: pick up other teachers' changes when returning to the tab.
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && cls && !tick) loadClass(cls); });
 }
 
 window.addEventListener('DOMContentLoaded', init);
