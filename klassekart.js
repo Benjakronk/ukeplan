@@ -145,6 +145,47 @@ async function kkUnwrapCek(blob, wrappingKey) {
     return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, true, ['encrypt', 'decrypt']);
 }
 
+/* ---- sharing: ECDH identity keys ------------------------------------------
+ * Wrapping a group key for a colleague needs a shared secret with them, and the
+ * only way to get one without either party revealing a password is key agreement.
+ * Each teacher therefore has a P-256 keypair: the public half sits on the server
+ * in the clear, the private half wrapped under their own recovery-code key.
+ *
+ * Static-static ECDH, so no forward secrecy. Accepted: the inviter already knows
+ * the group key, so being able to re-derive the wrapping key grants them nothing
+ * they did not already have. */
+async function kkNewIdentityKeys() {
+    return crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+}
+async function kkExportPub(pub) {
+    return kkB64(new Uint8Array(await crypto.subtle.exportKey('spki', pub)));
+}
+async function kkImportPub(b64) {
+    return crypto.subtle.importKey('spki', kkUnb64(b64), { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+}
+async function kkWrapPriv(priv, personalKey) {
+    const pkcs8 = new Uint8Array(await crypto.subtle.exportKey('pkcs8', priv));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, personalKey, pkcs8);
+    return { v: KK_ENV_V, iv: kkB64(iv), ct: kkB64(new Uint8Array(ct)) };
+}
+async function kkUnwrapPriv(blob, personalKey) {
+    const pkcs8 = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: kkUnb64(blob.iv) }, personalKey, kkUnb64(blob.ct));
+    return crypto.subtle.importKey('pkcs8', pkcs8, { name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits']);
+}
+/* The wrapping key for one (colleague, group, epoch). Binding the group and epoch
+ * into the HKDF info means a wrap captured for one group cannot be replayed as the
+ * wrap for another, and a rotated epoch produces a different key even between the
+ * same two people. ECDH is symmetric, so both sides derive this identically. */
+async function kkShareKey(myPriv, theirPub, groupId, epoch) {
+    const bits = await crypto.subtle.deriveBits({ name: 'ECDH', public: theirPub }, myPriv, 256);
+    const hk = await crypto.subtle.importKey('raw', bits, 'HKDF', false, ['deriveKey']);
+    return crypto.subtle.deriveKey({
+        name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0),
+        info: new TextEncoder().encode('klassekart|' + groupId + '|' + epoch),
+    }, hk, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+
 /* ---- the chart payload ---------------------------------------------------- */
 /* `version` is carried INSIDE the ciphertext as well as in a plaintext column,
  * so a server that serves an older blob than it claims is detectable — AES-GCM
@@ -184,6 +225,9 @@ let kkSalt = null;       // Uint8Array, from the server (never changes once set)
 let kkCeks = {};         // groupId → CryptoKey
 let kkServer = {};       // groupId → { version, label, wrappedCek, method, epoch, updatedBy }
 let kkConflicts = {};    // groupId → server version that refused our write
+let kkPriv = null;       // my ECDH private key (unwrapped, memory only)
+let kkPubs = {};         // teacherId → imported public CryptoKey
+let kkDir = null;        // cached staff list from kk_teachers
 let pushTimer = null;
 
 function syncOn() { try { return localStorage.getItem(SYNC_ON_KEY) === '1'; } catch (e) { return false; } }
@@ -224,7 +268,40 @@ function chartPayload(cls) {
  * salt is offered and the server returns whichever one is authoritative. */
 async function kkFetchSalt() {
     const r = await kkPost('kk_identity', { salt: kkB64(kkNewSalt()) });
-    return { salt: kkUnb64(r.salt), created: !!r.created };
+    return { salt: kkUnb64(r.salt), created: !!r.created, publicKey: r.publicKey || '', encPrivate: r.encPrivate || '' };
+}
+
+/* Make sure this teacher has an ECDH keypair and that we hold the private half.
+ * Teachers who turned sync on before sharing existed have a salt but no keys, so
+ * this doubles as their migration: generated on the next unlock and wrapped under
+ * the key they already have. */
+async function ensureIdentityKeys(personalKey, existing) {
+    if (existing && existing.encPrivate) {
+        kkPriv = await kkUnwrapPriv(JSON.parse(existing.encPrivate), personalKey);
+        return { created: false };
+    }
+    const kp = await kkNewIdentityKeys();
+    const pub = await kkExportPub(kp.publicKey);
+    const enc = JSON.stringify(await kkWrapPriv(kp.privateKey, personalKey));
+    const r = await kkPost('kk_identity', { salt: kkB64(kkNewSalt()), publicKey: pub, encPrivate: enc });
+    // Another device may have registered a keypair first. The server sets it once,
+    // so adopt whatever it reports rather than assuming ours won the race.
+    if (r.encPrivate && r.encPrivate !== enc) {
+        kkPriv = await kkUnwrapPriv(JSON.parse(r.encPrivate), personalKey);
+        return { created: false, raced: true };
+    }
+    kkPriv = kp.privateKey;
+    return { created: true };
+}
+async function staffList(force) {
+    if (!kkDir || force) kkDir = (await kkGet('kk_teachers')).teachers || [];
+    return kkDir;
+}
+async function pubKeyOf(id, b64) {
+    if (kkPubs[id]) return kkPubs[id];
+    if (!b64) throw new Error('Mangler offentlig nokkel for laereren');
+    kkPubs[id] = await kkImportPub(b64);
+    return kkPubs[id];
 }
 
 /* Turning sync on for the first time. If the server already holds an identity,
@@ -232,11 +309,12 @@ async function kkFetchSalt() {
  * because the existing salt belongs to the old one. Say so rather than issuing a
  * code that cannot open anything. */
 async function syncBegin() {
-    const { salt, created } = await kkFetchSalt();
-    if (!created) return { alreadySetUp: true };
+    const info = await kkFetchSalt();
+    if (!info.created) return { alreadySetUp: true };
     const secret = kkGenerateSecret();
-    kkSalt = salt;
-    kkPersonal = await kkPersonalKey(secret, salt);
+    kkSalt = info.salt;
+    kkPersonal = await kkPersonalKey(secret, info.salt);
+    await ensureIdentityKeys(kkPersonal, info);
     try { localStorage.setItem(SYNC_ON_KEY, '1'); } catch (e) {}
     return { secret };
 }
@@ -247,8 +325,8 @@ async function syncBegin() {
  * group created then establishes it. */
 async function syncUnlock(input) {
     if (!kkSecretIsWellFormed(input)) return { error: 'Koden ser ikke riktig ut. Den er 16 tegn.' };
-    const { salt } = await kkFetchSalt();
-    const key = await kkPersonalKey(input, salt);
+    const info = await kkFetchSalt();
+    const key = await kkPersonalKey(input, info.salt);
     const { groups } = await kkGet('kk_groups');
     const mine = groups.filter(g => g.method === 'self');
     if (mine.length) {
@@ -258,22 +336,43 @@ async function syncUnlock(input) {
             catch (e) { /* try the next */ }
         }
         if (!anyOpened) return { error: 'Feil kode — fikk ikke opp noen av gruppene dine.' };
+    } else if (info.encPrivate) {
+        // No self-wrapped group to test against, but the wrapped private key does
+        // the same job: a wrong code cannot unwrap it.
+        try { await kkUnwrapPriv(JSON.parse(info.encPrivate), key); }
+        catch (e) { return { error: 'Feil kode.' }; }
     }
-    kkSalt = salt; kkPersonal = key;
+    kkSalt = info.salt; kkPersonal = key;
+    try { await ensureIdentityKeys(key, info); }
+    catch (e) { return { error: 'Kunne ikke hente nokkelparet ditt: ' + e.message }; }
     try { localStorage.setItem(SYNC_ON_KEY, '1'); } catch (e) {}
     return { ok: true, groups: groups.length };
 }
-function syncLock() { kkPersonal = null; kkCeks = {}; kkSalt = null; }
+function syncLock() { kkPersonal = null; kkCeks = {}; kkSalt = null; kkPriv = null; kkPubs = {}; kkDir = null; }
 
 /* ---- group keys ----------------------------------------------------------- */
 /* A group's CEK, creating and registering it the first time. Note the group row
  * and its key row are created together server-side: a group nobody holds a key
  * for would be unopenable, including by whoever just made it. */
+/* Unwrap whichever way this key was wrapped for me. 'self' is under my own
+ * recovery-code key; 'ecdh' means a colleague agreed a key with my public half, so
+ * I need their public key and the epoch their wrap was made at. */
+async function unwrapFor(groupId, g) {
+    if (g.method !== 'ecdh') return kkUnwrapCek(JSON.parse(g.wrappedCek), kkPersonal);
+    if (!kkPriv) throw new Error('Mangler nokkelparet ditt - las opp pa nytt');
+    const dir = await staffList();
+    const inviter = dir.find(t => t.id === g.wrappedBy);
+    if (!inviter || !inviter.publicKey) throw new Error('Fant ikke laereren som delte gruppa');
+    const theirPub = await pubKeyOf(inviter.id, inviter.publicKey);
+    const wk = await kkShareKey(kkPriv, theirPub, groupId, g.epoch || 1);
+    return kkUnwrapCek(JSON.parse(g.wrappedCek), wk);
+}
+
 async function ensureCek(cls) {
     if (kkCeks[cls.id]) return kkCeks[cls.id];
     const known = kkServer[cls.id];
     if (known && known.wrappedCek) {
-        const cek = await kkUnwrapCek(JSON.parse(known.wrappedCek), kkPersonal);
+        const cek = await unwrapFor(cls.id, known);
         kkCeks[cls.id] = cek;
         return cek;
     }
@@ -360,7 +459,7 @@ async function syncPullAll() {
         if (local && Number(local.sv || 0) >= g.version) continue;   // we are current or ahead
         if (g.version === 0) continue;                               // nothing stored yet
         try {
-            const cek = kkCeks[g.id] || await kkUnwrapCek(JSON.parse(g.wrappedCek), kkPersonal);
+            const cek = kkCeks[g.id] || await unwrapFor(g.id, g);
             kkCeks[g.id] = cek;
             const c = await kkGet('kk_chart', { group: g.id });
             if (!c.payload) continue;
@@ -380,7 +479,8 @@ async function syncPullAll() {
     }
     if (!store.classes[store.activeClassId]) store.activeClassId = Object.keys(store.classes)[0] || null;
     saveQuiet();
-    return { pulled, pushed, conflicts };
+    const completed = await resolvePending();
+    return { pulled, pushed, conflicts, completed };
 }
 /* Has this device changed the chart since its last successful push? Anything
  * saved locally after a push bumps nothing we track, so treat "we hold edits the
@@ -389,12 +489,92 @@ async function syncPullAll() {
  * false negative costs someone's work. */
 function localAheadOf(cls) { return !!cls.dirty; }
 
+/* ---- sharing -------------------------------------------------------------- */
+/* Invite a colleague. If they have a public key we can wrap the group key for
+ * them right now; if they have never opened Klassekartografen they have none, so
+ * the invite parks server-side and is completed later by resolvePending(). */
+async function inviteTeacher(groupId, teacherId) {
+    const cls = store.classes[groupId];
+    if (!cls) return { error: 'Ukjent gruppe' };
+    const dir = await staffList(true);
+    const t = dir.find(x => x.id === teacherId);
+    if (!t) return { error: 'Ukjent lærer' };
+    if (!t.hasKeypair) {
+        const r = await kkPost('kk_invite', { group: groupId, teacherId });
+        return r.pending ? { pending: true, name: t.name } : r;
+    }
+    const cek = await ensureCek(cls);
+    const epoch = (kkServer[groupId] && kkServer[groupId].epoch) || 1;
+    const wk = await kkShareKey(kkPriv, await pubKeyOf(t.id, t.publicKey), groupId, epoch);
+    const wrapped = await kkWrapCek(cek, wk);
+    await kkPost('kk_invite', { group: groupId, teacherId, wrappedCek: JSON.stringify(wrapped) });
+    return { ok: true, name: t.name };
+}
+
+/* Finish invites that were parked because the invitee had no key yet. Runs on
+ * every pull, so it happens without anyone being told to do anything — the
+ * invitee just gains access the next time a member opens the app. */
+async function resolvePending() {
+    if (!syncUnlocked() || !kkPriv) return 0;
+    let done = 0;
+    try {
+        const { toComplete } = await kkGet('kk_pending');
+        for (const inv of toComplete || []) {
+            const cls = store.classes[inv.group];
+            if (!cls) continue;
+            try {
+                const cek = await ensureCek(cls);
+                const epoch = (kkServer[inv.group] && kkServer[inv.group].epoch) || 1;
+                const wk = await kkShareKey(kkPriv, await pubKeyOf(inv.inviteeId, inv.publicKey), inv.group, epoch);
+                const wrapped = await kkWrapCek(cek, wk);
+                await kkPost('kk_invite', { group: inv.group, teacherId: inv.inviteeId, wrappedCek: JSON.stringify(wrapped) });
+                done++;
+            } catch (e) { console.warn('kk: could not complete invite', inv.group, e.message); }
+        }
+    } catch (e) { /* not fatal */ }
+    return done;
+}
+
+/* Removing someone. Dropping their key row is what stops them: every kk_ action
+ * checks for one. Rotation additionally re-keys the group, which only matters
+ * against someone who kept the wrapped key material — but neither is retroactive,
+ * and the UI says so rather than implying otherwise. */
+async function revokeTeacher(groupId, teacherId, rotate) {
+    await kkPost('kk_revoke', { group: groupId, teacherId });
+    if (!rotate) return { ok: true };
+    const cls = store.classes[groupId];
+    const m = await kkGet('kk_members', { group: groupId });
+    const dir = await staffList(true);
+    const cek2 = await kkNewCek();
+    const nextEpoch = ((kkServer[groupId] && kkServer[groupId].epoch) || 1) + 1;
+    const keys = [];
+    for (const mem of m.members || []) {
+        if (mem.id === teacherId) continue;
+        if (mem.method === 'self') {
+            keys.push({ teacherId: mem.id, wrappedCek: JSON.stringify(await kkWrapCek(cek2, kkPersonal)) });
+        } else {
+            const t = dir.find(x => x.id === mem.id);
+            if (!t || !t.publicKey) return { error: 'Mangler nøkkel for ' + mem.name + ' – roterte ikke' };
+            const wk = await kkShareKey(kkPriv, await pubKeyOf(t.id, t.publicKey), groupId, nextEpoch);
+            keys.push({ teacherId: mem.id, wrappedCek: JSON.stringify(await kkWrapCek(cek2, wk)) });
+        }
+    }
+    const payload = await kkEncryptChart(chartPayload(cls), cek2, Number(cls.sv || 0) + 1);
+    const r = await kkPost('kk_rotate', { group: groupId, payload: JSON.stringify(payload), keys: JSON.stringify(keys) });
+    if (r.error) return r;
+    kkCeks[groupId] = cek2;
+    cls.sv = r.version; cls.dirty = false;
+    kkServer[groupId] = Object.assign(kkServer[groupId] || {}, { epoch: r.epoch, version: r.version });
+    saveQuiet();
+    return { ok: true, rotated: true };
+}
+
 /* ---- conflict resolution ------------------------------------------------- */
 /* Both directions are destructive, so both are the teacher's explicit choice. */
 async function syncTakeServer(id) {
     const g = kkServer[id]; if (!g) return { error: 'Ukjent gruppe' };
     ensureStore();
-    const cek = kkCeks[id] || await kkUnwrapCek(JSON.parse(g.wrappedCek), kkPersonal);
+    const cek = kkCeks[id] || await unwrapFor(id, g);
     const c = await kkGet('kk_chart', { group: id });
     const data = await kkDecryptChart(JSON.parse(c.payload), cek, c.version);
     store.classes[id] = normClass(Object.assign({}, data, { id }));
@@ -419,8 +599,28 @@ async function syncKeepMine(id) {
  * generated code. The code is shown exactly once — there is no recovery path by
  * design, so the copy says so plainly rather than implying we could help. */
 let syncNewSecret = null;   // held only while the "write this down" step is open
+let syncHasIdentity = null; // server says an identity exists (null = not asked yet)
+let syncShareGroup = null;  // group whose sharing panel is open
+let syncShareData = null;   // { members, pending } for that group
 
-function openSyncModal() { renderSyncBody(); openModal('syncModal'); }
+/* The local `kk_sync_on` flag says nothing about a device that has never been used
+ * before — which is exactly the case a teacher hits when they open Klassekartografen
+ * on a new machine. Ask the server (read-only) whether they already have an
+ * identity, so they are prompted for their code instead of being offered a fresh
+ * setup that would then tell them they already have one. */
+function openSyncModal() {
+    // Always open on the overview: a share panel left over from last time is
+    // stale and confusing.
+    syncShareGroup = null; syncShareData = null;
+    renderSyncBody(); openModal('syncModal');
+    if (syncHasIdentity === null) {
+        kkGet('kk_identity').then(r => {
+            syncHasIdentity = !!r.exists;
+            if (syncHasIdentity && !syncOn()) { try { localStorage.setItem(SYNC_ON_KEY, '1'); } catch (e) {} }
+            renderSyncBody();
+        }).catch(() => { syncHasIdentity = false; });
+    }
+}
 
 /* After a pull, make sure the app is actually showing something. On a device that
  * started empty this is the moment the teacher's charts appear; on one that was
@@ -440,6 +640,8 @@ function renderSyncBody() {
     const box = $('syncBody');
     if (!box) return;
 
+    if (syncShareGroup) { renderSyncShare(box); return; }
+
     if (syncNewSecret) {
         box.innerHTML = `
             <p class="modal-hint">Skriv ned koden, eller lagre den i passordbehandleren din.
@@ -453,7 +655,12 @@ function renderSyncBody() {
         return;
     }
 
-    if (!syncOn()) {
+    if (syncHasIdentity === null && !syncOn()) {
+        box.innerHTML = '<p class="modal-hint">Sjekker…</p>';
+        return;
+    }
+
+    if (!syncOn() && !syncHasIdentity) {
         box.innerHTML = `
             <p class="modal-hint">Uten synkronisering ligger kartene bare i denne nettleseren.
             Blir den tømt, eller får du ny maskin, er de borte.</p>
@@ -468,7 +675,9 @@ function renderSyncBody() {
 
     if (!syncUnlocked()) {
         box.innerHTML = `
-            <p class="modal-hint">Skriv inn gjenopprettingskoden din for å hente og lagre kart.</p>
+            <p class="modal-hint">Skriv inn gjenopprettingskoden din for å hente og lagre kart.
+            ${syncHasIdentity && !Object.keys((store && store.classes) || {}).length
+                ? 'Kartene dine hentes ned så snart du er låst opp.' : ''}</p>
             <input type="text" id="syncCodeInput" class="sync-input" placeholder="XXXX-XXXX-XXXX-XXXX"
                    autocomplete="off" autocapitalize="characters" spellcheck="false">
             <p class="modal-hint" id="syncErr" hidden></p>
@@ -491,7 +700,8 @@ function renderSyncBody() {
             : c.dirty ? '<span class="sync-wait">ikke lagret ennå</span>'
             : c.sv ? `<span class="sync-ok">lagret (v${c.sv})</span>`
             : '<span class="sync-wait">ikke sendt opp</span>';
-        return `<div class="sync-row"><span class="sync-name">${escapeHtml(c.name)}</span>${status}</div>`;
+        const share = c.sv ? `<button class="btn btn-sm" data-syncact="share" data-id="${id}" type="button">👥 Del</button>` : '';
+        return `<div class="sync-row"><span class="sync-name">${escapeHtml(c.name)}</span>${status}${share}</div>`;
     }).join('') || '<div class="empty-line">Ingen grupper her enda. Trykk «Synk nå» for å hente.</div>';
 
     box.innerHTML = `
@@ -500,6 +710,42 @@ function renderSyncBody() {
         <div class="sync-actions">
             <button class="btn" data-syncact="lock" type="button">🔒 Lås</button>
             <button class="btn btn-primary" data-syncact="now" type="button">↻ Synk nå</button>
+        </div>`;
+}
+
+/* Who this group is shared with, and how to change that. */
+function renderSyncShare(box) {
+    const cls = store.classes[syncShareGroup];
+    const d = syncShareData;
+    if (!cls) { syncShareGroup = null; renderSyncBody(); return; }
+    if (!d) { box.innerHTML = '<p class="modal-hint">Henter…</p>'; return; }
+
+    const members = d.members.map(m => {
+        const isMe = m.method === 'self' && m.wrappedBy === m.id;
+        const rm = (d.members.length > 1 && !isMe)
+            ? `<button class="btn btn-sm" data-syncact="revoke" data-id="${m.id}" type="button">Fjern</button>` : '';
+        return `<div class="sync-row"><span class="sync-name">${escapeHtml(m.name)}</span>
+                <span class="sync-wait">${isMe ? 'deg' : 'har tilgang'}</span>${rm}</div>`;
+    }).join('');
+    const pending = d.pending.map(pp => `<div class="sync-row"><span class="sync-name">${escapeHtml(pp.name)}</span>
+        <span class="sync-wait">venter på nøkkel</span></div>`).join('');
+    const have = new Set(d.members.map(m => m.id).concat(d.pending.map(x => x.id)));
+    const opts = (kkDir || []).filter(t => !have.has(t.id))
+        .map(t => `<option value="${t.id}">${escapeHtml(t.name)}${t.hasKeypair ? '' : ' (ikke i gang enda)'}</option>`).join('');
+
+    box.innerHTML = `
+        <p class="modal-hint"><strong>${escapeHtml(cls.name)}</strong> — hvem har tilgang.
+        Alle med tilgang kan redigere kartet og invitere flere.</p>
+        <div class="sync-list">${members}${pending}</div>
+        ${opts ? `<div class="setup-field">
+            <label for="syncInvitee">Inviter en kollega</label>
+            <select id="syncInvitee">${opts}</select>
+        </div>` : '<p class="modal-hint">Alle andre lærere er alt invitert.</p>'}
+        <p class="modal-hint">Å fjerne noen stopper videre tilgang. Det de alt har åpnet,
+        har de fortsatt — det kan ingen ta tilbake.</p>
+        <div class="sync-actions">
+            <button class="btn" data-syncact="shareBack" type="button">← Tilbake</button>
+            ${opts ? '<button class="btn btn-primary" data-syncact="invite" type="button">Inviter</button>' : ''}
         </div>`;
 }
 
@@ -543,17 +789,44 @@ async function syncAction(act, el) {
             enterPulledCharts();
             renderSyncBody(); updateSyncBadge(); return;
         }
-        if (act === 'lock') { syncLock(); renderSyncBody(); return; }
+        if (act === 'share') {
+            syncShareGroup = id; syncShareData = null; renderSyncBody();
+            await staffList(true);
+            syncShareData = await kkGet('kk_members', { group: id });
+            renderSyncBody(); return;
+        }
+        if (act === 'shareBack') { syncShareGroup = null; syncShareData = null; renderSyncBody(); return; }
+        if (act === 'invite') {
+            const who = $('syncInvitee').value;
+            const r = await inviteTeacher(syncShareGroup, who);
+            if (r.error) { toast(r.error, 'err'); return; }
+            toast(r.pending ? `${r.name} får tilgang når en av oss åpner gruppa neste gang`
+                            : `${r.name} har nå tilgang`, 'ok');
+            syncShareData = await kkGet('kk_members', { group: syncShareGroup });
+            renderSyncBody(); return;
+        }
+        if (act === 'revoke') {
+            const who = (syncShareData.members.find(m => m.id === id) || {}).name || 'læreren';
+            if (!confirm(`Fjerne ${who} fra «${store.classes[syncShareGroup].name}»?\n\nDe mister videre tilgang, men beholder det de alt har åpnet.`)) return;
+            const rot = confirm('Bytte gruppenøkkel samtidig? Tar litt lenger tid, og er bare nødvendig hvis du tror de har tatt vare på nøkkelen.');
+            const r = await revokeTeacher(syncShareGroup, id, rot);
+            if (r.error) { toast(r.error, 'err'); return; }
+            toast(r.rotated ? 'Fjernet og ny nøkkel laget' : 'Fjernet', 'ok');
+            syncShareData = await kkGet('kk_members', { group: syncShareGroup });
+            renderSyncBody(); return;
+        }
+        if (act === 'lock') { syncShareGroup = null; syncLock(); renderSyncBody(); return; }
         if (act === 'off') {
             // Local charts are untouched; the server copy stays until it is
             // reset or purged, which is the lifecycle step's job, not this one.
             try { localStorage.removeItem(SYNC_ON_KEY); } catch (e) {}
+            syncHasIdentity = false;   // otherwise the dialog re-enables itself on the next open
             syncLock(); renderSyncBody(); toast('Synkronisering av', 'ok'); return;
         }
         if (act === 'now') {
             const r = await syncPullAll();
             enterPulledCharts();
-            toast(`${r.pulled || 0} hentet · ${r.pushed || 0} sendt${r.conflicts ? ` · ${r.conflicts} kollisjon` : ''}`, r.conflicts ? 'err' : 'ok');
+            toast(`${r.pulled || 0} hentet · ${r.pushed || 0} sendt${r.completed ? ` · ${r.completed} invitasjon fullført` : ''}${r.conflicts ? ` · ${r.conflicts} kollisjon` : ''}`, r.conflicts ? 'err' : 'ok');
             renderSyncBody(); updateSyncBadge(); return;
         }
         if (act === 'takeServer') { await syncTakeServer(id); toast('Hentet serverversjonen', 'ok'); renderSyncBody(); updateSyncBadge(); return; }
