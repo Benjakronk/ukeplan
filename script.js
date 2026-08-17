@@ -886,7 +886,12 @@ function prefersReducedMotion() { return !!(window.matchMedia && window.matchMed
 function weekLekser() { return planData.filter(p => p.type === 'lekse' && p.description && subjectVisible(p.subject)); }
 // This week's beskjeder (general elements). A stable key per element.
 function weekBeskjeder() { return planData.filter(p => GENERAL_TYPES.includes(p.type) && p.description && subjectVisible(p.subject)); }
-function beskjedKey(el) { return el.id || ('b:' + (el.type || '') + ':' + (el.subject || '') + ':' + (el.day || '') + ':' + el.description); }
+// Per-week ack key: a multi-week beskjed must be acknowledged again each week it
+// runs, so "Skjønner" in one week doesn't hide an important message in the next.
+function beskjedKey(el) {
+  const base = el.id || ('b:' + (el.type || '') + ':' + (el.subject || '') + ':' + (el.day || '') + ':' + el.description);
+  return base + '@' + dateToWeek(weekMonday);
+}
 function unreadBeskjeder() { const acked = readJSON(ACK_BESKJED_KEY); return weekBeskjeder().filter(p => !acked[beskjedKey(p)]); }
 
 function updateDashBadge() {
