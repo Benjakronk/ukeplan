@@ -105,10 +105,13 @@
             <button id="setupGoBtn" class="btn btn-primary btn-lg" type="button">Lag klassekart →</button>
         </div>
 
-        <!-- localStorage does not cross origins, so anyone moving over from the
-             standalone app arrives here with nothing. Their backup is the bridge. -->
+        <!-- Both routes for "my charts already exist somewhere else". Sync has to be
+             reachable from here: a teacher on a new device has no group yet, and
+             requiring one before they can fetch theirs defeats the point. -->
         <p class="setup-restore">
-            Har du brukt Klassekart før?
+            Har du kart fra før?
+            <button class="link-btn" id="setupSyncBtn" type="button">Hent dem med gjenopprettingskode</button>
+            <span class="setup-restore-sep">·</span>
             <button class="link-btn" id="setupImportBtn" type="button">Importer sikkerhetskopi</button>
         </p>
     </div>

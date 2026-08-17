@@ -480,8 +480,9 @@ function renderSyncBody() {
         return;
     }
 
-    const rows = Object.keys(store.classes).map(id => {
-        const c = store.classes[id];
+    const classes = (store && store.classes) || {};
+    const rows = Object.keys(classes).map(id => {
+        const c = classes[id];
         const conflict = kkConflicts[id];
         const status = conflict
             ? `<span class="sync-bad">endret et annet sted</span>
@@ -491,7 +492,7 @@ function renderSyncBody() {
             : c.sv ? `<span class="sync-ok">lagret (v${c.sv})</span>`
             : '<span class="sync-wait">ikke sendt opp</span>';
         return `<div class="sync-row"><span class="sync-name">${escapeHtml(c.name)}</span>${status}</div>`;
-    }).join('') || '<div class="empty-line">Ingen grupper enda.</div>';
+    }).join('') || '<div class="empty-line">Ingen grupper her enda. Trykk «Synk nå» for å hente.</div>';
 
     box.innerHTML = `
         <p class="modal-hint">Kartene lagres kryptert på skolens server. Serveren kan ikke lese dem.</p>
@@ -2686,13 +2687,44 @@ function renameClass() {
     const name = prompt('Klassenavn:', state.name);
     if (name && name.trim()) { state.name = name.trim(); $('classMenuLabel').textContent = state.name; save(); }
 }
-function deleteClass() {
-    if (Object.keys(store.classes).length <= 1) { toast('Kan ikke slette den eneste klassen', 'err'); return; }
-    if (!confirm(`Slette klassen «${state.name}»? Dette kan ikke angres.`)) return;
-    delete store.classes[store.activeClassId];
+/* Deleting the last group is allowed — it drops back to the setup screen, from
+ * where a chart can be created or pulled down. Refusing left teachers stuck with
+ * a group they had created only to get past that screen. */
+async function deleteClass() {
+    const id = store.activeClassId;
+    const cls = store.classes[id];
+    if (!cls) return;
+    const synced = syncOn() && (kkServer[id] || Number(cls.sv || 0) > 0);
+
+    // A local-only delete does not stick while sync is on: the server still has
+    // the group, and the next pull downloads it again. Rather than let the group
+    // reappear and look like a bug, require the unlock and delete both copies.
+    if (synced && !syncUnlocked()) {
+        toast('Lås opp synkronisering først – ellers kommer gruppa tilbake', 'err');
+        openSyncModal();
+        return;
+    }
+    const warn = synced
+        ? `Slette «${cls.name}» både her og på serveren? Dette kan ikke angres.`
+        : `Slette «${cls.name}»? Dette kan ikke angres.`;
+    if (!confirm(warn)) return;
+
+    if (synced) {
+        try { await kkPost('kk_group_delete', { group: id }); }
+        catch (e) {
+            // Abort rather than delete locally: a half-delete is the resurrection
+            // bug with extra steps.
+            toast('Kunne ikke slette på serveren – ingenting er slettet', 'err');
+            return;
+        }
+    }
+    delete store.classes[id];
+    delete kkServer[id]; delete kkCeks[id]; delete kkConflicts[id];
     const next = Object.keys(store.classes)[0];
-    setActiveClass(next);
-    toast('Klasse slettet', 'ok');
+    if (next) { setActiveClass(next); }
+    else { state = null; store.activeClassId = null; saveQuiet(); showSetup(); resetSetupForm(); }
+    updateSyncBadge();
+    toast('Gruppe slettet', 'ok');
 }
 
 /* ------------------------------------------------------- backup / restore   */
@@ -2900,8 +2932,8 @@ function buildMainMenu() {
         ['💾 Last ned sikkerhetskopi', exportBackup],
         ['📂 Gjenopprett fra fil', () => $('importFile').click()],
         ['sep'],
-        ['✏️ Gi klassen nytt navn', renameClass],
-        ['🗑️ Slett klasse', deleteClass],
+        ['✏️ Gi gruppa nytt navn', renameClass],
+        ['🗑️ Slett gruppe', () => { deleteClass(); }],
     ];
     items.forEach(([label, fn]) => {
         if (label === 'sep') { const s = document.createElement('div'); s.className = 'dd-sep'; dd.appendChild(s); return; }
@@ -2951,6 +2983,7 @@ function wireSetup() {
     // first run after moving from the standalone app: localStorage doesn't
     // cross origins, so the JSON backup is the only bridge
     $('setupImportBtn').addEventListener('click', () => $('importFile').click());
+    $('setupSyncBtn').addEventListener('click', openSyncModal);
 
     $('setupGoBtn').addEventListener('click', () => {
         const list = parseNames(names.value);

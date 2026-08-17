@@ -1182,3 +1182,5 @@ body.present .zoom-ctrl { display: none; }
 .sync-bad  { color: var(--danger); font-weight: 600; font-size: 0.85rem; }
 /* an unresolved conflict should be visible without opening the menu */
 #menuBtn.has-conflict { border-color: var(--danger); color: var(--danger); }
+
+.setup-restore-sep { margin: 0 4px; opacity: .5; }
