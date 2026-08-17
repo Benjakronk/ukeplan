@@ -1,19 +1,22 @@
 'use strict';
 
-const CACHE = 'ukeplan-shell-v139';
+const CACHE = 'ukeplan-shell-v140';
 const ASSETS = [
   './',
   'index.html',
   'teacher.html',
   'klassekart.html',
+  'timebank.html',
   'rich.js',
   'docx.js',
   'script.js',
   'teacher.js',
   'klassekart.js',
+  'timebank.js',
   'styles.css',
   'teacher.css',
   'klassekart.css',
+  'timebank.css',
   'vendor/jspdf.umd.min.js',
   'manifest.json',
   'manifest-teacher.json',

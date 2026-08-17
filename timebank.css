@@ -1,0 +1,113 @@
+/* Tidsbank – its own page. Consumes styles.css tokens by name and loads AFTER
+   it; deliberately does NOT redefine --bg/--surface/--primary/--font/--danger so
+   the portal palette (incl. dark mode) carries over unchanged. */
+
+.tb-page { max-width: 920px; margin: 0 auto; padding: 20px 16px 60px; }
+
+.tb-header {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding-bottom: 16px; margin-bottom: 20px; border-bottom: 1px solid var(--border);
+}
+.tb-back {
+  font-size: 14px; font-weight: 600; color: var(--primary); text-decoration: none;
+  padding: 6px 10px; border-radius: var(--radius-btn); white-space: nowrap;
+}
+.tb-back:hover { background: var(--surface-2); }
+.tb-title-wrap { flex: 1; min-width: 0; }
+.tb-title { font-size: 24px; font-weight: 700; margin: 0; color: var(--text); }
+.tb-sub { margin: 2px 0 0; font-size: 13px; color: var(--text-muted); }
+.tb-header-right { display: flex; align-items: center; gap: 12px; }
+.tb-class-pick { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); }
+.tb-class-pick .input { width: auto; padding: 7px 10px; }
+.tb-theme-btn {
+  width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text); font-size: 16px; cursor: pointer; flex: none;
+}
+.tb-theme-btn:hover { border-color: var(--primary); }
+
+.tb-gate { text-align: center; color: var(--text-muted); padding: 40px 0; }
+
+.tb-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-card); box-shadow: var(--shadow-card);
+  padding: 20px; margin-bottom: 16px;
+}
+.tb-card-title { font-size: 16px; font-weight: 700; margin: 0 0 4px; color: var(--text); }
+.tb-card-hint { font-size: 13px; color: var(--text-muted); margin: 0 0 16px; }
+
+/* Balance */
+.tb-balance-card { background: var(--primary); border-color: var(--primary); color: var(--on-accent); }
+.tb-balance-inner { display: flex; align-items: center; gap: 16px; }
+.tb-coin { font-size: 40px; line-height: 1; }
+.tb-balance-num { font-size: 40px; font-weight: 800; line-height: 1.05; letter-spacing: -.01em; }
+.tb-balance-lbl { font-size: 14px; opacity: .85; margin-top: 4px; }
+.tb-balance-lbl strong { font-weight: 700; opacity: 1; }
+.tb-freehint { margin-top: 14px; font-size: 13px; opacity: .9; border-top: 1px solid rgba(255,255,255,.22); padding-top: 12px; }
+.tb-freehint:empty { display: none; }
+
+.tb-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.tb-cols .tb-card { margin-bottom: 0; }
+@media (max-width: 700px) { .tb-cols { grid-template-columns: 1fr; } }
+
+/* Preset + custom rows */
+.tb-presets, .tb-spend-quick { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.tb-preset {
+  padding: 8px 14px; font-family: var(--font); font-size: 14px; font-weight: 600;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border);
+  border-radius: var(--radius-btn); cursor: pointer; transition: all var(--transition);
+}
+.tb-preset:hover { border-color: var(--primary); }
+.tb-preset.active { background: var(--primary); color: var(--on-accent); border-color: var(--primary); }
+
+.tb-custom { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); flex-wrap: wrap; }
+.tb-num { width: 70px; padding: 8px 10px; text-align: center; }
+.tb-colon { font-weight: 700; color: var(--text); }
+
+/* Countdown ring */
+.tb-ring-wrap { position: relative; width: 180px; height: 180px; margin: 6px auto 18px; }
+.tb-ring { width: 100%; height: 100%; transform: rotate(-90deg); }
+.tb-ring-bg { fill: none; stroke: var(--surface-2); stroke-width: 9; }
+.tb-ring-fg {
+  fill: none; stroke: var(--primary); stroke-width: 9; stroke-linecap: round;
+  stroke-dasharray: 339.29; stroke-dashoffset: 0; transition: stroke-dashoffset .3s linear, stroke .3s;
+}
+.tb-ring-wrap.low .tb-ring-fg { stroke: var(--vurd); }
+.tb-count {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 46px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums;
+}
+.tb-run-actions { display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
+.tb-big { font-size: 16px; padding: 12px; }
+.tb-run-msg { text-align: center; font-weight: 700; color: var(--goal); margin: 12px 0 0; }
+.tb-run-msg.timeup { color: var(--vurd); }
+
+/* Spend */
+.tb-spend-quick .tb-preset:hover { border-color: var(--vurd); }
+.tb-spend-card .tb-custom .btn:hover { border-color: var(--vurd); }
+.tb-free-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; width: 100%;
+  margin-top: 16px; padding: 14px; border-radius: var(--radius-card);
+  background: var(--primary); color: var(--on-accent); border: none; cursor: pointer;
+  transition: opacity var(--transition), transform var(--transition);
+}
+.tb-free-btn:hover:not(:disabled) { transform: translateY(-1px); }
+.tb-free-btn:disabled { opacity: .45; cursor: not-allowed; background: var(--surface-2); color: var(--text-muted); }
+.tb-free-title { font-size: 16px; font-weight: 700; }
+.tb-free-cost { font-size: 13px; opacity: .9; }
+
+/* Log */
+.tb-log-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.tb-log-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tb-period { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+.tb-period .tb-num { width: 56px; }
+.tb-reset { color: var(--vurd); }
+.tb-reset:hover { border-color: var(--vurd); }
+.tb-log { list-style: none; margin: 0; padding: 0; }
+.tb-log-empty { color: var(--text-muted); font-size: 13px; padding: 8px 0; }
+.tb-log-row { display: flex; align-items: baseline; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+.tb-log-row:last-child { border-bottom: none; }
+.tb-log-delta { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 64px; }
+.tb-log-delta.pos { color: var(--goal); }
+.tb-log-delta.neg { color: var(--vurd); }
+.tb-log-label { flex: 1; min-width: 0; color: var(--text); }
+.tb-log-time { color: var(--text-muted); font-size: 12px; white-space: nowrap; }

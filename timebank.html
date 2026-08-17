@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Tidsbank | Ukeportalen</title>
+  <script>
+    // Apply the saved theme before first paint (avoids a flash).
+    (function () {
+      try {
+        var t = localStorage.getItem('up_theme');
+        if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="timebank.css">
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <meta name="theme-color" content="#eef2f0" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f1514" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+  <div class="tb-page">
+    <header class="tb-header">
+      <a href="teacher.html" class="tb-back" aria-label="Tilbake til lærersiden">&lsaquo; Tilbake</a>
+      <div class="tb-title-wrap">
+        <h1 class="tb-title">Tidsbank</h1>
+        <p class="tb-sub">Spar tid – bruk den senere</p>
+      </div>
+      <div class="tb-header-right">
+        <label class="tb-class-pick">
+          <span class="tb-class-lbl">Klasse</span>
+          <select id="tbClass" class="input"></select>
+        </label>
+        <button id="tbTheme" class="tb-theme-btn" type="button" title="Bytt tema" aria-label="Bytt tema">◐</button>
+      </div>
+    </header>
+
+    <main class="tb-main" id="tbMain" hidden>
+      <!-- Balance -->
+      <section class="tb-card tb-balance-card">
+        <div class="tb-balance-inner">
+          <span class="tb-coin" aria-hidden="true">🪙</span>
+          <div>
+            <div class="tb-balance-num" id="tbBalance">0 min</div>
+            <div class="tb-balance-lbl">spart i tidsbanken for <strong id="tbBalanceClass">–</strong></div>
+          </div>
+        </div>
+        <div class="tb-freehint" id="tbFreeHint"></div>
+      </section>
+
+      <div class="tb-cols">
+        <!-- Timer -->
+        <section class="tb-card tb-timer-card">
+          <h2 class="tb-card-title">Sett i gang en oppgave</h2>
+          <p class="tb-card-hint">Sett en tid. Blir klassen ferdig før tiden er ute, går resten i banken.</p>
+
+          <div id="tbSetup">
+            <div class="tb-presets" id="tbPresets"></div>
+            <div class="tb-custom">
+              <span>eller</span>
+              <input id="tbCustomMin" class="input tb-num" type="number" min="0" max="59" inputmode="numeric" placeholder="min">
+              <span class="tb-colon">:</span>
+              <input id="tbCustomSec" class="input tb-num" type="number" min="0" max="59" inputmode="numeric" placeholder="sek">
+              <button id="tbStart" class="btn btn-primary" type="button">Start</button>
+            </div>
+          </div>
+
+          <div id="tbRunning" hidden>
+            <div class="tb-ring-wrap">
+              <svg class="tb-ring" viewBox="0 0 120 120" aria-hidden="true">
+                <circle class="tb-ring-bg" cx="60" cy="60" r="54"/>
+                <circle class="tb-ring-fg" id="tbRingFg" cx="60" cy="60" r="54"/>
+              </svg>
+              <div class="tb-count" id="tbCount">0:00</div>
+            </div>
+            <div class="tb-run-actions">
+              <button id="tbDone" class="btn btn-primary tb-big" type="button">Ferdig – bank resten</button>
+              <button id="tbCancel" class="btn btn-ghost" type="button">Avbryt</button>
+            </div>
+            <p class="tb-run-msg" id="tbRunMsg" hidden></p>
+          </div>
+        </section>
+
+        <!-- Spend -->
+        <section class="tb-card tb-spend-card">
+          <h2 class="tb-card-title">Bruk av banken</h2>
+          <p class="tb-card-hint">Gå tidligere, eller kjøp en hel fri time når det er nok på konto.</p>
+
+          <div class="tb-spend-quick" id="tbSpendQuick"></div>
+          <div class="tb-custom">
+            <span>egendefinert</span>
+            <input id="tbSpendMin" class="input tb-num" type="number" min="0" inputmode="numeric" placeholder="min">
+            <button id="tbSpend" class="btn btn-ghost" type="button">Bruk</button>
+          </div>
+
+          <button id="tbFree" class="btn tb-free-btn" type="button">
+            <span class="tb-free-title">Kjøp fri time</span>
+            <span class="tb-free-cost" id="tbFreeCost"></span>
+          </button>
+        </section>
+      </div>
+
+      <!-- Log + settings -->
+      <section class="tb-card tb-log-card">
+        <div class="tb-log-head">
+          <h2 class="tb-card-title">Historikk</h2>
+          <div class="tb-log-tools">
+            <label class="tb-period">Fri time = <input id="tbPeriod" class="input tb-num" type="number" min="1" max="240" inputmode="numeric"> min</label>
+            <button id="tbAdjust" class="btn btn-ghost btn-tiny" type="button" title="Legg til eller trekk fra manuelt">± Juster</button>
+            <button id="tbReset" class="btn btn-ghost btn-tiny tb-reset" type="button">Nullstill</button>
+          </div>
+        </div>
+        <ul class="tb-log" id="tbLog"></ul>
+      </section>
+    </main>
+
+    <p class="tb-gate" id="tbGate">Laster …</p>
+  </div>
+
+  <script src="rich.js"></script>
+  <script src="timebank.js"></script>
+</body>
+</html>
