@@ -1503,7 +1503,7 @@ function explainResult(ctx) {
     const lines = [];
     let problems = 0;
 
-    // "problems" counts only hard (Må) violations — those decide the headline / modal.
+    // "problems" counts only hard (Skal) violations — those decide the headline / modal.
     if (ctx.apart.size) {
         let total = 0, satisfied = 0, mustViol = 0;
         ctx.apart.forEach((st, k) => { total++; if (!adjacentNow.has(k)) satisfied++; else if (st === 'must') mustViol++; });
@@ -2444,7 +2444,9 @@ function ruleClause(r) {
     const members = (r.members || []).map(id => studentById(id)).filter(Boolean);
     if (!members.length) return null;
     const st = normStrength(r.strength) || 'must';
-    const chip = `<span class="rule-chip ${st}">${st === 'must' ? 'Må' : 'Bør'}</span>`;
+    // 'must' is the stored value; «Skal» is what it reads as. Kept apart on
+    // purpose — renaming the data to match a label is how migrations start.
+    const chip = `<span class="rule-chip ${st}">${st === 'must' ? 'Skal' : 'Bør'}</span>`;
     const icon = r.type === 'apart' ? '🚫' : '🤝';
     const phrase = r.type === 'apart' ? 'ikke ved siden av'
         : (members.length > 1 ? 'ved siden av én av' : 'ved siden av');
@@ -2476,7 +2478,7 @@ function renderRulesList() {
         if (!studentById(r.a)) return;
         put(own, r.a, { rule: r, i });
         (r.members || []).forEach(m => {
-            if (studentById(m)) put(mentioned, m, { from: r.a, label: (normStrength(r.strength) || 'must') === 'must' ? 'Må' : 'Bør' });
+            if (studentById(m)) put(mentioned, m, { from: r.a, label: (normStrength(r.strength) || 'must') === 'must' ? 'Skal' : 'Bør' });
         });
     });
     state.students.forEach(s => {
@@ -2523,7 +2525,7 @@ function renderRulesList() {
         const must = n(e => e.rule && (normStrength(e.rule.strength) || 'must') === 'must');
         const should = n(e => e.rule && (normStrength(e.rule.strength) || 'must') === 'should');
         const wishes = n(e => e.wish);
-        if (must) counts.push(`<span class="rule-chip must">Må ${must}</span>`);
+        if (must) counts.push(`<span class="rule-chip must">Skal ${must}</span>`);
         if (should) counts.push(`<span class="rule-chip should">Bør ${should}</span>`);
         if (wishes) counts.push(`<span class="rule-chip wish">Ønske ${wishes}</span>`);
         if (seen.length) counts.push(`<span class="rule-chip ment">Nevnt ${seen.length}</span>`);
@@ -3160,7 +3162,7 @@ function renderStatsOverview(st) {
         ${indHtml({ label: 'Kjønnsblanding ved pulter', val: totG ? mix + '%' : '—', pct: totG ? mix : 0, note: totG ? 'Andel nabopar på tvers av kjønn.' : 'Sett kjønn på elevene for å måle dette.' })}
         ${tg ? indHtml({ label: 'Merkelapp-klumping', val: tg.excess, valCls: tg.excess ? 'warn' : 'good', note: tg.excess ? 'Samme merkelapp i samme gruppe - slå på «Spre merkelapper» og kjør smart plassering.' : 'Merkelapper er godt spredd mellom gruppene.' }) : ''}
         ${indHtml({ label: 'Lærervurdering: arbeid', val: st.workN ? st.avgWork.toFixed(1) + '/5' : '—', valCls: ratingCls(st.avgWork), pct: st.workN ? st.avgWork / 5 * 100 : 0, meterCls: ratingCls(st.avgWork), note: st.workN ? `Snitt av ${st.workN} vurderte kart.` : 'Vurder kart i Historikk for å fylle dette.' })}
-        ${ra.total ? indHtml({ label: 'Regler oppfylt nå', val: `${ra.ok}/${ra.total}`, valCls: ra.ok === ra.total ? 'good' : 'warn', pct: pct(ra.ok, ra.total), meterCls: ra.ok === ra.total ? 'good' : 'warn', note: 'Gjeldende kart mot «Må/Bør»-reglene.' }) : indHtml({ label: 'Regler oppfylt nå', val: '—', note: 'Ingen regler satt enda.' })}
+        ${ra.total ? indHtml({ label: 'Regler oppfylt nå', val: `${ra.ok}/${ra.total}`, valCls: ra.ok === ra.total ? 'good' : 'warn', pct: pct(ra.ok, ra.total), meterCls: ra.ok === ra.total ? 'good' : 'warn', note: 'Gjeldende kart mot «Skal/Bør»-reglene.' }) : indHtml({ label: 'Regler oppfylt nå', val: '—', note: 'Ingen regler satt enda.' })}
     </div>`;
     box.innerHTML = `<div class="q-grid">${climate}${work}</div>
         <p class="modal-hint" style="margin-top:16px">Bygget på ${st.charts} lagrede kart. Mer data = sikrere tall. Forskningsgrunnlag i <strong>docs/research.md</strong>.</p>`;
@@ -3308,7 +3310,7 @@ const STAT_AIMS = [
         id: 'focus', label: '🎯 Mindre uro, mer fokus', goal: 'Reduser forstyrrelser og hold oppmerksomheten i timen.',
         tips: [
             ['Plasser lett distraherte elever nærmere tavla og læreren.', 'seating'],
-            ['Hold kjente «uro-par» fra hverandre med en «Må - ikke ved siden av»-regel.', 'korpershoek'],
+            ['Hold kjente «uro-par» fra hverandre med en «Skal - ikke ved siden av»-regel.', 'korpershoek'],
             ['Sosioemosjonelt rettede tiltak gir størst effekt på klassemiljøet.', 'korpershoek']
         ],
         callout: st => { const ra = currentRuleAdherence(); return ra.total ? `Gjeldende kart oppfyller <strong>${ra.ok}/${ra.total}</strong> regler.` : 'Ingen regler satt enda - lag noen i «Regler».'; }

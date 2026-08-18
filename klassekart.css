@@ -977,9 +977,10 @@ body.present .zoom-ctrl { display: none; }
    the width of the panel puts «Må» and «ikke ved siden av» a long way from the
    name they belong to. It may still shrink on a narrow screen. */
 .rule-add #ruleA { flex: 0 1 230px; min-width: 150px; }
+/* Shown whole, like the wish pickers: the dialog is the only scroller. */
 .rule-members {
     flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px;
-    max-height: 168px; overflow-y: auto; scrollbar-gutter: stable; padding: 8px;
+    padding: 8px;
     border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2);
 }
 .member-chip {
