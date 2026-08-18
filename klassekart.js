@@ -2671,6 +2671,11 @@ function renderRoster() {
         // here — rebuilding the row you are typing in would take the caret with it.
         const nameInput = row.querySelector('.r-name');
         nameInput.addEventListener('input', e => { s.name = e.target.value; commitRoster(false); });
+        nameInput.addEventListener('keydown', e => {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            e.target.blur();          // the blur handler trims, commits and re-sorts
+        });
         nameInput.addEventListener('blur', e => {
             const v = e.target.value.trim();
             if (v) {
@@ -3900,7 +3905,13 @@ function wireApp() {
 
     // generic modal closers
     document.querySelectorAll('[data-close]').forEach(btn => btn.addEventListener('click', () => closeModal(btn.dataset.close)));
-    document.querySelectorAll('.modal-overlay').forEach(ov => ov.addEventListener('click', e => { if (e.target === ov) closeModal(ov.id); }));
+    document.querySelectorAll('.modal-overlay').forEach(ov => ov.addEventListener('click', e => {
+        // Only real dialogs dismiss on a backdrop click. An .as-view overlay IS
+        // the tab panel, so the space beside its card is just page, not a
+        // backdrop — closing it there would navigate to Kart mid-task.
+        if (ov.classList.contains('as-view')) return;
+        if (e.target === ov) closeModal(ov.id);
+    }));
 
     // drag/drop + tap on the app screen
     const app = $('app');
