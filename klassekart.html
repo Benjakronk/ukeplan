@@ -232,7 +232,7 @@
          wrapper changed — so every render function keeps working and the
          existing openModal() call sites are adapted in JS instead. -->
     <div class="modal-overlay as-view hidden" id="studentsModal">
-        <div class="modal modal-wide">
+        <div class="modal modal-wide as-view-narrow">
             <div class="modal-head">
                 <h2>Elever</h2>
                 <button class="modal-x" data-close="studentsModal" type="button">&times;</button>
@@ -247,7 +247,7 @@
                 </div>
             </div>
             <div class="modal-foot">
-                <button class="btn" data-close="studentsModal" type="button">Avbryt</button>
+                <button class="btn" id="rosterCancelBtn" type="button">Avbryt</button>
                 <button class="btn btn-primary" id="rosterSaveBtn" type="button">Lagre</button>
             </div>
         </div>

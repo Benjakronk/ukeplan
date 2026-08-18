@@ -2411,7 +2411,10 @@ function saveRoster() {
     // untouched (surplus students fall back to the pool, empty desks remain).
     if (state.roomMode !== 'custom' && state.seats.length !== state.students.length) regenSeatsPreserve();
     save(); render();
-    closeModal('studentsModal');
+    // Not closeModal(): on a view that maps to setTab('kart'), and saving the
+    // roster is no reason to be sent back to the board. Re-opening rebuilds the
+    // working copy from the state we just committed.
+    openStudentsModal();
     toast('Elevliste oppdatert', 'ok');
 }
 
@@ -3490,6 +3493,12 @@ function wireApp() {
         renderRoster();
     });
     $('rosterSaveBtn').addEventListener('click', saveRoster);
+    // Discard the working copy and stay put; openStudentsModal() rebuilds it
+    // from state, so typed-but-unsaved edits simply go away.
+    $('rosterCancelBtn').addEventListener('click', () => {
+        openStudentsModal();
+        toast('Endringer forkastet', 'ok');
+    });
     // student-preferences modal
     $('prefDoneBtn').addEventListener('click', closeStudentPref);
     $('prefTagAddBtn').addEventListener('click', addPrefTag);

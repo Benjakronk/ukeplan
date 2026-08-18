@@ -146,6 +146,11 @@ body.kk-booting .screen { display: none; }
     /* a panel sits on the page; it should not cast a dialog's lifted shadow */
     box-shadow: var(--shadow);
 }
+/* Some panels are lists, not dashboards. Elever at full window width puts a
+   stretch of empty space between each name and its controls, so it reads better
+   narrowed and centred. Must come AFTER the .as-view > .modal rule above: equal
+   specificity, so the margin-inline override depends on source order. */
+.modal-overlay.as-view > .as-view-narrow { max-width: 780px; margin-inline: auto; }
 /* A tab is not dismissible, so the dialog's × would be a dead control. */
 .modal-overlay.as-view .modal-x { display: none; }
 .modal-overlay.as-view .modal-head { border-radius: var(--radius) var(--radius) 0 0; }
