@@ -2411,24 +2411,74 @@ function ruleRowText(r, subjectId, mirror) {
     return `${chip} ${icon} ${nm(subj)} - ${phrase}: ${nm(a)}`;
 }
 
+function wishRowText(w) {
+    const subj = studentById(w.subject), other = studentById(w.mirror ? w.owner : w.other);
+    if (!subj || !other) return null;
+    const nm = s => `<strong>${escapeHtml(s.name)}</strong>`;
+    const chip = '<span class="rule-chip wish">Ønske</span>';
+    const icon = w.kind === 'with' ? '💚' : '💔';
+    const phrase = w.kind === 'with'
+        ? (w.mirror ? 'ønsket av' : 'vil sitte med')
+        : (w.mirror ? 'unngås av' : 'vil helst unngå');
+    return `${chip} ${icon} ${nm(subj)} - ${phrase}: ${nm(other)}`;
+}
+/* Wishes live on the pupil, so editing one means going back to Elever. */
+function editWishFor(studentId) {
+    setTab('elever');                       // rebuilds rosterWork from state
+    const i = (rosterWork || []).findIndex(s => s.id === studentId);
+    if (i >= 0) openStudentPref(i);
+}
+
 function renderRulesList() {
     const list = $('rulesList');
     list.innerHTML = '';
-    if (!state.rules.length) { list.innerHTML = '<div class="empty-line">Ingen regler enda.</div>'; return; }
     const rows = [];
     state.rules.forEach((r, i) => {
         rows.push({ r, i, subject: r.a, mirror: false });
         (r.members || []).forEach(m => rows.push({ r, i, subject: m, mirror: true }));
     });
+    // ...and the softer wishes entered per pupil under Elever, reflected the same
+    // way so a pupil's group shows wishes pointed AT them as well as their own.
+    state.students.forEach(s => {
+        [['with', s.wishWith], ['avoid', s.wishAvoid]].forEach(([kind, list2]) => {
+            (list2 || []).forEach(o => {
+                if (!studentById(o) || o === s.id) return;
+                rows.push({ wish: true, kind, owner: s.id, other: o, subject: s.id, mirror: false });
+                rows.push({ wish: true, kind, owner: s.id, other: o, subject: o, mirror: true });
+            });
+        });
+    });
+    if (!rows.length) { list.innerHTML = '<div class="empty-line">Ingen regler eller ønsker enda.</div>'; return; }
     const nameOf = id => (studentById(id) || {}).name || '';
+    // within a pupil: hard rules, then soft rules, then wishes — strongest first,
+    // and each pupil's own entry above its reflections so the actionable row leads
+    const tier = x => x.wish ? 2 : ((normStrength(x.r.strength) || 'must') === 'must' ? 0 : 1);
     rows.sort((x, y) =>
         nameOf(x.subject).localeCompare(nameOf(y.subject), 'nb')
-        // within a pupil: hard rules first, and the pupil's own entry above its
-        // reflections, so the editable row leads
-        || (((normStrength(y.r.strength) || 'must') === 'must') - ((normStrength(x.r.strength) || 'must') === 'must'))
+        || tier(x) - tier(y)
         || (x.mirror - y.mirror));
 
-    rows.forEach(({ r, i, subject, mirror }) => {
+    rows.forEach((entry) => {
+        const { subject, mirror } = entry;
+        if (entry.wish) {
+            const wtext = wishRowText(entry);
+            if (!wtext) return;
+            const wrow = document.createElement('div');
+            wrow.className = 'rule-row is-wish' + (mirror ? ' is-mirror' : '');
+            const from = (studentById(entry.owner) || {}).name || '';
+            wrow.innerHTML = `<span class="rule-text">${mirror ? '<span class="rule-mirror" title="Ønske ført inn under ' + escapeHtml(from) + '">↔</span> ' : ''}${wtext}</span>`;
+            const wact = document.createElement('div');
+            wact.className = 'rule-actions';
+            const wedit = document.createElement('button');
+            wedit.className = 'rule-edit'; wedit.textContent = '✎';
+            wedit.title = 'Åpne elevpreferanser for ' + from;
+            wedit.addEventListener('click', () => editWishFor(entry.owner));
+            wact.appendChild(wedit);
+            wrow.appendChild(wact);
+            list.appendChild(wrow);
+            return;
+        }
+        const { r, i } = entry;
         const text = ruleRowText(r, subject, mirror);
         if (!text) return;
         const row = document.createElement('div');

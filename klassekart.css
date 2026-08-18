@@ -981,6 +981,9 @@ body.present .zoom-ctrl { display: none; }
 }
 .rule-chip.must { background: var(--primary); color: var(--on-accent); }
 .rule-chip.should { background: var(--primary-soft); color: var(--primary); }
+.rule-chip.wish { background: var(--surface-2); color: var(--ink-soft); border: 1px solid var(--line); }
+/* A wish is softer than any rule, and belongs to Elever — shown here, edited there. */
+.rule-row.is-wish { background: none; }
 .results-head { font-weight: 700; font-size: 1.02rem; margin: 0 0 12px; }
 .result-line { display: flex; align-items: center; gap: 9px; padding: 8px 0; font-size: 0.95rem; border-bottom: 1px solid var(--line); }
 .result-line:last-child { border-bottom: none; }
