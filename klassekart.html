@@ -170,6 +170,10 @@
         <button class="kk-tab" data-tab="regler" role="tab" aria-selected="false" type="button">Regler</button>
         <button class="kk-tab" data-tab="rom" role="tab" aria-selected="false" type="button">Rom</button>
         <button class="kk-tab" data-tab="innsikt" role="tab" aria-selected="false" type="button">Innsikt</button>
+        <!-- Advice is not a statistic. It was the third pane inside Statistikk,
+             two clicks deep behind numbers, which is a poor place for the part
+             that tells you what to do about them. -->
+        <button class="kk-tab" data-tab="raad" role="tab" aria-selected="false" type="button">Mål &amp; råd</button>
     </nav>
 
     <!-- ---------- KART ---------- -->
@@ -366,12 +370,24 @@
                 <div class="stats-tabs" id="statsTabs">
                     <button class="stats-tab is-active" data-tab="overview" type="button">Oversikt</button>
                     <button class="stats-tab" data-tab="patterns" type="button">Mønstre</button>
-                    <button class="stats-tab" data-tab="aims" type="button">Mål &amp; råd</button>
                 </div>
                 <div class="modal-body stats-body">
                     <div class="stats-pane is-active" id="statsOverview"></div>
                     <div class="stats-pane hidden" id="statsPatterns"></div>
-                    <div class="stats-pane hidden" id="statsAims"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="kk-view hidden" id="view-raad">
+        <div class="modal-overlay as-view" id="aimsModal">
+            <div class="modal">
+                <div class="modal-head">
+                    <h2>Mål &amp; råd</h2>
+                    <button class="modal-x" data-close="aimsModal" type="button">&times;</button>
+                </div>
+                <div class="modal-body stats-body">
+                    <div class="stats-pane is-active" id="statsAims"></div>
                 </div>
             </div>
         </div>

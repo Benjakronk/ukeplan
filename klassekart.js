@@ -2178,7 +2178,7 @@ function startNewClass(names, preset, className, kind) {
  * behaves as a real dialog, which is right: those are interruptions by nature. */
 const VIEW_OF_MODAL = {
     studentsModal: 'elever', rulesModal: 'regler', roomModal: 'rom',
-    historyModal: 'innsikt', statsModal: 'innsikt',
+    historyModal: 'innsikt', statsModal: 'innsikt', aimsModal: 'raad',
 };
 const SUB_OF_MODAL = { historyModal: 'historikk', statsModal: 'statistikk' };
 let activeTab = 'kart';
@@ -2193,6 +2193,7 @@ function setTab(name, sub) {
     });
     $('view-kart').classList.toggle('hidden', name !== 'kart');
     $('view-innsikt').classList.toggle('hidden', name !== 'innsikt');
+    $('view-raad').classList.toggle('hidden', name !== 'raad');
     ['studentsModal', 'rulesModal', 'roomModal'].forEach(id =>
         $(id).classList.toggle('hidden', VIEW_OF_MODAL[id] !== name));
     closeAllDropdowns();
@@ -2202,6 +2203,7 @@ function setTab(name, sub) {
     else if (name === 'regler') openRulesModal();
     else if (name === 'rom') openRoomModal();
     else if (name === 'innsikt') setInnsiktSub(sub || innsiktSub);
+    else if (name === 'raad') openAimsView();
     else if (name === 'kart') requestAnimationFrame(fitBoard);
 }
 let innsiktSub = 'historikk';
@@ -2786,16 +2788,22 @@ function indHtml(o) {
 function openStatsModal() {
     statsData = computeStats();
     statsMatrixMode = 'adj';
-    statsAimId = STAT_AIMS[0].id;
     renderStatsOverview(statsData);
     renderStatsPatterns(statsData);
-    renderStatsAims(statsData);
     setStatsTab('overview');
     openModal('statsModal');
 }
+/* Its own tab now, so the chosen aim persists across visits rather than being
+ * reset the way a freshly opened dialog would. */
+function openAimsView() {
+    if (!statsAimId) statsAimId = STAT_AIMS[0].id;
+    statsData = computeStats();
+    renderStatsAims(statsData);
+    openModal('aimsModal');
+}
 function setStatsTab(name) {
     document.querySelectorAll('#statsTabs .stats-tab').forEach(t => t.classList.toggle('is-active', t.dataset.tab === name));
-    const map = { overview: 'statsOverview', patterns: 'statsPatterns', aims: 'statsAims' };
+    const map = { overview: 'statsOverview', patterns: 'statsPatterns' };
     for (const key in map) {
         const el = $(map[key]), on = key === name;
         el.classList.toggle('hidden', !on);
@@ -3441,7 +3449,10 @@ function wireApp() {
     $('statsTabs').addEventListener('click', e => { const t = e.target.closest('.stats-tab'); if (t) setStatsTab(t.dataset.tab); });
     $('statsModal').addEventListener('click', e => {
         const seg = e.target.closest('[data-mode]');
-        if (seg) { statsMatrixMode = seg.dataset.mode; renderStatsPatterns(statsData); return; }
+        if (seg) { statsMatrixMode = seg.dataset.mode; renderStatsPatterns(statsData); }
+    });
+    // Mål & råd is its own tab; its aim chips are delegated from its own panel.
+    $('aimsModal').addEventListener('click', e => {
         const aim = e.target.closest('[data-aim]');
         if (aim) { statsAimId = aim.dataset.aim; renderStatsAims(statsData); }
     });
