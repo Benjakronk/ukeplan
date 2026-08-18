@@ -1001,6 +1001,24 @@ body.present .zoom-ctrl { display: none; }
 .rule-row.is-wish { background: none; }
 .rule-chip.ment { background: var(--surface-2); color: var(--ink-soft); }
 
+/* --- the roster is just names now; the rest lives behind Egenskaper --- */
+.pref-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.pref-field > label { font-size: 0.85rem; color: var(--ink-soft); }
+.pref-field select {
+    align-self: flex-start; min-width: 170px; padding: 9px 10px;
+    border: 1px solid var(--line); border-radius: 8px;
+    font-size: 0.9rem; font-family: var(--font); background: var(--surface);
+}
+.pref-field .r-gender { align-self: flex-start; }
+.r-mark {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 20px; height: 20px; padding: 0 5px; flex-shrink: 0;
+    border-radius: 5px; background: var(--surface-2); color: var(--ink-soft);
+    font-size: 0.7rem; font-weight: 700; line-height: 1;
+}
+.r-marks { display: inline-flex; gap: 4px; flex-shrink: 0; }
+.roster-row .r-pref { width: auto; padding: 0 11px; gap: 6px; font-size: 0.85rem; font-weight: 600; }
+
 /* --- one pupil per line, folded --- */
 .rule-search {
     width: 100%; padding: 9px 12px; margin-bottom: 10px;

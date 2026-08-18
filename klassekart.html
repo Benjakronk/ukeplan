@@ -299,7 +299,7 @@
                     <button class="btn hidden" id="ruleCancelBtn" type="button">Avbryt</button>
                 </div>
                 <p class="modal-hint" id="ruleAnyHint" style="margin-top:10px;"></p>
-                <p class="modal-hint" style="margin-top:14px;"><strong>Må</strong> = hard regel · <strong>Bør</strong> = mykt ønske. «Foran/bak» settes per elev i <strong>Elever</strong>-listen.</p>
+                <p class="modal-hint" style="margin-top:14px;"><strong>Må</strong> = hard regel · <strong>Bør</strong> = mykt ønske. «Foran/bak», kjønn og ønsker settes under <strong>Egenskaper</strong> i Elever-lista.</p>
             </div>
             <div class="modal-foot">
                 <button class="btn" data-close="rulesModal" type="button">Lukk</button>
@@ -450,15 +450,35 @@
 <div class="modal-overlay" id="studentPrefModal">
     <div class="modal modal-wide">
         <div class="modal-head">
-            <h2 id="prefTitle">Preferanser</h2>
+            <h2 id="prefTitle">Egenskaper</h2>
             <button class="modal-x" id="prefCloseX" type="button">&times;</button>
         </div>
         <div class="modal-body">
             <p class="modal-hint">Elevinnspill ført inn av lærer (fra egen kartlegging). Påvirker smart plassering som <strong>myke</strong> ønsker - «Må/Bør»-regler går foran.</p>
             <div class="pref-sec">
+                <h3 class="sub">🧑 Om eleven</h3>
+                <div class="pref-field">
+                    <label for="prefGender">Kjønn <span class="hint">– brukes av «bland kjønn»</span></label>
+                    <div class="r-gender" role="group" id="prefGender">
+                        <button type="button" data-g="G">G</button>
+                        <button type="button" data-g="J">J</button>
+                        <button type="button" data-g="">–</button>
+                    </div>
+                </div>
+            </div>
+            <div class="pref-sec">
                 <h3 class="sub">🪑 Plassering</h3>
+                <div class="pref-field">
+                    <label for="prefPlace">Foran eller bak</label>
+                    <select id="prefPlace">
+                        <option value="">Fri plass</option>
+                        <option value="front-should">Bør foran</option>
+                        <option value="front-must">Må foran</option>
+                        <option value="back-should">Bør bak</option>
+                        <option value="back-must">Må bak</option>
+                    </select>
+                </div>
                 <label class="check"><input type="checkbox" id="prefQuiet"> Trenger ro / mye plass (færre naboer)</label>
-                <p class="modal-hint" style="margin-top:6px">«Foran/bak» settes i kolonnen i elevlista.</p>
             </div>
             <div class="pref-sec">
                 <h3 class="sub">🤝 Vil sitte med</h3>

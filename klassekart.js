@@ -2632,21 +2632,17 @@ function renderRoster() {
     rows.forEach(([s, i]) => {
         const row = document.createElement('div');
         row.className = 'roster-row';
+        // Read-only markers, not controls: gender and front/back are set in the
+        // dialog now, but they are the two things worth seeing while scanning a
+        // class list, so they stay visible.
+        const marks = [];
+        if (s.gender) marks.push(`<span class="r-mark" title="Kjønn">${s.gender}</span>`);
+        if (s.front) marks.push(`<span class="r-mark" title="${s.front === 'must' ? 'Må' : 'Bør'} sitte foran">⬆</span>`);
+        if (s.back) marks.push(`<span class="r-mark" title="${s.back === 'must' ? 'Må' : 'Bør'} sitte bak">⬇</span>`);
         row.innerHTML = `
             <input class="r-name" type="text" value="${escapeHtml(s.name)}">
-            <div class="r-gender" role="group">
-                <button type="button" data-g="G" class="${s.gender === 'G' ? 'on' : ''}">G</button>
-                <button type="button" data-g="J" class="${s.gender === 'J' ? 'on' : ''}">J</button>
-                <button type="button" data-g="" class="${!s.gender ? 'on' : ''}">-</button>
-            </div>
-            <select class="r-place" title="Plassering i rommet">
-                <option value="">Fri plass</option>
-                <option value="front-should" ${s.front === 'should' ? 'selected' : ''}>Bør foran</option>
-                <option value="front-must" ${s.front === 'must' ? 'selected' : ''}>Må foran</option>
-                <option value="back-should" ${s.back === 'should' ? 'selected' : ''}>Bør bak</option>
-                <option value="back-must" ${s.back === 'must' ? 'selected' : ''}>Må bak</option>
-            </select>
-            <button type="button" class="r-pref" title="Elevpreferanser">⚙︎${prefSummary(s) ? `<span class="r-pref-badge">${prefSummary(s)}</span>` : ''}</button>
+            <span class="r-marks">${marks.join('')}</span>
+            <button type="button" class="btn r-pref" title="Alt om denne eleven">Egenskaper${prefSummary(s) ? `<span class="r-pref-badge">${prefSummary(s)}</span>` : ''}</button>
             <button type="button" class="r-del" title="Fjern eleven">✕</button>`;
 
         row.querySelector('.r-pref').addEventListener('click', () => openStudentPref(i));
@@ -2664,18 +2660,6 @@ function renderRoster() {
             commitRoster(true); renderRoster();
         });
 
-        row.querySelectorAll('.r-gender button').forEach(btn => btn.addEventListener('click', () => {
-            s.gender = btn.dataset.g || null;
-            row.querySelectorAll('.r-gender button').forEach(b => b.classList.remove('on'));
-            btn.classList.add('on');
-            commitRoster(false);
-        }));
-        row.querySelector('.r-place').addEventListener('change', e => {
-            const v = e.target.value; // '' | 'front-should' | 'front-must' | 'back-should' | 'back-must'
-            s.front = v.startsWith('front-') ? v.slice(6) : null;
-            s.back = v.startsWith('back-') ? v.slice(5) : null;
-            commitRoster(false);
-        });
         // Nothing to undo a delete with, and it takes the pupil's rules and
         // wishes with it (pruneInvalid), so this one asks.
         row.querySelector('.r-del').addEventListener('click', () => {
@@ -2692,8 +2676,12 @@ function renderRoster() {
 
 /* -- per-student preferences (write straight through, like the roster) -- */
 let prefEditIndex = -1;
+/* What the button hides: wishes, tags and «trenger ro». Gender and front/back
+ * are shown as markers on the row itself, so counting them here would badge
+ * almost every pupil and say nothing. */
 function prefSummary(s) {
-    const n = (s.wishWith || []).length + (s.wishAvoid || []).length + (s.quiet ? 1 : 0);
+    const n = (s.wishWith || []).length + (s.wishAvoid || []).length
+        + (s.tags || []).length + (s.quiet ? 1 : 0);
     return n || 0;
 }
 function fillPrefPicker(box, arr, selfId) {
@@ -2737,8 +2725,11 @@ function openStudentPref(i) {
     prefEditIndex = i;
     const s = rosterWork[i];
     s.wishWith = s.wishWith || []; s.wishAvoid = s.wishAvoid || []; s.tags = s.tags || [];
-    $('prefTitle').textContent = 'Preferanser - ' + (s.name || 'elev');
+    $('prefTitle').textContent = 'Egenskaper - ' + (s.name || 'elev');
     $('prefQuiet').checked = !!s.quiet;
+    document.querySelectorAll('#prefGender button').forEach(b =>
+        b.classList.toggle('on', (b.dataset.g || null) === (s.gender || null)));
+    $('prefPlace').value = s.front ? 'front-' + s.front : s.back ? 'back-' + s.back : '';
     $('prefTagInput').value = '';
     fillPrefPicker($('prefWith'), s.wishWith, s.id);
     fillPrefPicker($('prefAvoid'), s.wishAvoid, s.id);
@@ -3782,6 +3773,20 @@ function wireApp() {
     $('prefTagAddBtn').addEventListener('click', addPrefTag);
     $('prefTagInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addPrefTag(); } });
     $('prefCloseX').addEventListener('click', closeStudentPref);
+    document.querySelectorAll('#prefGender button').forEach(btn => btn.addEventListener('click', () => {
+        if (prefEditIndex < 0 || !rosterWork[prefEditIndex]) return;
+        rosterWork[prefEditIndex].gender = btn.dataset.g || null;
+        document.querySelectorAll('#prefGender button').forEach(b => b.classList.remove('on'));
+        btn.classList.add('on');
+        commitRoster(false);
+    }));
+    $('prefPlace').addEventListener('change', e => {
+        if (prefEditIndex < 0 || !rosterWork[prefEditIndex]) return;
+        const st = rosterWork[prefEditIndex], v = e.target.value;
+        st.front = v.startsWith('front-') ? v.slice(6) : null;
+        st.back = v.startsWith('back-') ? v.slice(5) : null;
+        commitRoster(false);
+    });
     $('prefQuiet').addEventListener('change', () => {
         if (prefEditIndex >= 0 && rosterWork[prefEditIndex]) {
             rosterWork[prefEditIndex].quiet = $('prefQuiet').checked;
