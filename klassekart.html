@@ -238,17 +238,15 @@
                 <button class="modal-x" data-close="studentsModal" type="button">&times;</button>
             </div>
             <div class="modal-body">
-                <p class="modal-hint">Sett kjønn (for «bland kjønn») og hvem som bør/må sitte foran eller bak.</p>
+                <p class="modal-hint">Sett kjønn (for «bland kjønn») og hvem som bør/må sitte foran eller bak.
+                Alt lagres med det samme.</p>
+                <input type="search" id="rosterSearch" class="rule-search" placeholder="Søk etter elev…" autocomplete="off">
                 <div class="roster" id="roster"></div>
                 <div class="roster-add">
                     <label for="rosterAdd">Legg til flere <span class="hint">- ett navn per linje</span></label>
                     <textarea id="rosterAdd" rows="3" placeholder="Nytt elevnavn..."></textarea>
                     <button class="btn" id="rosterAddBtn" type="button">Legg til</button>
                 </div>
-            </div>
-            <div class="modal-foot">
-                <button class="btn" id="rosterCancelBtn" type="button">Avbryt</button>
-                <button class="btn btn-primary" id="rosterSaveBtn" type="button">Lagre</button>
             </div>
         </div>
     </div>

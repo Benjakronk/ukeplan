@@ -1257,9 +1257,18 @@ function pruneInvalid() {
         r.members = (r.members || []).filter(id => ids.has(id) && id !== r.a);
         return r.members.length > 0;
     });
+    // In place, NOT `s.wishWith = ...filter(...)`. The preferences dialog hands
+    // these very arrays to its checkbox handlers, so replacing them leaves those
+    // handlers writing into a detached copy — the tick appears to work and the
+    // wish is silently lost. Now that every edit commits (and so prunes) as it is
+    // made, that would have hit on the second change in the dialog.
+    const keepValid = (self, arr) => {
+        for (let i = arr.length - 1; i >= 0; i--) if (arr[i] === self || !ids.has(arr[i])) arr.splice(i, 1);
+        return arr;
+    };
     state.students.forEach(s => {
-        s.wishWith = (s.wishWith || []).filter(id => id !== s.id && ids.has(id));
-        s.wishAvoid = (s.wishAvoid || []).filter(id => id !== s.id && ids.has(id));
+        keepValid(s.id, s.wishWith || (s.wishWith = []));
+        keepValid(s.id, s.wishAvoid || (s.wishAvoid = []));
     });
 }
 
@@ -2580,18 +2589,47 @@ function renderRulesList() {
     });
 }
 
-/* -- roster modal -- */
+/* -- Elever -- */
+/* There is no working copy any more and no Lagre button. `rosterWork` is an
+ * alias for state.students, so every control below edits the real pupil and
+ * commits straight away. The old two-step cost a teacher their edits whenever
+ * they wandered off the tab, and nothing about a roster needs a transaction. */
 let rosterWork = null;
+let rosterFilter = '';
+
 function openStudentsModal() {
-    rosterWork = state.students.map(s => ({ id: s.id, name: s.name, gender: s.gender, front: s.front, back: s.back, quiet: !!s.quiet, wishWith: (s.wishWith || []).slice(), wishAvoid: (s.wishAvoid || []).slice(), tags: s.tags.slice() }));
+    rosterWork = state.students;
+    rosterFilter = ''; $('rosterSearch').value = '';
     renderRoster();
     $('rosterAdd').value = '';
     openModal('studentsModal');
 }
+
+/* One commit path, so nothing can be half-saved. `regen` is for the changes that
+ * alter how many pupils there are; a rename must not disturb the seating. */
+function commitRoster(regen) {
+    pruneInvalid();
+    // auto mode keeps desks == roster; custom mode leaves the fixed arrangement
+    // untouched (surplus pupils fall back to the pool, empty desks remain).
+    if (regen && state.roomMode !== 'custom' && state.seats.length !== state.students.length) regenSeatsPreserve();
+    save();
+    renderBoard(); renderPool();
+    updateRulePrefsUI();
+}
+
 function renderRoster() {
     const box = $('roster');
     box.innerHTML = '';
-    sortedWithIndex(rosterWork).forEach(([s, i]) => {
+    const q = rosterFilter.trim().toLowerCase();
+    const rows = sortedWithIndex(rosterWork)
+        .filter(([s]) => !q || (s.name || '').toLowerCase().includes(q));
+    if (!rows.length) {
+        box.innerHTML = q
+            ? `<div class="empty-line">Ingen treff på «${escapeHtml(rosterFilter.trim())}».</div>`
+            : '<div class="empty-line">Ingen elever enda – legg dem til under.</div>';
+        return;
+    }
+    rows.forEach(([s, i]) => {
         const row = document.createElement('div');
         row.className = 'roster-row';
         row.innerHTML = `
@@ -2609,41 +2647,50 @@ function renderRoster() {
                 <option value="back-must" ${s.back === 'must' ? 'selected' : ''}>Må bak</option>
             </select>
             <button type="button" class="r-pref" title="Elevpreferanser">⚙︎${prefSummary(s) ? `<span class="r-pref-badge">${prefSummary(s)}</span>` : ''}</button>
-            <button type="button" class="r-del">✕</button>`;
+            <button type="button" class="r-del" title="Fjern eleven">✕</button>`;
+
         row.querySelector('.r-pref').addEventListener('click', () => openStudentPref(i));
-        row.querySelector('.r-name').addEventListener('input', e => s.name = e.target.value);
+
+        // Typing updates the board live. The roster is deliberately NOT re-rendered
+        // here — rebuilding the row you are typing in would take the caret with it.
+        const nameInput = row.querySelector('.r-name');
+        nameInput.addEventListener('input', e => { s.name = e.target.value; commitRoster(false); });
+        nameInput.addEventListener('blur', e => {
+            const v = e.target.value.trim();
+            if (v) { if (v !== s.name) { s.name = v; commitRoster(false); } renderRoster(); return; }
+            // left blank: a row with no name is not a pupil, so it goes quietly
+            const at = state.students.indexOf(s);
+            if (at >= 0) state.students.splice(at, 1);
+            commitRoster(true); renderRoster();
+        });
+
         row.querySelectorAll('.r-gender button').forEach(btn => btn.addEventListener('click', () => {
             s.gender = btn.dataset.g || null;
             row.querySelectorAll('.r-gender button').forEach(b => b.classList.remove('on'));
             btn.classList.add('on');
+            commitRoster(false);
         }));
         row.querySelector('.r-place').addEventListener('change', e => {
             const v = e.target.value; // '' | 'front-should' | 'front-must' | 'back-should' | 'back-must'
             s.front = v.startsWith('front-') ? v.slice(6) : null;
             s.back = v.startsWith('back-') ? v.slice(5) : null;
+            commitRoster(false);
         });
-        row.querySelector('.r-del').addEventListener('click', () => { rosterWork.splice(i, 1); renderRoster(); });
+        // Nothing to undo a delete with, and it takes the pupil's rules and
+        // wishes with it (pruneInvalid), so this one asks.
+        row.querySelector('.r-del').addEventListener('click', () => {
+            const nm = (s.name || '').trim() || 'eleven';
+            if (!confirm(`Fjerne ${nm} fra lista?\n\nRegler og ønsker som gjelder ${nm} forsvinner også.`)) return;
+            const at = state.students.indexOf(s);
+            if (at >= 0) state.students.splice(at, 1);
+            commitRoster(true); renderRoster();
+            toast(nm + ' fjernet', 'ok');
+        });
         box.appendChild(row);
     });
 }
-function saveRoster() {
-    const names = rosterWork.map(s => (s.name || '').trim()).filter(Boolean);
-    if (!names.length) { toast('Listen kan ikke være tom', 'err'); return; }
-    // commit working copy back to real students, preserving ids
-    state.students = rosterWork.filter(s => (s.name || '').trim()).map(s => normStudent({ id: s.id, name: s.name.trim(), gender: s.gender, front: s.front, back: s.back, quiet: s.quiet, wishWith: s.wishWith, wishAvoid: s.wishAvoid, tags: s.tags }));
-    pruneInvalid();
-    // auto mode keeps desks == roster; custom mode leaves the fixed arrangement
-    // untouched (surplus students fall back to the pool, empty desks remain).
-    if (state.roomMode !== 'custom' && state.seats.length !== state.students.length) regenSeatsPreserve();
-    save(); render();
-    // Not closeModal(): on a view that maps to setTab('kart'), and saving the
-    // roster is no reason to be sent back to the board. Re-opening rebuilds the
-    // working copy from the state we just committed.
-    openStudentsModal();
-    toast('Elevliste oppdatert', 'ok');
-}
 
-/* -- per-student preferences (edits the rosterWork copy; committed by saveRoster) -- */
+/* -- per-student preferences (write straight through, like the roster) -- */
 let prefEditIndex = -1;
 function prefSummary(s) {
     const n = (s.wishWith || []).length + (s.wishAvoid || []).length + (s.quiet ? 1 : 0);
@@ -2659,6 +2706,7 @@ function fillPrefPicker(box, arr, selfId) {
             const i = arr.indexOf(o.id);
             if (cb.checked && i === -1) arr.push(o.id);
             else if (!cb.checked && i !== -1) arr.splice(i, 1);
+            commitRoster(false);
         });
         lbl.appendChild(cb); lbl.appendChild(document.createTextNode(' ' + o.name));
         box.appendChild(lbl);
@@ -2683,6 +2731,7 @@ function addPrefTag() {
     if (v && s.tags.indexOf(v) === -1) s.tags.push(v);
     $('prefTagInput').value = '';
     renderPrefTags(s);
+    commitRoster(false);
 }
 function openStudentPref(i) {
     prefEditIndex = i;
@@ -2697,7 +2746,8 @@ function openStudentPref(i) {
     openModal('studentPrefModal');
 }
 function closeStudentPref() {
-    if (prefEditIndex >= 0) { const s = rosterWork[prefEditIndex]; if (s) s.quiet = $('prefQuiet').checked; }
+    // Nothing to commit here any more — every control in the dialog writes
+    // through as it is used. Ferdig just closes it.
     closeModal('studentPrefModal');
     renderRoster();
     prefEditIndex = -1;
@@ -3719,23 +3769,25 @@ function wireApp() {
     $('rosterAddBtn').addEventListener('click', () => {
         const added = parseNames($('rosterAdd').value);
         if (!added.length) return;
-        added.forEach(n => rosterWork.push({ id: uid(), name: n, gender: null, front: null, back: null, tags: [] }));
+        added.forEach(n => state.students.push(normStudent({ id: uid(), name: n, tags: [] })));
         $('rosterAdd').value = '';
-        renderRoster();
+        // clear any filter, or the names just added may not be on screen
+        rosterFilter = ''; $('rosterSearch').value = '';
+        commitRoster(true); renderRoster();
+        toast(added.length === 1 ? '1 elev lagt til' : added.length + ' elever lagt til', 'ok');
     });
-    $('rosterSaveBtn').addEventListener('click', saveRoster);
-    // Discard the working copy and stay put; openStudentsModal() rebuilds it
-    // from state, so typed-but-unsaved edits simply go away.
-    $('rosterCancelBtn').addEventListener('click', () => {
-        openStudentsModal();
-        toast('Endringer forkastet', 'ok');
-    });
+    $('rosterSearch').addEventListener('input', e => { rosterFilter = e.target.value; renderRoster(); });
     // student-preferences modal
     $('prefDoneBtn').addEventListener('click', closeStudentPref);
     $('prefTagAddBtn').addEventListener('click', addPrefTag);
     $('prefTagInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addPrefTag(); } });
     $('prefCloseX').addEventListener('click', closeStudentPref);
-    $('prefQuiet').addEventListener('change', () => { if (prefEditIndex >= 0 && rosterWork[prefEditIndex]) rosterWork[prefEditIndex].quiet = $('prefQuiet').checked; });
+    $('prefQuiet').addEventListener('change', () => {
+        if (prefEditIndex >= 0 && rosterWork[prefEditIndex]) {
+            rosterWork[prefEditIndex].quiet = $('prefQuiet').checked;
+            commitRoster(false);
+        }
+    });
 
     // room modal
     document.querySelectorAll('#roomPresetList .preset').forEach(btn => btn.addEventListener('click', () => {
