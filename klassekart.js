@@ -1301,13 +1301,20 @@ function buildContext() {
     });
     let prevPairs = new Set();
     if (state.prefs.avoidRepeat && state.history.length) {
-        const snap = state.history[0];
-        const seatsP = snap.seats || state.seats;
-        const { edges: pe } = computeAdjacency(seatsP, snap.room);
-        pe.forEach(([s1, s2]) => {
-            const a = snap.assign[s1], b = snap.assign[s2];
-            if (a && b) prevPairs.add(pairKey(a, b));
-        });
+        // The newest chart that actually recorded its desks. Falling back to the
+        // CURRENT layout, as this used to, measured an old assignment against
+        // today's desk positions and invented neighbours that never sat together.
+        // saveHistory has always stored seats, so only very old entries can lack
+        // them — skip those and use the newest one that has them, rather than
+        // silently switching the preference off.
+        const snap = state.history.find(h => h && (h.seats || []).length);
+        if (snap) {
+            const { edges: pe } = computeAdjacency(snap.seats, snap.room);
+            pe.forEach(([s1, s2]) => {
+                const a = (snap.assign || {})[s1], b = (snap.assign || {})[s2];
+                if (a && b) prevPairs.add(pairKey(a, b));
+            });
+        }
     }
     // avoid ALL past neighbours: count how many saved charts each pair sat together,
     // so repeat offenders are penalised more and the optimiser favours new pairings.
