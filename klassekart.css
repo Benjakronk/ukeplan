@@ -930,7 +930,7 @@ body.present .zoom-ctrl { display: none; }
    nothing when ticked. Say so rather than letting it look like it worked. */
 .check.is-unavailable { opacity: .5; cursor: default; }
 .check.is-unavailable input { cursor: default; }
-#prefHistoryHint { margin: -2px 0 0 27px; }
+#prefHistoryHint, #prefGenderHint, #prefTagsHint { margin: -2px 0 0 27px; }
 .rules-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
 .empty-line { color: var(--ink-soft); font-size: 0.9rem; padding: 6px 2px; }
 .rule-row, .history-row {

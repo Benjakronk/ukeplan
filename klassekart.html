@@ -260,13 +260,17 @@
             </div>
             <div class="modal-body">
                 <div class="rules-globals">
-                    <label class="check"><input type="checkbox" id="prefBalanceGender"> Bland kjønn (vekslende gutt/jente)</label>
+                    <!-- Each of these needs something to work on. Where that is
+                         missing the switch stays visible, so the feature is still
+                         discoverable, but disabled with a line saying what it
+                         needs — rather than looking available and doing nothing. -->
+                    <label class="check" id="prefBalanceGenderRow"><input type="checkbox" id="prefBalanceGender"> Bland kjønn (vekslende gutt/jente)</label>
+                    <p class="modal-hint hidden" id="prefGenderHint">Krever at både G og J er satt på noen elever — gjøres i Elever.</p>
                     <label class="check" id="prefAvoidRepeatRow"><input type="checkbox" id="prefAvoidRepeat"> Unngå naboer fra forrige lagrede kart</label>
                     <label class="check" id="prefAvoidAllRow"><input type="checkbox" id="prefAvoidAll"> Unngå alle tidligere naboer (hele historikken)</label>
-                    <!-- Both of the above compare against saved charts; with none
-                         saved they are switches that cannot do anything. -->
                     <p class="modal-hint hidden" id="prefHistoryHint">Krever minst ett lagret kart — bruk «Lagre kartet» på Kart-fanen.</p>
-                    <label class="check"><input type="checkbox" id="prefBalanceTags"> Spre merkelapper (blandede grupper)</label>
+                    <label class="check" id="prefBalanceTagsRow"><input type="checkbox" id="prefBalanceTags"> Spre merkelapper (blandede grupper)</label>
+                    <p class="modal-hint hidden" id="prefTagsHint">Krever at minst to elever deler en merkelapp — gjøres i Elever.</p>
                 </div>
     
                 <h3 class="sub">Regler mellom elever</h3>

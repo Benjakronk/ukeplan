@@ -929,6 +929,20 @@ function normStrength(v) { return v === 'must' || v === 'should' ? v : null; }
 function usableHistory() {
     return (state && state.history ? state.history : []).filter(h => h && (h.seats || []).length);
 }
+/* «Bland kjønn» penalises same-gender neighbours, so it needs both to exist:
+ * with one gender (or none) recorded, every pair scores alike and nothing moves. */
+function hasBothGenders() {
+    const g = new Set((state && state.students ? state.students : []).map(s => s.gender).filter(Boolean));
+    return g.has('G') && g.has('J');
+}
+/* «Spre merkelapper» penalises a tag appearing twice in one group, so a tag held
+ * by a single pupil can never trigger it. Two pupils must share one. */
+function hasSharedTag() {
+    const seen = new Set();
+    for (const s of (state && state.students ? state.students : []))
+        for (const t of (s.tags || [])) { if (seen.has(t)) return true; seen.add(t); }
+    return false;
+}
 /* A rule is { type:'apart'|'together', a, members:[...], strength }. apart = a
  * away from EVERY member; together = a next to AT LEAST ONE member. Migrates the
  * old pairwise { a, b } and the interim 'together-any' type into this shape. */
@@ -2273,7 +2287,7 @@ function openRulesModal() {
     $('prefAvoidRepeat').checked = !!state.prefs.avoidRepeat;
     $('prefAvoidAll').checked = !!state.prefs.avoidAllRepeat;
     $('prefBalanceTags').checked = !!state.prefs.balanceTags;
-    updateHistoryPrefsUI();
+    updateRulePrefsUI();
     fillStudentSelect($('ruleA'));
     fillMemberPicker(new Set());
     setRuleEditMode(null);
@@ -2306,18 +2320,22 @@ function startEditRule(id) {
     renderRulesList();
     $('ruleMembers').scrollIntoView({ block: 'nearest' });
 }
-/* The two "avoid previous neighbours" switches need something to compare
- * against. With no usable saved chart they stay visible — so the feature is
- * discoverable — but disabled, with a line saying what unlocks them. The stored
- * preference is left alone, so it simply starts working once a chart is saved. */
-function updateHistoryPrefsUI() {
-    const none = !usableHistory().length;
-    [['prefAvoidRepeat', 'prefAvoidRepeatRow'], ['prefAvoidAll', 'prefAvoidAllRow']]
-        .forEach(([box, row]) => {
-            $(box).disabled = none;
-            $(row).classList.toggle('is-unavailable', none);
+/* A preference the class has no data for stays visible — so the feature is
+ * discoverable — but disabled, with a line saying what it needs. The stored
+ * value is never touched: a teacher who ticked it earlier keeps it, and it
+ * starts working the moment the missing piece appears. */
+function updateRulePrefsUI() {
+    const gate = (ok, boxes, hint) => {
+        boxes.forEach(([box, row]) => {
+            $(box).disabled = !ok;
+            $(row).classList.toggle('is-unavailable', !ok);
         });
-    $('prefHistoryHint').classList.toggle('hidden', !none);
+        $(hint).classList.toggle('hidden', ok);
+    };
+    gate(hasBothGenders(), [['prefBalanceGender', 'prefBalanceGenderRow']], 'prefGenderHint');
+    gate(!!usableHistory().length,
+        [['prefAvoidRepeat', 'prefAvoidRepeatRow'], ['prefAvoidAll', 'prefAvoidAllRow']], 'prefHistoryHint');
+    gate(hasSharedTag(), [['prefBalanceTags', 'prefBalanceTagsRow']], 'prefTagsHint');
 }
 function fillStudentSelect(sel) {
     sel.innerHTML = '';
