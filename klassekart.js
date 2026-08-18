@@ -2659,8 +2659,8 @@ function renderRoster() {
         // class list, so they stay visible.
         const marks = [];
         if (s.gender) marks.push(`<span class="r-mark" title="Kjønn">${s.gender}</span>`);
-        if (s.front) marks.push(`<span class="r-mark" title="${s.front === 'must' ? 'Må' : 'Bør'} sitte foran">⬆</span>`);
-        if (s.back) marks.push(`<span class="r-mark" title="${s.back === 'must' ? 'Må' : 'Bør'} sitte bak">⬇</span>`);
+        if (s.front) marks.push(`<span class="r-mark" title="${s.front === 'must' ? 'Skal' : 'Bør'} sitte foran">⬆</span>`);
+        if (s.back) marks.push(`<span class="r-mark" title="${s.back === 'must' ? 'Skal' : 'Bør'} sitte bak">⬇</span>`);
         row.innerHTML = `
             <input class="r-name" type="text" value="${escapeHtml(s.name)}">
             <span class="r-marks">${marks.join('')}</span>
