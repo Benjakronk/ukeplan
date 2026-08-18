@@ -770,8 +770,6 @@ function renderSyncShare(box) {
         </div>`;
 }
 
-/* A quiet marker on the Mer button, so an unresolved conflict is visible without
- * opening anything. */
 /* Sync is a topbar button rather than a menu entry, so its own face carries the
  * state: off, on, or unlocked-and-running — plus any unresolved conflict, which
  * used to need the menu opened before it was visible at all. */
