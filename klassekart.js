@@ -2323,40 +2323,79 @@ function updateRuleTypeUI() {
         ? 'Velg en elev og kryss av hvem den skal sitte <strong>unna</strong> (alle avkryssede).'
         : 'Velg en elev og kryss av mulige naboer. Flere avkryssede = ved siden av <strong>én av</strong> dem.';
 }
+/* One row per pupil the rule touches. The rule is still stored once, owned by
+ * `a` — these extra rows are reflections of it, not copies. A rule entered under
+ * Ailo binds Ben just as much, and a teacher looking for Ben's rules should not
+ * have to remember whose name it went in under. Rows are grouped by pupil for
+ * that reason. */
+function ruleRowText(r, subjectId, mirror) {
+    const subj = studentById(subjectId);
+    if (!subj) return null;
+    const st = normStrength(r.strength) || 'must';
+    const chip = `<span class="rule-chip ${st}">${st === 'must' ? 'Må' : 'Bør'}</span>`;
+    const icon = r.type === 'apart' ? '🚫' : '🤝';
+    const nm = s => `<strong>${escapeHtml(s.name)}</strong>`;
+    if (!mirror) {
+        const members = (r.members || []).map(id => studentById(id)).filter(Boolean);
+        if (!members.length) return null;
+        // together with several members = "next to one of"; apart = away from all
+        const phrase = r.type === 'apart' ? 'ikke ved siden av'
+            : (members.length > 1 ? 'ved siden av én av' : 'ved siden av');
+        return `${chip} ${icon} ${nm(subj)} - ${phrase}: ${members.map(nm).join(', ')}`;
+    }
+    const a = studentById(r.a);
+    if (!a) return null;
+    // Reflected wording has to stay true. "Apart" is symmetric, and so is a
+    // single "next to". "Next to ONE OF several" is not: it does not require
+    // this particular pupil, so the reflection says possible, not must.
+    const many = (r.members || []).filter(id => studentById(id)).length > 1;
+    const phrase = r.type === 'apart' ? 'ikke ved siden av'
+        : many ? 'mulig nabo for' : 'ved siden av';
+    return `${chip} ${icon} ${nm(subj)} - ${phrase}: ${nm(a)}`;
+}
+
 function renderRulesList() {
     const list = $('rulesList');
     list.innerHTML = '';
     if (!state.rules.length) { list.innerHTML = '<div class="empty-line">Ingen regler enda.</div>'; return; }
-    // hard (Må) rules first so the important ones read at the top
-    const ordered = state.rules.map((r, i) => ({ r, i }))
-        .sort((x, y) => (((normStrength(y.r.strength) || 'must') === 'must') - ((normStrength(x.r.strength) || 'must') === 'must')));
-    ordered.forEach(({ r, i }) => {
-        const a = studentById(r.a);
-        if (!a) return;
-        const names = (r.members || []).map(id => studentById(id)).filter(Boolean).map(s => `<strong>${escapeHtml(s.name)}</strong>`);
-        if (!names.length) return;
-        const st = normStrength(r.strength) || 'must';
-        const chip = `<span class="rule-chip ${st}">${st === 'must' ? 'Må' : 'Bør'}</span>`;
-        const icon = r.type === 'apart' ? '🚫' : '🤝';
-        // together with several members = "next to one of"; apart = away from all
-        const phrase = r.type === 'apart' ? 'ikke ved siden av'
-            : (names.length > 1 ? 'ved siden av én av' : 'ved siden av');
-        const text = `${chip} ${icon} <strong>${escapeHtml(a.name)}</strong> - ${phrase}: ${names.join(', ')}`;
+    const rows = [];
+    state.rules.forEach((r, i) => {
+        rows.push({ r, i, subject: r.a, mirror: false });
+        (r.members || []).forEach(m => rows.push({ r, i, subject: m, mirror: true }));
+    });
+    const nameOf = id => (studentById(id) || {}).name || '';
+    rows.sort((x, y) =>
+        nameOf(x.subject).localeCompare(nameOf(y.subject), 'nb')
+        // within a pupil: hard rules first, and the pupil's own entry above its
+        // reflections, so the editable row leads
+        || (((normStrength(y.r.strength) || 'must') === 'must') - ((normStrength(x.r.strength) || 'must') === 'must'))
+        || (x.mirror - y.mirror));
+
+    rows.forEach(({ r, i, subject, mirror }) => {
+        const text = ruleRowText(r, subject, mirror);
+        if (!text) return;
         const row = document.createElement('div');
-        row.className = 'rule-row' + (r.id === editingRuleId ? ' editing' : '');
-        row.innerHTML = `<span class="rule-text">${text}</span>`;
+        row.className = 'rule-row' + (r.id === editingRuleId ? ' editing' : '') + (mirror ? ' is-mirror' : '');
+        const owner = (studentById(r.a) || {}).name || '';
+        row.innerHTML = `<span class="rule-text">${mirror ? '<span class="rule-mirror" title="Samme regel, ført inn under ' + escapeHtml(owner) + '">↔</span> ' : ''}${text}</span>`;
         const actions = document.createElement('div');
         actions.className = 'rule-actions';
         const edit = document.createElement('button');
-        edit.className = 'rule-edit'; edit.textContent = '✎'; edit.title = 'Rediger regel';
+        edit.className = 'rule-edit'; edit.textContent = '✎';
+        edit.title = mirror ? 'Rediger regelen (står under ' + owner + ')' : 'Rediger regel';
         edit.addEventListener('click', () => startEditRule(r.id));
-        const del = document.createElement('button');
-        del.className = 'rule-del'; del.textContent = '✕'; del.title = 'Slett regel';
-        del.addEventListener('click', () => {
-            if (r.id === editingRuleId) setRuleEditMode(null);
-            state.rules.splice(i, 1); save(); renderRulesList();
-        });
-        actions.appendChild(edit); actions.appendChild(del);
+        actions.appendChild(edit);
+        // No delete on a reflection: the rule may cover pupils this row does not
+        // name, so removing it from here could quietly drop more than it shows.
+        if (!mirror) {
+            const del = document.createElement('button');
+            del.className = 'rule-del'; del.textContent = '✕'; del.title = 'Slett regel';
+            del.addEventListener('click', () => {
+                if (r.id === editingRuleId) setRuleEditMode(null);
+                state.rules.splice(i, 1); save(); renderRulesList();
+            });
+            actions.appendChild(del);
+        }
         row.appendChild(actions);
         list.appendChild(row);
     });

@@ -941,6 +941,9 @@ body.present .zoom-ctrl { display: none; }
 .rule-del:hover { background: var(--kk-danger-soft); }
 .rule-edit { color: var(--primary); }
 .rule-edit:hover { background: var(--primary-soft); }
+.rule-row.is-mirror { background: none; border-style: dashed; color: var(--ink-soft); }
+.rule-row.is-mirror .rule-text strong { font-weight: 600; }
+.rule-mirror { opacity: .7; cursor: help; }
 .rule-row.editing { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
 .rule-add { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .rule-add select {
