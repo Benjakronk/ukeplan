@@ -224,7 +224,14 @@ button { font-family: inherit; }
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    /* Deliberately NOT justify-content: center. The card is taller than a laptop
+       window once the fetch panel and the name box are both on screen, and a
+       centred flex container pushes its overflow off BOTH ends — while a scroll
+       container cannot scroll above its own start. The result was that the
+       ← Ukeportalen chip at the top existed but could not be reached. The auto
+       margins below centre exactly the same way when there is room, and let the
+       overflow fall downwards, where it can be scrolled to, when there isn't. */
+    justify-content: flex-start;
     padding: 24px;
     background: linear-gradient(160deg, var(--primary-light) 0%, var(--bg) 45%, var(--warn-bg) 100%);
     overflow-y: auto;
@@ -405,7 +412,7 @@ input[type=number]:focus {
 
 .setup-actions { margin-top: 28px; text-align: center; }
 .setup-restore { margin-top: 14px; text-align: center; font-size: 0.87rem; color: var(--ink-soft); }
-.setup-footer { margin-top: 18px; color: var(--ink-soft); font-size: 0.8rem; }
+.setup-footer { margin-top: 18px; margin-bottom: auto; color: var(--ink-soft); font-size: 0.8rem; }
 
 /* CSV column mapping. Every column but the mapped one is discarded at parse
    time, so the tag on each row says so plainly rather than implying storage. */
@@ -1196,13 +1203,24 @@ body.present .zoom-ctrl { display: none; }
 .setup-restore-sep { margin: 0 4px; opacity: .5; }
 
 /* ---------- Setup screen: navigation + the promoted fetch route ---------- */
-.setup-top { width: min(960px, 100%); margin-bottom: 12px; }
+.setup-top {
+    width: min(960px, 100%);
+    margin-bottom: 12px;
+    margin-top: auto;          /* pairs with .setup-footer's margin-bottom: auto */
+    /* The way out should not depend on where the teacher has scrolled to, so it
+       rides along the top of the scrollport. The bar itself is click-through;
+       only the chip takes the pointer. */
+    position: sticky; top: 0; z-index: 5;
+    pointer-events: none;
+}
 .setup-back {
     display: inline-flex; align-items: center; gap: 6px;
     padding: 7px 13px; border-radius: 999px;
     background: var(--surface); border: 1px solid var(--line);
     color: var(--ink-soft); text-decoration: none;
     font-size: 0.88rem; font-weight: 600;
+    pointer-events: auto;
+    box-shadow: var(--shadow);
 }
 .setup-back:hover { border-color: var(--primary); color: var(--primary); }
 
