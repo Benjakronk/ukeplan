@@ -1084,7 +1084,15 @@ function generateSeats(preset, n, params) {
     n = Math.max(0, n | 0);
     params = params || {};
     const gaps = { gapX: params.gapX, gapY: params.gapY };
-    const cols = params.perRow || null;
+    // Width per row. If only the row count was given, derive it from how many
+    // units this roster needs, so "3 rader" means three rows rather than being
+    // quietly ignored. Derived here rather than stored, so it keeps following the
+    // roster as pupils come and go.
+    let cols = params.perRow || null;
+    if (!cols && params.rows) {
+        const unit = preset === 'pairs' ? 2 : preset === 'pods' ? 4 : 1;
+        cols = Math.max(1, Math.ceil(Math.ceil(n / unit) / clamp(params.rows, 1, 20)));
+    }
     let seats;
     if (n === 0) seats = [];
     else if (preset === 'rows') seats = genRows(n, Object.assign({ cols }, gaps));
@@ -1172,12 +1180,18 @@ function applyRoom(preset, keepSeats, params) {
     let seated = [];
     if (keepSeats) seated = [...state.seats].filter(s => state.assign[s.id])
         .sort((a, b) => a.y - b.y || a.x - b.x).map(s => state.assign[s.id]);
-    const custom = !!(params.rows && params.perRow) && preset !== 'u';
+    // Each field means something on its own. Both together fix the desk COUNT
+    // (rows x perRow x unit, empty desks allowed); either alone only shapes the
+    // layout while the count keeps tracking the roster. Previously one without
+    // the other was discarded, so setting just "par per rad" did nothing.
+    const isU = preset === 'u';
+    const rows = (!isU && params.rows) ? clamp(params.rows, 1, 20) : null;
+    const perRow = (!isU && params.perRow) ? clamp(params.perRow, 1, 20) : null;
+    const custom = !!(rows && perRow);
     state.room = preset;
     state.roomMode = custom ? 'custom' : 'auto';
     state.roomParams = {
-        rows: custom ? clamp(params.rows, 1, 20) : null,
-        perRow: custom ? clamp(params.perRow, 1, 20) : null,
+        rows, perRow,
         gapX: params.gapX != null ? params.gapX : null,
         gapY: params.gapY != null ? params.gapY : null
     };
@@ -3397,10 +3411,12 @@ function wireApp() {
         const numOrNull = (v, lo, hi) => { const n = parseInt(v, 10); return isNaN(n) ? null : clamp(n, lo, hi); };
         const rows = numOrNull($('roomRows').value, 1, 20);
         const perRow = numOrNull($('roomPerRow').value, 1, 20);
+        // Pass both through as entered; applyRoom decides what each one means.
+        // Nulling one because the other was blank is what made "par per rad"
+        // alone do nothing.
         const custom = preset !== 'u' && rows && perRow;
         const params = {
-            rows: custom ? rows : null,
-            perRow: custom ? perRow : null,
+            rows, perRow,
             gapY: numOrNull($('roomGapY').value, 0, 200),
             gapX: numOrNull($('roomGapX').value, 0, 200)
         };
