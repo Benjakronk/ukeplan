@@ -2617,8 +2617,14 @@ function commitRoster(regen) {
     updateRulePrefsUI();
 }
 
+/* Ids in the order the roster shows them; used to tell a rename that reorders
+ * the list from one that does not. */
+function rosterOrder() {
+    return (rosterWork || []).slice().sort(byName).map(s => s.id).join(',');
+}
 function renderRoster() {
     const box = $('roster');
+    const orderAtRender = rosterOrder();
     box.innerHTML = '';
     const q = rosterFilter.trim().toLowerCase();
     const rows = sortedWithIndex(rosterWork)
@@ -2653,7 +2659,14 @@ function renderRoster() {
         nameInput.addEventListener('input', e => { s.name = e.target.value; commitRoster(false); });
         nameInput.addEventListener('blur', e => {
             const v = e.target.value.trim();
-            if (v) { if (v !== s.name) { s.name = v; commitRoster(false); } renderRoster(); return; }
+            if (v) {
+                if (v !== s.name) { s.name = v; commitRoster(false); }
+                // Re-rendering here would replace the row mid-click — clicking ✕
+                // blurs the field first, and the button would vanish before its
+                // own handler ran. Only rebuild when the name actually moves.
+                if (rosterOrder() !== orderAtRender) renderRoster();
+                return;
+            }
             // left blank: a row with no name is not a pupil, so it goes quietly
             const at = state.students.indexOf(s);
             if (at >= 0) state.students.splice(at, 1);

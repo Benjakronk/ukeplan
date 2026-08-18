@@ -1017,7 +1017,6 @@ body.present .zoom-ctrl { display: none; }
     font-size: 0.7rem; font-weight: 700; line-height: 1;
 }
 .r-marks { display: inline-flex; gap: 4px; flex-shrink: 0; }
-.roster-row .r-pref { width: auto; padding: 0 11px; gap: 6px; font-size: 0.85rem; font-weight: 600; }
 
 /* --- one pupil per line, folded --- */
 .rule-search {
@@ -1245,10 +1244,18 @@ body.present .zoom-ctrl { display: none; }
 .h-note:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
 
 /* --- student preferences --- */
+/* It carries a word now, not a cogwheel, so it sizes to that word instead of
+   being a 34px square with the label spilling over its neighbours. */
 .roster-row .r-pref {
-    position: relative; flex-shrink: 0; width: 34px; height: 34px; border: 1px solid var(--line);
-    background: var(--surface); border-radius: 8px; cursor: pointer; font-size: 0.95rem; color: var(--ink-soft);
+    position: relative; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    height: 34px; padding: 0 12px; white-space: nowrap;
+    border: 1px solid var(--line);
+    background: var(--surface); border-radius: 8px; cursor: pointer;
+    font-family: var(--font); font-size: 0.85rem; font-weight: 600; color: var(--ink-soft);
 }
+/* The name field yields the space; everything else in the row keeps its size. */
+.roster-row .r-name { min-width: 0; }
 .roster-row .r-pref:hover { border-color: var(--primary); color: var(--primary); }
 .r-pref-badge {
     position: absolute; top: -6px; right: -6px; min-width: 16px; height: 16px; padding: 0 4px;
