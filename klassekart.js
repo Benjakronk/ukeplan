@@ -943,6 +943,13 @@ function hasSharedTag() {
         for (const t of (s.tags || [])) { if (seen.has(t)) return true; seen.add(t); }
     return false;
 }
+/* …and it spreads tags across GROUPS, so the room has to have some. A plain row
+ * layout produces no clusters at all, and the penalty loop never runs. Unlike
+ * the other gates this one is about the current room rather than the class, so
+ * it can come and go as the layout changes — the hint says which is missing. */
+function hasClusters() {
+    return !!(state && state.seats && clustersOf(state.seats).length);
+}
 /* A rule is { type:'apart'|'together', a, members:[...], strength }. apart = a
  * away from EVERY member; together = a next to AT LEAST ONE member. Migrates the
  * old pairwise { a, b } and the interim 'together-any' type into this shape. */
@@ -2335,7 +2342,12 @@ function updateRulePrefsUI() {
     gate(hasBothGenders(), [['prefBalanceGender', 'prefBalanceGenderRow']], 'prefGenderHint');
     gate(!!usableHistory().length,
         [['prefAvoidRepeat', 'prefAvoidRepeatRow'], ['prefAvoidAll', 'prefAvoidAllRow']], 'prefHistoryHint');
-    gate(hasSharedTag(), [['prefBalanceTags', 'prefBalanceTagsRow']], 'prefTagsHint');
+    // Two different reasons this one can be unavailable, so it says which.
+    const shared = hasSharedTag();
+    $('prefTagsHint').textContent = !shared
+        ? 'Krever at minst to elever deler en merkelapp — gjøres i Elever.'
+        : 'Krever pulter som står i par eller grupper — velg et oppsett i Rom.';
+    gate(shared && hasClusters(), [['prefBalanceTags', 'prefBalanceTagsRow']], 'prefTagsHint');
 }
 function fillStudentSelect(sel) {
     sel.innerHTML = '';
