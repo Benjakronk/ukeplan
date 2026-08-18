@@ -690,7 +690,12 @@ input[type=number]:focus {
     color: var(--ink-soft);
     cursor: pointer;
 }
-.modal-body { padding: 20px; overflow-y: auto; }
+/* The gutter is reserved whether or not a scrollbar is showing. Without it,
+   expanding a pupil in Regler pushes the content past the panel height, a
+   scrollbar appears and takes its width out of the content — so every row
+   reflows a few pixels narrower, and jumps back on collapse. Where scrollbars
+   are overlaid (touch, macOS) this reserves nothing and changes nothing. */
+.modal-body { padding: 20px; overflow-y: auto; scrollbar-gutter: stable; }
 .modal-hint { margin: 0 0 14px; color: var(--ink-soft); font-size: 0.9rem; }
 #studentsEdit { width: 100%; min-height: 0; }
 .modal-foot {
@@ -964,7 +969,7 @@ body.present .zoom-ctrl { display: none; }
 .rule-add #ruleA { flex: 0 1 230px; min-width: 150px; }
 .rule-members {
     flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px;
-    max-height: 168px; overflow-y: auto; padding: 8px;
+    max-height: 168px; overflow-y: auto; scrollbar-gutter: stable; padding: 8px;
     border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2);
 }
 .member-chip {
@@ -1020,7 +1025,7 @@ body.present .zoom-ctrl { display: none; }
 .result-line.ok .ri { color: var(--ok); }
 .result-line.warn .ri { color: var(--accent); }
 
-.roster { display: flex; flex-direction: column; gap: 7px; max-height: 46vh; overflow-y: auto; margin-bottom: 14px; }
+.roster { display: flex; flex-direction: column; gap: 7px; max-height: 46vh; overflow-y: auto; scrollbar-gutter: stable; margin-bottom: 14px; }
 .roster-row { display: flex; align-items: center; gap: 10px; }
 .roster-row .r-name {
     flex: 1; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 0.92rem; font-family: var(--font);
