@@ -1520,6 +1520,12 @@ function rowLine(ok, txt) {
  * centre, so chairs point outward; a 1-D run (a side-by-side pair, a column) and
  * lone desks → face the board, so chairs point to the back. */
 const CHAIR_D = 52, CHAIR_POKE = 18;
+/* Floor margin around the desks. It has to clear CHAIR_POKE at minimum — a chair
+ * on the bottom row is drawn CHAIR_POKE below the desk it belongs to, and the
+ * board box used to stop at the desks, so that chair was cut off by the stage.
+ * The rest is breathing room: desks pressed against the wall look cramped,
+ * especially in present mode where the whole thing is scaled up. */
+const BOARD_PAD = 40;
 function seatChairDirs() {
     const byId = {}; state.seats.forEach(s => byId[s.id] = s);
     const dirOf = {};
@@ -1590,6 +1596,9 @@ function renderBoard() {
         boardW = Math.max(...state.seats.map(s => s.x + SEAT_W));
         boardH = Math.max(...state.seats.map(s => s.y + SEAT_H));
     } else { boardW = SEAT_W; boardH = SEAT_H; }
+    // boardW/boardH stay the extent of the DESKS, and so does this element:
+    // every seat coordinate, the adjacency maths and both exports are expressed
+    // in them. The floor margin is added by the wrapper instead — see fitBoard.
     board.style.width = boardW + 'px';
     board.style.height = boardH + 'px';
     const chairDirs = seatChairDirs();
@@ -1670,7 +1679,8 @@ function fitBoard() {
     const availW = stage.clientWidth - 36;
     const availH = stage.clientHeight - front.offsetHeight - 52 - barPad;
     const maxScale = presentMode ? 3 : 1.5;
-    let autoScale = Math.min(availW / boardW, availH / boardH, maxScale);
+    const boxW = boardW + BOARD_PAD * 2, boxH = boardH + BOARD_PAD * 2;
+    let autoScale = Math.min(availW / boxW, availH / boxH, maxScale);
     if (!isFinite(autoScale) || autoScale <= 0) autoScale = 1;
     autoScale = Math.max(autoScale, ZOOM_MIN);
     const scale = zoom != null ? clamp(zoom, ZOOM_MIN, ZOOM_MAX) : autoScale;
@@ -1678,8 +1688,10 @@ function fitBoard() {
     const board = $('board'), wrap = $('boardWrap');
     board.style.transformOrigin = 'top left';
     board.style.transform = 'scale(' + scale + ')';
-    wrap.style.width = (boardW * scale) + 'px';
-    wrap.style.height = (boardH * scale) + 'px';
+    // Scaled with the board, so the floor keeps its proportion when presenting.
+    wrap.style.padding = (BOARD_PAD * scale) + 'px';
+    wrap.style.width = (boxW * scale) + 'px';
+    wrap.style.height = (boxH * scale) + 'px';
     // scroll slack so a zoomed-in last row can be brought above the edit bar
     wrap.style.marginBottom = editMode ? '108px' : '';
     updateZoomLabel();
