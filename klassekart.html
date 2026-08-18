@@ -261,8 +261,11 @@
             <div class="modal-body">
                 <div class="rules-globals">
                     <label class="check"><input type="checkbox" id="prefBalanceGender"> Bland kjønn (vekslende gutt/jente)</label>
-                    <label class="check"><input type="checkbox" id="prefAvoidRepeat"> Unngå naboer fra forrige lagrede kart</label>
-                    <label class="check"><input type="checkbox" id="prefAvoidAll"> Unngå alle tidligere naboer (hele historikken)</label>
+                    <label class="check" id="prefAvoidRepeatRow"><input type="checkbox" id="prefAvoidRepeat"> Unngå naboer fra forrige lagrede kart</label>
+                    <label class="check" id="prefAvoidAllRow"><input type="checkbox" id="prefAvoidAll"> Unngå alle tidligere naboer (hele historikken)</label>
+                    <!-- Both of the above compare against saved charts; with none
+                         saved they are switches that cannot do anything. -->
+                    <p class="modal-hint hidden" id="prefHistoryHint">Krever minst ett lagret kart — bruk «Lagre kartet» på Kart-fanen.</p>
                     <label class="check"><input type="checkbox" id="prefBalanceTags"> Spre merkelapper (blandede grupper)</label>
                 </div>
     

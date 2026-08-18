@@ -923,6 +923,12 @@ function updateUndoButtons() {
 }
 
 function normStrength(v) { return v === 'must' || v === 'should' ? v : null; }
+/* Saved charts that recorded their desk positions, newest first. Anything else
+ * cannot tell us who sat beside whom — see the note in buildContext. Both the
+ * solver and the Regler UI ask this, so what is offered matches what works. */
+function usableHistory() {
+    return (state && state.history ? state.history : []).filter(h => h && (h.seats || []).length);
+}
 /* A rule is { type:'apart'|'together', a, members:[...], strength }. apart = a
  * away from EVERY member; together = a next to AT LEAST ONE member. Migrates the
  * old pairwise { a, b } and the interim 'together-any' type into this shape. */
@@ -1300,14 +1306,14 @@ function buildContext() {
         (s.wishAvoid || []).forEach(w => wishAvoid.push({ a: s.id, b: w }));
     });
     let prevPairs = new Set();
-    if (state.prefs.avoidRepeat && state.history.length) {
+    if (state.prefs.avoidRepeat && usableHistory().length) {
         // The newest chart that actually recorded its desks. Falling back to the
         // CURRENT layout, as this used to, measured an old assignment against
         // today's desk positions and invented neighbours that never sat together.
         // saveHistory has always stored seats, so only very old entries can lack
         // them — skip those and use the newest one that has them, rather than
         // silently switching the preference off.
-        const snap = state.history.find(h => h && (h.seats || []).length);
+        const snap = usableHistory()[0];
         if (snap) {
             const { edges: pe } = computeAdjacency(snap.seats, snap.room);
             pe.forEach(([s1, s2]) => {
@@ -1319,7 +1325,7 @@ function buildContext() {
     // avoid ALL past neighbours: count how many saved charts each pair sat together,
     // so repeat offenders are penalised more and the optimiser favours new pairings.
     let pastPairs = null;
-    if (state.prefs.avoidAllRepeat && state.history.length) {
+    if (state.prefs.avoidAllRepeat && usableHistory().length) {
         pastPairs = new Map();
         state.history.forEach(snap => {
             const seatsP = snap.seats || []; if (!seatsP.length) return;
@@ -2267,6 +2273,7 @@ function openRulesModal() {
     $('prefAvoidRepeat').checked = !!state.prefs.avoidRepeat;
     $('prefAvoidAll').checked = !!state.prefs.avoidAllRepeat;
     $('prefBalanceTags').checked = !!state.prefs.balanceTags;
+    updateHistoryPrefsUI();
     fillStudentSelect($('ruleA'));
     fillMemberPicker(new Set());
     setRuleEditMode(null);
@@ -2298,6 +2305,19 @@ function startEditRule(id) {
     setRuleEditMode(rule);
     renderRulesList();
     $('ruleMembers').scrollIntoView({ block: 'nearest' });
+}
+/* The two "avoid previous neighbours" switches need something to compare
+ * against. With no usable saved chart they stay visible — so the feature is
+ * discoverable — but disabled, with a line saying what unlocks them. The stored
+ * preference is left alone, so it simply starts working once a chart is saved. */
+function updateHistoryPrefsUI() {
+    const none = !usableHistory().length;
+    [['prefAvoidRepeat', 'prefAvoidRepeatRow'], ['prefAvoidAll', 'prefAvoidAllRow']]
+        .forEach(([box, row]) => {
+            $(box).disabled = none;
+            $(row).classList.toggle('is-unavailable', none);
+        });
+    $('prefHistoryHint').classList.toggle('hidden', !none);
 }
 function fillStudentSelect(sel) {
     sel.innerHTML = '';

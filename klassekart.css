@@ -926,6 +926,11 @@ body.present .zoom-ctrl { display: none; }
 .modal-wide { width: min(640px, 100%); }
 .sub { font-size: 0.95rem; margin: 18px 0 8px; }
 .rules-globals { display: flex; flex-direction: column; gap: 10px; padding: 4px 0 6px; }
+/* A preference with nothing to compare against reads as available but does
+   nothing when ticked. Say so rather than letting it look like it worked. */
+.check.is-unavailable { opacity: .5; cursor: default; }
+.check.is-unavailable input { cursor: default; }
+#prefHistoryHint { margin: -2px 0 0 27px; }
 .rules-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
 .empty-line { color: var(--ink-soft); font-size: 0.9rem; padding: 6px 2px; }
 .rule-row, .history-row {
