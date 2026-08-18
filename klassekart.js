@@ -625,7 +625,7 @@ function probeIdentity() {
 function updateSetupFetch() {
     const box = $('setupFetch'), or = $('setupOr');
     if (!box) return;
-    const show = !!syncHasIdentity;
+    const show = !!syncHasIdentity && !syncUnlocked();
     box.classList.toggle('hidden', !show);
     if (or) or.classList.toggle('hidden', !show);
 }
@@ -1966,7 +1966,14 @@ function showApp() {
     setTab('kart');
     requestAnimationFrame(fitBoard);
 }
-function showSetup() { if (editMode) exitEditMode(); $('app').classList.add('hidden'); $('setup').classList.remove('hidden'); }
+function showSetup() {
+    if (editMode) exitEditMode();
+    $('app').classList.add('hidden');
+    $('setup').classList.remove('hidden');
+    // Coming back from the board is a normal way to reach this screen, so the
+    // fetch panel has to be decided here too — not only on first load.
+    probeIdentity().then(updateSetupFetch);
+}
 
 /* -------------------------------------------- class codes (school config)   */
 /* Replaces the old `Klasser/` folder of committed name lists. The config holds
@@ -3525,7 +3532,8 @@ async function init() {
     if (syncOn()) buildMainMenu();
     updateSyncBadge();
     if (loadStore()) { state = store.classes[store.activeClassId]; showApp(); render(); }
-    else { showSetup(); probeIdentity().then(updateSetupFetch); }
+    else { showSetup(); }
+    probeIdentity().then(updateSetupFetch);
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
 else init();
