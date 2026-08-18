@@ -235,18 +235,13 @@
         <div class="modal modal-wide as-view-narrow">
             <div class="modal-head">
                 <h2>Elever</h2>
+                <button class="btn btn-primary modal-head-action" id="addStudentsBtn" type="button">+ Legg til elever</button>
                 <button class="modal-x" data-close="studentsModal" type="button">&times;</button>
             </div>
             <div class="modal-body">
-                <p class="modal-hint">Sett kjønn (for «bland kjønn») og hvem som bør/må sitte foran eller bak.
-                Alt lagres med det samme.</p>
+                <p class="modal-hint">Trykk på Egenskaper for å redigere en elevs innstillinger og ønsker.</p>
                 <input type="search" id="rosterSearch" class="rule-search" placeholder="Søk etter elev…" autocomplete="off">
                 <div class="roster" id="roster"></div>
-                <div class="roster-add">
-                    <label for="rosterAdd">Legg til flere <span class="hint">- ett navn per linje</span></label>
-                    <textarea id="rosterAdd" rows="3" placeholder="Nytt elevnavn..."></textarea>
-                    <button class="btn" id="rosterAddBtn" type="button">Legg til</button>
-                </div>
             </div>
         </div>
     </div>
@@ -254,6 +249,7 @@
         <div class="modal modal-wide as-view-narrow">
             <div class="modal-head">
                 <h2>Regler for smart plassering</h2>
+                <button class="btn btn-primary modal-head-action" id="ruleAddToggle" type="button">+ Ny regel</button>
                 <button class="modal-x" data-close="rulesModal" type="button">&times;</button>
             </div>
             <div class="modal-body">
@@ -278,28 +274,7 @@
                      pair — read-only, with ✎ jumping to where they are edited. -->
                 <input type="search" id="ruleSearch" class="rule-search" placeholder="Søk etter elev…" autocomplete="off">
                 <div class="rules-list" id="rulesList"></div>
-                <button class="btn" id="ruleAddToggle" type="button">+ Ny regel</button>
     
-                <!-- Reads as the sentence a teacher would say: who, how strictly,
-                     what, and then who it applies to. The buttons follow the
-                     checklist rather than sitting above it, so the row is
-                     completed left to right and top to bottom. -->
-                <div class="rule-add hidden" id="ruleAdd">
-                    <select id="ruleA"></select>
-                    <select id="ruleStrength" title="Hvor strengt">
-                        <option value="must">Må</option>
-                        <option value="should">Bør</option>
-                    </select>
-                    <select id="ruleType">
-                        <option value="apart">🚫 ikke ved siden av</option>
-                        <option value="together">🤝 ved siden av</option>
-                    </select>
-                    <div id="ruleMembers" class="rule-members"></div>
-                    <button class="btn btn-primary" id="ruleAddBtn" type="button">Legg til</button>
-                    <button class="btn hidden" id="ruleCancelBtn" type="button">Avbryt</button>
-                </div>
-                <p class="modal-hint" id="ruleAnyHint" style="margin-top:10px;"></p>
-                <p class="modal-hint" style="margin-top:14px;"><strong>Må</strong> = hard regel · <strong>Bør</strong> = mykt ønske. «Foran/bak», kjønn og ønsker settes under <strong>Egenskaper</strong> i Elever-lista.</p>
             </div>
             <div class="modal-foot">
                 <button class="btn" data-close="rulesModal" type="button">Lukk</button>
@@ -445,6 +420,61 @@
 </section>
 
 
+
+<!-- ============ ADD PUPILS MODAL ============ -->
+<div class="modal-overlay" id="addStudentsModal">
+    <div class="modal">
+        <div class="modal-head">
+            <h2>Legg til elever</h2>
+            <button class="modal-x" data-close="addStudentsModal" type="button">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="roster-add">
+                <label for="rosterAdd">Ett navn per linje</label>
+                <textarea id="rosterAdd" rows="7" placeholder="Nytt elevnavn..."></textarea>
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn" data-close="addStudentsModal" type="button">Avbryt</button>
+            <button class="btn btn-primary" id="rosterAddBtn" type="button">Legg til</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============ NEW RULE MODAL ============ -->
+<div class="modal-overlay" id="ruleAddModal">
+    <div class="modal modal-wide">
+        <div class="modal-head">
+            <h2 id="ruleAddTitle">Ny regel</h2>
+            <button class="modal-x" data-close="ruleAddModal" type="button">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p class="modal-hint">Velg en elev, og deretter hvordan klassekartografen skal vurdere
+            plasseringen i forhold til andre.</p>
+            <!-- Reads as the sentence a teacher would say: who, how strictly,
+                 what, and then who it applies to. The buttons follow the
+                 checklist rather than sitting above it, so the row is
+                 completed left to right and top to bottom. -->
+            <div class="rule-add" id="ruleAdd">
+                <select id="ruleA"></select>
+                <select id="ruleStrength" title="Hvor strengt">
+                    <option value="must">Må</option>
+                    <option value="should">Bør</option>
+                </select>
+                <select id="ruleType">
+                    <option value="apart">🚫 ikke ved siden av</option>
+                    <option value="together">🤝 ved siden av</option>
+                </select>
+                <div id="ruleMembers" class="rule-members"></div>
+            </div>
+            <p class="modal-hint" id="ruleAnyHint" style="margin-top:10px;"></p>
+        </div>
+        <div class="modal-foot">
+            <button class="btn" id="ruleCancelBtn" type="button">Avbryt</button>
+            <button class="btn btn-primary" id="ruleAddBtn" type="button">Legg til</button>
+        </div>
+    </div>
+</div>
 
 <!-- ============ STUDENT PREFERENCES MODAL ============ -->
 <div class="modal-overlay" id="studentPrefModal">

@@ -2321,8 +2321,6 @@ function openRulesModal() {
     setRuleEditMode(null);
     ruleSearch = ''; $('ruleSearch').value = '';
     renderRulesList();
-    // nothing to read yet -> lead with the form; otherwise fold it away
-    showRuleForm(!state.rules.length && !state.students.some(s2 => (s2.wishWith || []).length || (s2.wishAvoid || []).length));
     openModal('rulesModal');
 }
 /* Load a rule into the add-form for editing (rule = null clears the form). */
@@ -2335,21 +2333,21 @@ function setRuleEditMode(rule) {
         // ruleA first: the picker is built around it.
         fillMemberPicker(new Set(rule.members || []));
         $('ruleAddBtn').textContent = 'Oppdater regel';
-        $('ruleCancelBtn').classList.remove('hidden');
+        $('ruleAddTitle').textContent = 'Rediger regel';
     } else {
         editingRuleId = null;
         fillMemberPicker(new Set());
         $('ruleAddBtn').textContent = 'Legg til';
-        $('ruleCancelBtn').classList.add('hidden');
+        $('ruleAddTitle').textContent = 'Ny regel';
     }
     updateRuleTypeUI();
 }
-/* The form is folded away by default: with rules already listed, reading them is
- * the common errand and adding one is the occasional one. */
+/* Adding a rule is an occasional errand, so it gets a dialog rather than a
+ * fold-out that pushes the list around. The button lives beside the panel title,
+ * where it is reachable without scrolling past every rule first. */
 function showRuleForm(show) {
-    $('ruleAdd').classList.toggle('hidden', !show);
-    $('ruleAddToggle').textContent = show ? '✕ Avbryt ny regel' : '+ Ny regel';
-    if (show) $('ruleA').focus();
+    if (show) { openModal('ruleAddModal'); $('ruleA').focus(); }
+    else closeModal('ruleAddModal');
 }
 function startEditRule(id) {
     const rule = state.rules.find(r => r.id === id);
@@ -2358,8 +2356,6 @@ function startEditRule(id) {
     openRuleGroups.add(rule.a);
     showRuleForm(true);
     renderRulesList();
-    const mem = $('ruleMembers');
-    if (mem.scrollIntoView) mem.scrollIntoView({ block: 'nearest' });
 }
 /* A preference the class has no data for stays visible — so the feature is
  * discoverable — but disabled, with a line saying what it needs. The stored
@@ -2481,7 +2477,7 @@ function renderRulesList() {
         .sort((a, b) => nameOf(a).localeCompare(nameOf(b), 'nb'));
 
     if (!ids.length) {
-        list.innerHTML = '<div class="empty-line">Ingen regler eller ønsker enda.</div>';
+        list.innerHTML = '<div class="empty-line">Ingen regler eller ønsker enda – trykk «+ Ny regel».</div>';
         return;
     }
     // Search matches the pupil AND anyone named in their entries, so looking up
@@ -3737,7 +3733,7 @@ function wireApp() {
     // rules modal
     $('ruleType').addEventListener('change', updateRuleTypeUI);
     $('ruleSearch').addEventListener('input', e => { ruleSearch = e.target.value; renderRulesList(); });
-    $('ruleAddToggle').addEventListener('click', () => showRuleForm($('ruleAdd').classList.contains('hidden')));
+    $('ruleAddToggle').addEventListener('click', () => { setRuleEditMode(null); showRuleForm(true); });
     // Whoever the rule is about drops out of the checklist below it.
     $('ruleA').addEventListener('change', () => fillMemberPicker());
     $('ruleCancelBtn').addEventListener('click', () => { setRuleEditMode(null); showRuleForm(false); renderRulesList(); });
@@ -3770,14 +3766,20 @@ function wireApp() {
     $('rulesRunBtn').addEventListener('click', () => { closeModal('rulesModal'); smartArrange(false); });
 
     // roster modal
+    $('addStudentsBtn').addEventListener('click', () => {
+        $('rosterAdd').value = '';
+        openModal('addStudentsModal');
+        $('rosterAdd').focus();
+    });
     $('rosterAddBtn').addEventListener('click', () => {
         const added = parseNames($('rosterAdd').value);
-        if (!added.length) return;
+        if (!added.length) { toast('Skriv inn minst ett navn', 'err'); return; }
         added.forEach(n => state.students.push(normStudent({ id: uid(), name: n, tags: [] })));
         $('rosterAdd').value = '';
         // clear any filter, or the names just added may not be on screen
         rosterFilter = ''; $('rosterSearch').value = '';
         commitRoster(true); renderRoster();
+        closeModal('addStudentsModal');
         toast(added.length === 1 ? '1 elev lagt til' : added.length + ' elever lagt til', 'ok');
     });
     $('rosterSearch').addEventListener('input', e => { rosterFilter = e.target.value; renderRoster(); });

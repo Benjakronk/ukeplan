@@ -1002,6 +1002,9 @@ body.present .zoom-ctrl { display: none; }
 .rule-chip.ment { background: var(--surface-2); color: var(--ink-soft); }
 
 /* --- the roster is just names now; the rest lives behind Egenskaper --- */
+/* An action that belongs to the panel sits beside its title, not buried at the
+   bottom of a long list where it is off screen exactly when it is wanted. */
+.modal-head-action { margin-right: auto; margin-left: 14px; }
 .pref-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
 .pref-field > label { font-size: 0.85rem; color: var(--ink-soft); }
 .pref-field select {
