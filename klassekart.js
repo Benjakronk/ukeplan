@@ -608,18 +608,34 @@ let syncShareData = null;   // { members, pending } for that group
  * on a new machine. Ask the server (read-only) whether they already have an
  * identity, so they are prompted for their code instead of being offered a fresh
  * setup that would then tell them they already have one. */
+/* Read-only: does the server already know this teacher? Used both to pick the
+ * right dialog state and to decide whether the setup screen leads with "fetch my
+ * charts" or with creating one. Safe to call before sync is on — it creates
+ * nothing. */
+function probeIdentity() {
+    if (syncHasIdentity !== null) return Promise.resolve(syncHasIdentity);
+    return kkGet('kk_identity').then(r => {
+        syncHasIdentity = !!r.exists;
+        if (syncHasIdentity && !syncOn()) { try { localStorage.setItem(SYNC_ON_KEY, '1'); } catch (e) {} }
+        return syncHasIdentity;
+    }).catch(() => { syncHasIdentity = false; return false; });
+}
+
+/* Lead the setup screen with whichever action this teacher actually came for. */
+function updateSetupFetch() {
+    const box = $('setupFetch'), or = $('setupOr');
+    if (!box) return;
+    const show = !!syncHasIdentity;
+    box.classList.toggle('hidden', !show);
+    if (or) or.classList.toggle('hidden', !show);
+}
+
 function openSyncModal() {
     // Always open on the overview: a share panel left over from last time is
     // stale and confusing.
     syncShareGroup = null; syncShareData = null;
     renderSyncBody(); openModal('syncModal');
-    if (syncHasIdentity === null) {
-        kkGet('kk_identity').then(r => {
-            syncHasIdentity = !!r.exists;
-            if (syncHasIdentity && !syncOn()) { try { localStorage.setItem(SYNC_ON_KEY, '1'); } catch (e) {} }
-            renderSyncBody();
-        }).catch(() => { syncHasIdentity = false; });
-    }
+    probeIdentity().then(() => { renderSyncBody(); updateSetupFetch(); });
 }
 
 /* After a pull, make sure the app is actually showing something. On a device that
@@ -674,6 +690,10 @@ function renderSyncBody() {
     }
 
     if (!syncUnlocked()) {
+        // The identity probe can land while someone is already typing, and this
+        // body is re-rendered when it does. Carry the field's contents across so
+        // a slow network never eats a half-entered code.
+        const typed = $('syncCodeInput') ? $('syncCodeInput').value : '';
         box.innerHTML = `
             <p class="modal-hint">Skriv inn gjenopprettingskoden din for å hente og lagre kart.
             ${syncHasIdentity && !Object.keys((store && store.classes) || {}).length
@@ -685,6 +705,7 @@ function renderSyncBody() {
                 <button class="btn" data-syncact="off" type="button">Slå av synkronisering</button>
                 <button class="btn btn-primary" data-syncact="unlock" type="button">Lås opp</button>
             </div>`;
+        if (typed) $('syncCodeInput').value = typed;
         setTimeout(() => { const i = $('syncCodeInput'); if (i) i.focus(); }, 60);
         return;
     }
@@ -3197,6 +3218,7 @@ function buildMainMenu() {
     // data safety, and destructive group admin.
     const items = [
         [syncOn() ? (syncUnlocked() ? '☁ Synkronisering' : '🔒 Synkronisering (låst)') : '☁ Slå på synkronisering', openSyncModal],
+        ['↩ Tilbake til Ukeportalen', () => { location.href = 'teacher.html'; }],
         ['sep'],
         ['📄 Eksporter PDF', exportPDF],
         ['🖼️ Eksporter PNG', exportPNG],
@@ -3257,6 +3279,7 @@ function wireSetup() {
     // cross origins, so the JSON backup is the only bridge
     $('setupImportBtn').addEventListener('click', () => $('importFile').click());
     $('setupSyncBtn').addEventListener('click', openSyncModal);
+    $('setupFetchBtn').addEventListener('click', openSyncModal);
 
     $('setupGoBtn').addEventListener('click', () => {
         const list = parseNames(names.value);
@@ -3502,7 +3525,7 @@ async function init() {
     if (syncOn()) buildMainMenu();
     updateSyncBadge();
     if (loadStore()) { state = store.classes[store.activeClassId]; showApp(); render(); }
-    else { showSetup(); }
+    else { showSetup(); probeIdentity().then(updateSetupFetch); }
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
 else init();

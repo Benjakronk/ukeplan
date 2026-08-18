@@ -38,12 +38,27 @@
 
 <!-- ============ SETUP SCREEN ============ -->
 <section id="setup" class="screen">
+    <div class="setup-top">
+        <a class="setup-back" href="teacher.html">&larr; Ukeportalen</a>
+    </div>
     <div class="setup-card">
         <div class="setup-brand">
             <div class="setup-logo">🗺️</div>
             <h1>Klassekartografen</h1>
             <p class="setup-tagline">Lim inn navn, velg et oppsett, og få et ferdig kart på sekunder.</p>
         </div>
+
+        <!-- Shown only when the server already knows this teacher, i.e. they have
+             charts waiting. Then this is what they came for, not group creation. -->
+        <div class="setup-fetch hidden" id="setupFetch">
+            <div class="setup-fetch-main">
+                <strong>Du har kart lagret</strong>
+                <span>Skriv inn gjenopprettingskoden din for å hente dem hit.</span>
+            </div>
+            <button class="btn btn-primary" id="setupFetchBtn" type="button">Hent kartene mine</button>
+        </div>
+
+        <div class="setup-or hidden" id="setupOr"><span>eller lag et nytt kart</span></div>
 
         <!-- What the chart is for. A klasse picks a code from the school config;
              a faggruppe (valgfag, K&H) is free text – Ukeportalen has no
@@ -109,8 +124,7 @@
              reachable from here: a teacher on a new device has no group yet, and
              requiring one before they can fetch theirs defeats the point. -->
         <p class="setup-restore">
-            Har du kart fra før?
-            <button class="link-btn" id="setupSyncBtn" type="button">Hent dem med gjenopprettingskode</button>
+            <button class="link-btn" id="setupSyncBtn" type="button">Hent med gjenopprettingskode</button>
             <span class="setup-restore-sep">·</span>
             <button class="link-btn" id="setupImportBtn" type="button">Importer sikkerhetskopi</button>
         </p>

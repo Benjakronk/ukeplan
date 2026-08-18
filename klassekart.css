@@ -1184,3 +1184,33 @@ body.present .zoom-ctrl { display: none; }
 #menuBtn.has-conflict { border-color: var(--danger); color: var(--danger); }
 
 .setup-restore-sep { margin: 0 4px; opacity: .5; }
+
+/* ---------- Setup screen: navigation + the promoted fetch route ---------- */
+.setup-top { width: min(960px, 100%); margin-bottom: 12px; }
+.setup-back {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 13px; border-radius: 999px;
+    background: var(--surface); border: 1px solid var(--line);
+    color: var(--ink-soft); text-decoration: none;
+    font-size: 0.88rem; font-weight: 600;
+}
+.setup-back:hover { border-color: var(--primary); color: var(--primary); }
+
+/* Shown only to teachers the server already knows: for them this is the reason
+   they opened the page, so it leads rather than sitting in a footnote. */
+.setup-fetch {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 16px 18px; margin-bottom: 18px;
+    background: var(--primary-soft);
+    border: 1px solid var(--primary);
+    border-radius: var(--radius);
+}
+.setup-fetch-main { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 2px; }
+.setup-fetch-main strong { font-size: 1.02rem; }
+.setup-fetch-main span { color: var(--ink-soft); font-size: 0.9rem; }
+
+.setup-or {
+    display: flex; align-items: center; gap: 12px;
+    margin: 0 0 18px; color: var(--ink-soft); font-size: 0.85rem;
+}
+.setup-or::before, .setup-or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
