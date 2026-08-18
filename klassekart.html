@@ -278,13 +278,15 @@
                      from a survey you fill in one pupil at a time. They are shown
                      here too so this is the one place to see everything binding a
                      pair — read-only, with ✎ jumping to where they are edited. -->
+                <input type="search" id="ruleSearch" class="rule-search" placeholder="Søk etter elev…" autocomplete="off">
                 <div class="rules-list" id="rulesList"></div>
+                <button class="btn" id="ruleAddToggle" type="button">+ Ny regel</button>
     
                 <!-- Reads as the sentence a teacher would say: who, how strictly,
                      what, and then who it applies to. The buttons follow the
                      checklist rather than sitting above it, so the row is
                      completed left to right and top to bottom. -->
-                <div class="rule-add">
+                <div class="rule-add hidden" id="ruleAdd">
                     <select id="ruleA"></select>
                     <select id="ruleStrength" title="Hvor strengt">
                         <option value="must">Må</option>

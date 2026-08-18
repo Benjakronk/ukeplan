@@ -923,6 +923,18 @@ function updateUndoButtons() {
 }
 
 function normStrength(v) { return v === 'must' || v === 'should' ? v : null; }
+/* A Vigilo CSV arrives in whatever order the export felt like, which makes
+ * finding one pupil in a class-sized dropdown or checklist slow. Every list of
+ * names is therefore shown A–Å. Only first names are held, so there is nothing
+ * else to sort by and no option worth offering.
+ * Render-time only — sorting state.students would rewrite the stored chart and
+ * push a pointless new version to everyone else on the group. */
+const byName = (a, b) => (a.name || '').localeCompare(b.name || '', 'nb', { sensitivity: 'base' });
+/* Pairs of [student, indexIntoOriginalArray], A–Å. Callers that key off the
+ * position in the working copy need the original index, not the sorted one. */
+function sortedWithIndex(arr) {
+    return (arr || []).map((s, i) => [s, i]).sort((x, y) => byName(x[0], y[0]));
+}
 /* Saved charts that recorded their desk positions, newest first. Anything else
  * cannot tell us who sat beside whom — see the note in buildContext. Both the
  * solver and the Regler UI ask this, so what is offered matches what works. */
@@ -1690,7 +1702,7 @@ function renderPool() {
     const list = $('poolList');
     list.innerHTML = '';
     const seated = new Set(Object.values(state.assign));
-    const unseated = state.students.filter(s => !seated.has(s.id));
+    const unseated = state.students.filter(s => !seated.has(s.id)).sort(byName);
     for (const stu of unseated) {
         const chip = document.createElement('div');
         chip.className = 'chip';
@@ -2298,7 +2310,10 @@ function openRulesModal() {
     fillStudentSelect($('ruleA'));
     fillMemberPicker(new Set());
     setRuleEditMode(null);
+    ruleSearch = ''; $('ruleSearch').value = '';
     renderRulesList();
+    // nothing to read yet -> lead with the form; otherwise fold it away
+    showRuleForm(!state.rules.length && !state.students.some(s2 => (s2.wishWith || []).length || (s2.wishAvoid || []).length));
     openModal('rulesModal');
 }
 /* Load a rule into the add-form for editing (rule = null clears the form). */
@@ -2320,12 +2335,22 @@ function setRuleEditMode(rule) {
     }
     updateRuleTypeUI();
 }
+/* The form is folded away by default: with rules already listed, reading them is
+ * the common errand and adding one is the occasional one. */
+function showRuleForm(show) {
+    $('ruleAdd').classList.toggle('hidden', !show);
+    $('ruleAddToggle').textContent = show ? '✕ Avbryt ny regel' : '+ Ny regel';
+    if (show) $('ruleA').focus();
+}
 function startEditRule(id) {
     const rule = state.rules.find(r => r.id === id);
     if (!rule) return;
     setRuleEditMode(rule);
+    openRuleGroups.add(rule.a);
+    showRuleForm(true);
     renderRulesList();
-    $('ruleMembers').scrollIntoView({ block: 'nearest' });
+    const mem = $('ruleMembers');
+    if (mem.scrollIntoView) mem.scrollIntoView({ block: 'nearest' });
 }
 /* A preference the class has no data for stays visible — so the feature is
  * discoverable — but disabled, with a line saying what it needs. The stored
@@ -2351,7 +2376,9 @@ function updateRulePrefsUI() {
 }
 function fillStudentSelect(sel) {
     sel.innerHTML = '';
-    state.students.forEach(s => { const o = document.createElement('option'); o.value = s.id; o.textContent = s.name; sel.appendChild(o); });
+    state.students.slice().sort(byName).forEach(s => {
+        const o = document.createElement('option'); o.value = s.id; o.textContent = s.name; sel.appendChild(o);
+    });
 }
 /* The checklist is "who does this apply to", so the pupil the rule is ABOUT is
  * left out of it. They used to appear in their own list, and ticking them was
@@ -2362,7 +2389,7 @@ function fillMemberPicker(keep) {
     const checked = keep || new Set([...box.querySelectorAll('input:checked')].map(c => c.value));
     const self = $('ruleA').value;
     box.innerHTML = '';
-    state.students.forEach(s => {
+    state.students.slice().sort(byName).forEach(s => {
         if (s.id === self) return;
         const lbl = document.createElement('label');
         lbl.className = 'member-chip';
@@ -2380,47 +2407,33 @@ function updateRuleTypeUI() {
         ? 'Velg en elev og kryss av hvem den skal sitte <strong>unna</strong> (alle avkryssede).'
         : 'Velg en elev og kryss av mulige naboer. Flere avkryssede = ved siden av <strong>én av</strong> dem.';
 }
-/* One row per pupil the rule touches. The rule is still stored once, owned by
- * `a` — these extra rows are reflections of it, not copies. A rule entered under
- * Ailo binds Ben just as much, and a teacher looking for Ben's rules should not
- * have to remember whose name it went in under. Rows are grouped by pupil for
- * that reason. */
-function ruleRowText(r, subjectId, mirror) {
-    const subj = studentById(subjectId);
-    if (!subj) return null;
+/* One pupil, one line. Everything binding that pupil sits under their name and
+ * stays folded until asked for — a class with a dozen rules and a dozen wishes
+ * was otherwise forty-odd rows of near-identical sentences to read past.
+ *
+ * Inside a group the pupil's name is the heading, so the rows drop it and read
+ * as clauses. Rules pointed AT this pupil by someone else are not repeated in
+ * full; they collapse to one "nevnt av" line with links across. */
+let openRuleGroups = new Set();
+let ruleSearch = '';
+
+function ruleClause(r) {
+    const members = (r.members || []).map(id => studentById(id)).filter(Boolean);
+    if (!members.length) return null;
     const st = normStrength(r.strength) || 'must';
     const chip = `<span class="rule-chip ${st}">${st === 'must' ? 'Må' : 'Bør'}</span>`;
     const icon = r.type === 'apart' ? '🚫' : '🤝';
-    const nm = s => `<strong>${escapeHtml(s.name)}</strong>`;
-    if (!mirror) {
-        const members = (r.members || []).map(id => studentById(id)).filter(Boolean);
-        if (!members.length) return null;
-        // together with several members = "next to one of"; apart = away from all
-        const phrase = r.type === 'apart' ? 'ikke ved siden av'
-            : (members.length > 1 ? 'ved siden av én av' : 'ved siden av');
-        return `${chip} ${icon} ${nm(subj)} - ${phrase}: ${members.map(nm).join(', ')}`;
-    }
-    const a = studentById(r.a);
-    if (!a) return null;
-    // Reflected wording has to stay true. "Apart" is symmetric, and so is a
-    // single "next to". "Next to ONE OF several" is not: it does not require
-    // this particular pupil, so the reflection says possible, not must.
-    const many = (r.members || []).filter(id => studentById(id)).length > 1;
     const phrase = r.type === 'apart' ? 'ikke ved siden av'
-        : many ? 'mulig nabo for' : 'ved siden av';
-    return `${chip} ${icon} ${nm(subj)} - ${phrase}: ${nm(a)}`;
+        : (members.length > 1 ? 'ved siden av én av' : 'ved siden av');
+    return `${chip} ${icon} ${phrase}: ${members.map(s => `<strong>${escapeHtml(s.name)}</strong>`).join(', ')}`;
 }
-
-function wishRowText(w) {
-    const subj = studentById(w.subject), other = studentById(w.mirror ? w.owner : w.other);
-    if (!subj || !other) return null;
-    const nm = s => `<strong>${escapeHtml(s.name)}</strong>`;
+function wishClause(w) {
+    const other = studentById(w.other);
+    if (!other) return null;
     const chip = '<span class="rule-chip wish">Ønske</span>';
     const icon = w.kind === 'with' ? '💚' : '💔';
-    const phrase = w.kind === 'with'
-        ? (w.mirror ? 'ønsket av' : 'vil sitte med')
-        : (w.mirror ? 'unngås av' : 'vil helst unngå');
-    return `${chip} ${icon} ${nm(subj)} - ${phrase}: ${nm(other)}`;
+    const phrase = w.kind === 'with' ? 'vil sitte med' : 'vil helst unngå';
+    return `${chip} ${icon} ${phrase}: <strong>${escapeHtml(other.name)}</strong>`;
 }
 /* Wishes live on the pupil, so editing one means going back to Elever. */
 function editWishFor(studentId) {
@@ -2432,79 +2445,138 @@ function editWishFor(studentId) {
 function renderRulesList() {
     const list = $('rulesList');
     list.innerHTML = '';
-    const rows = [];
+
+    // own[pupil] = what they carry; mentioned[pupil] = who named them
+    const own = {}, mentioned = {};
+    const put = (map, id, v) => { (map[id] || (map[id] = [])).push(v); };
     state.rules.forEach((r, i) => {
-        rows.push({ r, i, subject: r.a, mirror: false });
-        (r.members || []).forEach(m => rows.push({ r, i, subject: m, mirror: true }));
+        if (!studentById(r.a)) return;
+        put(own, r.a, { rule: r, i });
+        (r.members || []).forEach(m => {
+            if (studentById(m)) put(mentioned, m, { from: r.a, label: (normStrength(r.strength) || 'must') === 'must' ? 'Må' : 'Bør' });
+        });
     });
-    // ...and the softer wishes entered per pupil under Elever, reflected the same
-    // way so a pupil's group shows wishes pointed AT them as well as their own.
     state.students.forEach(s => {
-        [['with', s.wishWith], ['avoid', s.wishAvoid]].forEach(([kind, list2]) => {
-            (list2 || []).forEach(o => {
+        [['with', s.wishWith], ['avoid', s.wishAvoid]].forEach(([kind, arr]) => {
+            (arr || []).forEach(o => {
                 if (!studentById(o) || o === s.id) return;
-                rows.push({ wish: true, kind, owner: s.id, other: o, subject: s.id, mirror: false });
-                rows.push({ wish: true, kind, owner: s.id, other: o, subject: o, mirror: true });
+                put(own, s.id, { wish: { kind, owner: s.id, other: o } });
+                put(mentioned, o, { from: s.id, label: 'ønske' });
             });
         });
     });
-    if (!rows.length) { list.innerHTML = '<div class="empty-line">Ingen regler eller ønsker enda.</div>'; return; }
-    const nameOf = id => (studentById(id) || {}).name || '';
-    // within a pupil: hard rules, then soft rules, then wishes — strongest first,
-    // and each pupil's own entry above its reflections so the actionable row leads
-    const tier = x => x.wish ? 2 : ((normStrength(x.r.strength) || 'must') === 'must' ? 0 : 1);
-    rows.sort((x, y) =>
-        nameOf(x.subject).localeCompare(nameOf(y.subject), 'nb')
-        || tier(x) - tier(y)
-        || (x.mirror - y.mirror));
 
-    rows.forEach((entry) => {
-        const { subject, mirror } = entry;
-        if (entry.wish) {
-            const wtext = wishRowText(entry);
-            if (!wtext) return;
-            const wrow = document.createElement('div');
-            wrow.className = 'rule-row is-wish' + (mirror ? ' is-mirror' : '');
-            const from = (studentById(entry.owner) || {}).name || '';
-            wrow.innerHTML = `<span class="rule-text">${mirror ? '<span class="rule-mirror" title="Ønske ført inn under ' + escapeHtml(from) + '">↔</span> ' : ''}${wtext}</span>`;
-            const wact = document.createElement('div');
-            wact.className = 'rule-actions';
-            const wedit = document.createElement('button');
-            wedit.className = 'rule-edit'; wedit.textContent = '✎';
-            wedit.title = 'Åpne elevpreferanser for ' + from;
-            wedit.addEventListener('click', () => editWishFor(entry.owner));
-            wact.appendChild(wedit);
-            wrow.appendChild(wact);
-            list.appendChild(wrow);
-            return;
-        }
-        const { r, i } = entry;
-        const text = ruleRowText(r, subject, mirror);
-        if (!text) return;
-        const row = document.createElement('div');
-        row.className = 'rule-row' + (r.id === editingRuleId ? ' editing' : '') + (mirror ? ' is-mirror' : '');
-        const owner = (studentById(r.a) || {}).name || '';
-        row.innerHTML = `<span class="rule-text">${mirror ? '<span class="rule-mirror" title="Samme regel, ført inn under ' + escapeHtml(owner) + '">↔</span> ' : ''}${text}</span>`;
-        const actions = document.createElement('div');
-        actions.className = 'rule-actions';
-        const edit = document.createElement('button');
-        edit.className = 'rule-edit'; edit.textContent = '✎';
-        edit.title = mirror ? 'Rediger regelen (står under ' + owner + ')' : 'Rediger regel';
-        edit.addEventListener('click', () => startEditRule(r.id));
-        actions.appendChild(edit);
-        // No delete on a reflection: the rule may cover pupils this row does not
-        // name, so removing it from here could quietly drop more than it shows.
-        if (!mirror) {
-            const del = document.createElement('button');
-            del.className = 'rule-del'; del.textContent = '✕'; del.title = 'Slett regel';
-            del.addEventListener('click', () => {
-                if (r.id === editingRuleId) setRuleEditMode(null);
-                state.rules.splice(i, 1); save(); renderRulesList();
+    const nameOf = id => (studentById(id) || {}).name || '';
+    const ids = state.students.map(s => s.id)
+        .filter(id => (own[id] || []).length || (mentioned[id] || []).length)
+        .sort((a, b) => nameOf(a).localeCompare(nameOf(b), 'nb'));
+
+    if (!ids.length) {
+        list.innerHTML = '<div class="empty-line">Ingen regler eller ønsker enda.</div>';
+        return;
+    }
+    // Search matches the pupil AND anyone named in their entries, so looking up
+    // "Ben" finds the group where Ailo was told to avoid him too.
+    const q = ruleSearch.trim().toLowerCase();
+    const hay = id => [nameOf(id)]
+        .concat((own[id] || []).map(e => e.rule ? (e.rule.members || []).map(nameOf).join(' ') : nameOf(e.wish.other)))
+        .concat((mentioned[id] || []).map(m => nameOf(m.from)))
+        .join(' ').toLowerCase();
+    const shown = q ? ids.filter(id => hay(id).includes(q)) : ids;
+    if (!shown.length) {
+        list.innerHTML = `<div class="empty-line">Ingen treff på «${escapeHtml(ruleSearch.trim())}».</div>`;
+        return;
+    }
+
+    shown.forEach(id => {
+        const mine = own[id] || [], seen = mentioned[id] || [];
+        const open = openRuleGroups.has(id) || !!q;   // searching reveals what matched
+
+        const group = document.createElement('div');
+        group.className = 'rule-group' + (open ? ' is-open' : '');
+
+        const counts = [];
+        const n = (f) => mine.filter(f).length;
+        const must = n(e => e.rule && (normStrength(e.rule.strength) || 'must') === 'must');
+        const should = n(e => e.rule && (normStrength(e.rule.strength) || 'must') === 'should');
+        const wishes = n(e => e.wish);
+        if (must) counts.push(`<span class="rule-chip must">Må ${must}</span>`);
+        if (should) counts.push(`<span class="rule-chip should">Bør ${should}</span>`);
+        if (wishes) counts.push(`<span class="rule-chip wish">Ønske ${wishes}</span>`);
+        if (seen.length) counts.push(`<span class="rule-chip ment">Nevnt ${seen.length}</span>`);
+
+        const head = document.createElement('button');
+        head.className = 'rule-group-head';
+        head.type = 'button';
+        head.setAttribute('aria-expanded', open ? 'true' : 'false');
+        head.innerHTML = `<span class="rg-caret" aria-hidden="true">▸</span>
+            <span class="rg-name">${escapeHtml(nameOf(id))}</span>
+            <span class="rg-counts">${counts.join(' ')}</span>`;
+        head.addEventListener('click', () => {
+            if (openRuleGroups.has(id)) openRuleGroups.delete(id); else openRuleGroups.add(id);
+            renderRulesList();
+        });
+        group.appendChild(head);
+
+        const body = document.createElement('div');
+        body.className = 'rule-group-body' + (open ? '' : ' hidden');
+
+        mine.forEach(e => {
+            const text = e.rule ? ruleClause(e.rule) : wishClause(e.wish);
+            if (!text) return;
+            const row = document.createElement('div');
+            row.className = 'rule-row' + (e.wish ? ' is-wish' : '')
+                + (e.rule && e.rule.id === editingRuleId ? ' editing' : '');
+            row.innerHTML = `<span class="rule-text">${text}</span>`;
+            const actions = document.createElement('div');
+            actions.className = 'rule-actions';
+            const edit = document.createElement('button');
+            edit.className = 'rule-edit'; edit.textContent = '✎';
+            if (e.wish) {
+                edit.title = 'Åpne elevpreferanser for ' + nameOf(id);
+                edit.addEventListener('click', () => editWishFor(e.wish.owner));
+            } else {
+                edit.title = 'Rediger regel';
+                edit.addEventListener('click', () => startEditRule(e.rule.id));
+                const del = document.createElement('button');
+                del.className = 'rule-del'; del.textContent = '✕'; del.title = 'Slett regel';
+                del.addEventListener('click', () => {
+                    if (e.rule.id === editingRuleId) setRuleEditMode(null);
+                    const at = state.rules.indexOf(e.rule);
+                    if (at >= 0) state.rules.splice(at, 1);
+                    save(); renderRulesList();
+                });
+                actions.appendChild(edit); actions.appendChild(del);
+                row.appendChild(actions); body.appendChild(row);
+                return;
+            }
+            actions.appendChild(edit);
+            row.appendChild(actions);
+            body.appendChild(row);
+        });
+
+        // Everything pointed at this pupil, one line — the rule itself is edited
+        // where it was entered, so each name links across to that group.
+        if (seen.length) {
+            const seenLine = document.createElement('div');
+            seenLine.className = 'rule-mentions';
+            const parts = seen.map(m =>
+                `<button class="rg-link" type="button" data-goto="${m.from}">${escapeHtml(nameOf(m.from))}</button> <span class="rg-kind">(${m.label})</span>`);
+            seenLine.innerHTML = `<span class="rule-mirror" aria-hidden="true">↔</span> nevnt av: ${parts.join(', ')}`;
+            seenLine.addEventListener('click', ev => {
+                const b = ev.target.closest('[data-goto]');
+                if (!b) return;
+                openRuleGroups.add(b.dataset.goto);
+                renderRulesList();
+                const el = list.querySelector(`.rule-group[data-sid="${b.dataset.goto}"]`);
+                if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
             });
-            actions.appendChild(del);
+            body.appendChild(seenLine);
         }
-        row.appendChild(actions);
-        list.appendChild(row);
+
+        group.dataset.sid = id;
+        group.appendChild(body);
+        list.appendChild(group);
     });
 }
 
@@ -2519,7 +2591,7 @@ function openStudentsModal() {
 function renderRoster() {
     const box = $('roster');
     box.innerHTML = '';
-    rosterWork.forEach((s, i) => {
+    sortedWithIndex(rosterWork).forEach(([s, i]) => {
         const row = document.createElement('div');
         row.className = 'roster-row';
         row.innerHTML = `
@@ -2579,7 +2651,7 @@ function prefSummary(s) {
 }
 function fillPrefPicker(box, arr, selfId) {
     box.innerHTML = '';
-    rosterWork.forEach(o => {
+    rosterWork.slice().sort(byName).forEach(o => {
         if (o.id === selfId || !(o.name || '').trim()) return;
         const lbl = document.createElement('label'); lbl.className = 'member-chip';
         const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = arr.indexOf(o.id) !== -1;
@@ -3610,9 +3682,11 @@ function wireApp() {
 
     // rules modal
     $('ruleType').addEventListener('change', updateRuleTypeUI);
+    $('ruleSearch').addEventListener('input', e => { ruleSearch = e.target.value; renderRulesList(); });
+    $('ruleAddToggle').addEventListener('click', () => showRuleForm($('ruleAdd').classList.contains('hidden')));
     // Whoever the rule is about drops out of the checklist below it.
     $('ruleA').addEventListener('change', () => fillMemberPicker());
-    $('ruleCancelBtn').addEventListener('click', () => { setRuleEditMode(null); renderRulesList(); });
+    $('ruleCancelBtn').addEventListener('click', () => { setRuleEditMode(null); showRuleForm(false); renderRulesList(); });
     $('ruleAddBtn').addEventListener('click', () => {
         const a = $('ruleA').value, type = $('ruleType').value;
         const strength = $('ruleStrength').value === 'should' ? 'should' : 'must';
@@ -3631,6 +3705,8 @@ function wireApp() {
             } else state.rules.push({ id: uid(), type, a, members, strength });
         }
         setRuleEditMode(null);
+        openRuleGroups.add(a);
+        showRuleForm(false);
         save(); renderRulesList();
     });
     $('prefBalanceGender').addEventListener('change', e => { state.prefs.balanceGender = e.target.checked; save(); });

@@ -984,6 +984,35 @@ body.present .zoom-ctrl { display: none; }
 .rule-chip.wish { background: var(--surface-2); color: var(--ink-soft); border: 1px solid var(--line); }
 /* A wish is softer than any rule, and belongs to Elever — shown here, edited there. */
 .rule-row.is-wish { background: none; }
+.rule-chip.ment { background: var(--surface-2); color: var(--ink-soft); }
+
+/* --- one pupil per line, folded --- */
+.rule-search {
+    width: 100%; padding: 9px 12px; margin-bottom: 10px;
+    border: 1px solid var(--line); border-radius: 8px;
+    font-family: var(--font); font-size: 0.92rem; background: var(--surface);
+}
+.rule-search:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.rule-group { border: 1px solid var(--line); border-radius: 9px; background: var(--surface); overflow: hidden; }
+.rule-group + .rule-group { margin-top: 6px; }
+.rule-group-head {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    padding: 10px 12px; border: none; background: none; cursor: pointer;
+    font-family: var(--font); font-size: 0.92rem; text-align: left; color: var(--ink);
+}
+.rule-group-head:hover { background: var(--surface-2); }
+.rg-caret { font-size: 0.7rem; color: var(--ink-soft); transition: transform .15s; }
+.rule-group.is-open .rg-caret { transform: rotate(90deg); }
+.rg-name { font-weight: 600; }
+.rg-counts { margin-left: auto; display: flex; gap: 5px; flex-wrap: wrap; }
+.rule-group-body { padding: 2px 12px 10px 30px; display: flex; flex-direction: column; gap: 6px; }
+.rule-group-body .rule-row { background: var(--surface-2); }
+.rule-mentions { font-size: 0.82rem; color: var(--ink-soft); padding: 4px 2px; }
+.rg-link {
+    border: none; background: none; padding: 0; cursor: pointer;
+    font: inherit; font-weight: 600; color: var(--primary); text-decoration: underline;
+}
+.rg-kind { opacity: .8; }
 .results-head { font-weight: 700; font-size: 1.02rem; margin: 0 0 12px; }
 .result-line { display: flex; align-items: center; gap: 9px; padding: 8px 0; font-size: 0.95rem; border-bottom: 1px solid var(--line); }
 .result-line:last-child { border-bottom: none; }
