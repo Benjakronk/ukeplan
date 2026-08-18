@@ -209,6 +209,15 @@ button { font-family: inherit; }
 .icon-btn:disabled { opacity: 0.32; cursor: default; }
 .icon-btn:disabled:hover { background: var(--surface); }
 #undoBtn, #redoBtn { font-size: 1.25rem; }
+/* Emoji render larger than the ↩ ↪ ← glyphs at the same size; knock them back
+   so the row of icon buttons reads as one row. */
+.icon-btn-sm { font-size: 0.95rem; }
+.icon-btn.is-danger:hover {
+    background: color-mix(in oklab, var(--danger) 12%, var(--surface));
+    border-color: var(--danger);
+}
+/* Keeps 🗑️ from reading as a third history control. */
+.topbar-div { width: 1px; align-self: stretch; margin: 2px 2px; background: var(--line); }
 
 /* ---------- Setup screen ---------- */
 #setup {
@@ -725,6 +734,7 @@ input[type=number]:focus {
 }
 .dropdown.open { display: block; }
 .dropdown-right { left: auto; right: 0; }
+#exportMenu { min-width: 130px; }
 .dd-item {
     display: block;
     width: 100%;

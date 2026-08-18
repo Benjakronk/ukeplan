@@ -137,7 +137,10 @@
     <!-- Context: which group am I looking at. Mirrors the portal's .class-pill,
          so a teacher arriving from the ukeplan page reads it without learning. -->
     <header class="topbar">
-        <button class="icon-btn" id="backBtn" title="Tilbake til start" type="button">‹</button>
+        <!-- The way out of the tool. This used to be a ‹ back to the setup screen,
+             but the group pill's dropdown already offers «Ny gruppe» — that was a
+             second door to the same room, and neither said where it led. -->
+        <button class="icon-btn" id="portalBtn" title="Tilbake til Ukeportalen" type="button">←</button>
         <div class="menu-anchor">
             <button class="group-pill" id="classMenuBtn" title="Bytt gruppe" type="button">
                 <span class="group-pill-label" id="classMenuLabel">Klasse</span>
@@ -147,6 +150,11 @@
         </div>
         <button class="icon-btn" id="undoBtn" title="Angre (Ctrl+Z)" type="button" disabled>↩</button>
         <button class="icon-btn" id="redoBtn" title="Gjenta (Ctrl+Y)" type="button" disabled>↪</button>
+        <!-- Group admin. It acts on the pill, so it lives near it — but behind a
+             divider, so ✏️/🗑️ do not read as two more history controls. -->
+        <span class="topbar-div" aria-hidden="true"></span>
+        <button class="icon-btn icon-btn-sm" id="renameGroupBtn" title="Gi gruppa nytt navn" type="button">✏️</button>
+        <button class="icon-btn icon-btn-sm is-danger" id="deleteGroupBtn" title="Slett gruppe" type="button">🗑️</button>
         <div class="topbar-spacer"></div>
         <div class="menu-anchor">
             <button class="btn" id="menuBtn" title="Mer" type="button"><span class="btn-ico">⚙</span><span class="btn-txt"> Mer</span></button>
@@ -173,6 +181,18 @@
                  here rather than behind the Rom tab. -->
             <button class="btn" id="editDesksBtn" type="button"><span class="btn-ico">✏️</span><span class="btn-txt"> Rediger på kartet</span></button>
             <div class="kk-actions-spacer"></div>
+            <!-- Getting the chart off the screen and onto paper or a file. Two
+                 buttons, because PDF and PNG are the same intent — «ta vare på
+                 dette» — and splitting them into two top-level buttons would put
+                 four things where the eye expects one. -->
+            <button class="btn" id="printBtn" type="button"><span class="btn-ico">🖨️</span><span class="btn-txt"> Skriv ut</span></button>
+            <div class="menu-anchor">
+                <button class="btn" id="exportBtn" type="button"><span class="btn-ico">📄</span><span class="btn-txt"> Eksporter</span><span class="caret"> ▾</span></button>
+                <div class="dropdown dropdown-right" id="exportMenu">
+                    <button class="dd-item" data-export="pdf" type="button">📄 PDF</button>
+                    <button class="dd-item" data-export="png" type="button">🖼️ PNG</button>
+                </div>
+            </div>
             <button class="btn" id="presentBtn" type="button"><span class="btn-ico">▶</span><span class="btn-txt"> Vis kartet</span></button>
         </div>
         <!-- Smart plassering reports here instead of interrupting with a dialog. -->

@@ -3234,22 +3234,15 @@ function printChart() {
 function buildMainMenu() {
     const dd = $('mainMenu');
     dd.innerHTML = '';
-    // Romoppsett, Rediger pulter, Historikk and Statistikk all moved out to
-    // tabs — what is left here is genuinely occasional: getting the chart out,
-    // data safety, and destructive group admin.
+    // Everything a teacher reaches for during a lesson now has a home in the
+    // workspace itself: export and print sit with the board, rename and delete
+    // sit with the group pill they act on, and leaving is the ← in the corner.
+    // What is left here is the stuff you touch once a term.
     const items = [
         [syncOn() ? (syncUnlocked() ? '☁ Synkronisering' : '🔒 Synkronisering (låst)') : '☁ Slå på synkronisering', openSyncModal],
-        ['↩ Tilbake til Ukeportalen', () => { location.href = 'teacher.html'; }],
-        ['sep'],
-        ['📄 Eksporter PDF', exportPDF],
-        ['🖼️ Eksporter PNG', exportPNG],
-        ['🖨️ Skriv ut', printChart],
         ['sep'],
         ['💾 Last ned sikkerhetskopi', exportBackup],
         ['📂 Gjenopprett fra fil', () => $('importFile').click()],
-        ['sep'],
-        ['✏️ Gi gruppa nytt navn', renameClass],
-        ['🗑️ Slett gruppe', () => { deleteClass(); }],
     ];
     items.forEach(([label, fn]) => {
         if (label === 'sep') { const s = document.createElement('div'); s.className = 'dd-sep'; dd.appendChild(s); return; }
@@ -3319,6 +3312,20 @@ function wireApp() {
     $('smartBtn').addEventListener('click', () => smartArrange(false));
     $('shuffleBtn').addEventListener('click', () => shuffleSeating(false));
     $('presentBtn').addEventListener('click', enterPresent);
+    $('printBtn').addEventListener('click', printChart);
+    $('exportBtn').addEventListener('click', e => {
+        e.stopPropagation();
+        const dd = $('exportMenu');
+        const opening = !dd.classList.contains('open');
+        closeAllDropdowns();
+        if (opening) dd.classList.add('open');
+    });
+    $('exportMenu').addEventListener('click', e => {
+        const b = e.target.closest('[data-export]');
+        if (!b) return;
+        closeAllDropdowns();
+        (b.dataset.export === 'png' ? exportPNG : exportPDF)();
+    });
 
     // Regler and Elever are tabs now, not topbar buttons.
     $('kkTabs').addEventListener('click', e => {
@@ -3329,9 +3336,11 @@ function wireApp() {
         const b = e.target.closest('button');
         if (b) setInnsiktSub(b.dataset.sub);
     });
-    $('backBtn').addEventListener('click', () => { setSelected(null); showSetup(); });
+    $('portalBtn').addEventListener('click', () => { location.href = 'teacher.html'; });
     $('undoBtn').addEventListener('click', undo);
     $('redoBtn').addEventListener('click', redo);
+    $('renameGroupBtn').addEventListener('click', renameClass);
+    $('deleteGroupBtn').addEventListener('click', () => { deleteClass(); });
 
     // class dropdown
     $('classMenuBtn').addEventListener('click', (e) => {
