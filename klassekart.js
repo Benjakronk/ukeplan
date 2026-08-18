@@ -3425,7 +3425,9 @@ function wireApp() {
     $('resultsRerunBtn').addEventListener('click', () => { closeModal('resultsModal'); smartArrange(false); });
 
     // desk-edit mode
-    $('roomEditBtn').addEventListener('click', () => { closeModal('roomModal'); enterEditMode(); });
+    // Desk editing lives on the Kart tab now — no need to leave the room panel
+    // first, because you never got there from anywhere else.
+    $('editDesksBtn').addEventListener('click', () => { setTab('kart'); enterEditMode(); });
     $('editDoneBtn').addEventListener('click', exitEditMode);
     $('editAlignBtn').addEventListener('click', alignAllDesks);
     $('editSaveTplBtn').addEventListener('click', saveRoomTemplate);

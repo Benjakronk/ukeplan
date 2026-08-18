@@ -169,6 +169,9 @@
         <div class="kk-actions">
             <button class="btn btn-primary" id="smartBtn" type="button"><span class="btn-ico">✨</span><span class="btn-txt"> Smart plassering</span></button>
             <button class="btn" id="shuffleBtn" type="button"><span class="btn-ico">🎲</span><span class="btn-txt"> Bland</span></button>
+            <!-- Editing the desks happens while looking at the board, so it belongs
+                 here rather than behind the Rom tab. -->
+            <button class="btn" id="editDesksBtn" type="button"><span class="btn-ico">✏️</span><span class="btn-txt"> Rediger på kartet</span></button>
             <div class="kk-actions-spacer"></div>
             <button class="btn" id="presentBtn" type="button"><span class="btn-ico">▶</span><span class="btn-txt"> Vis kartet</span></button>
         </div>
@@ -307,8 +310,6 @@
                 </div>
             </div>
             <div class="modal-foot">
-                <button class="btn" id="roomEditBtn" type="button">✏️ Rediger på kartet</button>
-                <div class="topbar-spacer"></div>
                 <button class="btn" data-close="roomModal" type="button">Avbryt</button>
                 <button class="btn btn-primary" id="roomApplyBtn" type="button">Bruk oppsett</button>
             </div>
