@@ -431,7 +431,7 @@ function schedulePush(cls) {
     pushTimer = setTimeout(() => {
         syncPush(target).then(r => {
             if (r && r.conflict) {
-                toast(`«${target.name}» er endret et annet sted – åpne Synk for å velge`, 'err');
+                toast(`«${target.name}» er endret et annet sted - åpne Synk for å velge`, 'err');
                 updateSyncBadge();
             } else if (r && r.ok) updateSyncBadge();
         }).catch(e => { /* offline or session gone; local copy is intact */ });
@@ -554,7 +554,7 @@ async function revokeTeacher(groupId, teacherId, rotate) {
             keys.push({ teacherId: mem.id, wrappedCek: JSON.stringify(await kkWrapCek(cek2, kkPersonal)) });
         } else {
             const t = dir.find(x => x.id === mem.id);
-            if (!t || !t.publicKey) return { error: 'Mangler nøkkel for ' + mem.name + ' – roterte ikke' };
+            if (!t || !t.publicKey) return { error: 'Mangler nøkkel for ' + mem.name + ' - roterte ikke' };
             const wk = await kkShareKey(kkPriv, await pubKeyOf(t.id, t.publicKey), groupId, nextEpoch);
             keys.push({ teacherId: mem.id, wrappedCek: JSON.stringify(await kkWrapCek(cek2, wk)) });
         }
@@ -591,7 +591,7 @@ async function syncKeepMine(id) {
     cls.sv = Number(c.version || 0);
     cls.dirty = true;
     const r = await syncPush(cls);
-    return r.conflict ? { error: 'Endret igjen i mellomtiden – prøv på nytt' } : r;
+    return r.conflict ? { error: 'Endret igjen i mellomtiden - prøv på nytt' } : r;
 }
 
 /* ---- sync UI -------------------------------------------------------------- */
@@ -783,7 +783,7 @@ function updateSyncBadge() {
     btn.classList.toggle('has-conflict', n > 0);
     btn.title = n ? `${n} gruppe(r) endret et annet sted`
         : !on ? 'Slå på synkronisering'
-        : unlocked ? 'Synkronisering' : 'Synkronisering er låst – skriv inn koden din';
+        : unlocked ? 'Synkronisering' : 'Synkronisering er låst - skriv inn koden din';
 }
 
 async function syncAction(act, el) {
@@ -799,7 +799,7 @@ async function syncAction(act, el) {
         }
         if (act === 'copy') {
             try { await navigator.clipboard.writeText(syncNewSecret); toast('Kopiert', 'ok'); }
-            catch (e) { toast('Kunne ikke kopiere – skriv den ned', 'err'); }
+            catch (e) { toast('Kunne ikke kopiere - skriv den ned', 'err'); }
             return;
         }
         if (act === 'savedIt') {
@@ -863,7 +863,7 @@ async function syncAction(act, el) {
             renderSyncBody(); updateSyncBadge(); return;
         }
     } catch (e) {
-        toast(e.message === 'Unauthorized' ? 'Økten er utløpt – logg inn på nytt' : 'Synk feilet: ' + e.message, 'err');
+        toast(e.message === 'Unauthorized' ? 'Økten er utløpt - logg inn på nytt' : 'Synk feilet: ' + e.message, 'err');
     }
 }
 
@@ -1021,8 +1021,8 @@ function setActiveClass(id) {
 
 /* -------------------------------------------------------- seat generators   */
 /* opts may carry explicit overrides from a custom arrangement:
- *   cols / perRow  – force the grid width (desks-per-row or groups-per-row)
- *   gapX / gapY    – desk and row spacing (fall back to GBET / RGAP)         */
+ *   cols / perRow  - force the grid width (desks-per-row or groups-per-row)
+ *   gapX / gapY    - desk and row spacing (fall back to GBET / RGAP)         */
 function genRows(n, opts) {
     opts = opts || {};
     const cols = opts.cols ? clamp(opts.cols, 1, 20) : clamp(Math.round(Math.sqrt(n * 1.7)), 1, 9);
@@ -1123,7 +1123,7 @@ function studentById(sid) { return state.students.find(s => s.id === sid); }
 function isLocked(sid) { return state.locked.indexOf(sid) !== -1; }
 
 function placeStudent(sid, seatId) {
-    if (isLocked(sid)) { toast('Eleven er låst – lås opp først', 'err'); return; }
+    if (isLocked(sid)) { toast('Eleven er låst - lås opp først', 'err'); return; }
     const cur = seatOfStudent(sid);
     const occ = state.assign[seatId] || null;
     if (occ && isLocked(occ)) { toast('Plassen er låst', 'err'); return; }
@@ -1135,7 +1135,7 @@ function placeStudent(sid, seatId) {
     save(); render();
 }
 function unseat(sid) {
-    if (isLocked(sid)) { toast('Eleven er låst – lås opp først', 'err'); return; }
+    if (isLocked(sid)) { toast('Eleven er låst - lås opp først', 'err'); return; }
     const cur = seatOfStudent(sid);
     if (!cur) return;
     pushUndo();
@@ -1167,7 +1167,7 @@ function shuffleSeating(silent) {
     for (let i = ids.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [ids[i], ids[j]] = [ids[j], ids[i]]; }
     fillSeats(ids);
     save(); render();
-    if (!silent) toast(state.seats.length < ids.length ? 'Blandet – for få plasser til alle' : 'Blandet! 🎲', 'ok');
+    if (!silent) toast(state.seats.length < ids.length ? 'Blandet - for få plasser til alle' : 'Blandet! 🎲', 'ok');
 }
 
 /* ---------------------------------------------------- room / roster changes */
@@ -1227,10 +1227,10 @@ function pruneInvalid() {
 /* ----------------------------------------------------------- adjacency      */
 /* "Next to each other" is derived from the geometry, so it follows whatever the
  * desks actually look like after manual edits — no reliance on the preset.
- *   Pass 1 – tight clusters: orthogonal desks with a small (within-group) edge
+ *   Pass 1 - tight clusters: orthogonal desks with a small (within-group) edge
  *            gap. These are pairs/pods or any hand-made cluster; a desk in a
  *            cluster is "grouped" and counts adjacent only to its cluster-mates.
- *   Pass 2 – loose neighbours: a normal one-desk gap links same-row desks (and,
+ *   Pass 2 - loose neighbours: a normal one-desk gap links same-row desks (and,
  *            in a U layout, same-column desks too) — but only for desks that
  *            aren't already locked into a cluster, so an aisle between two pairs
  *            never joins them.
@@ -1811,9 +1811,9 @@ function growToFit() {
 /* per-axis snap: lands on the lattice, but if the desk is dragged close to a
  * neighbour in the same row/column it clicks into a tidy pair gap or separation
  * gap — this is how you build "pairs with a gap between" in either direction.
- *   raw      – the raw board coordinate on this axis
- *   crossVal – the (already snapped) coordinate on the other axis
- *   axis     – 'x' or 'y'                                                      */
+ *   raw      - the raw board coordinate on this axis
+ *   crossVal - the (already snapped) coordinate on the other axis
+ *   axis     - 'x' or 'y'                                                      */
 function snapEditAxis(raw, crossVal, axis, selfId) {
     const horiz = axis === 'x';
     const step = horiz ? GRID_X : GRID_Y;
@@ -1847,7 +1847,7 @@ function enterEditMode() {
         document.body.classList.add('editing');
         $('editBar').classList.remove('hidden');
         render();
-        toast('Rediger pulter – dra, trykk for ny, ✕ for å fjerne', 'ok');
+        toast('Rediger pulter - dra, trykk for ny, ✕ for å fjerne', 'ok');
     }
 }
 function exitEditMode() {
@@ -2034,7 +2034,7 @@ async function loadClassCodes() {
             try { localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg)); } catch (e) {}
             populateClassSelect();
         }
-    } catch (e) { /* offline – the cached list stands */ }
+    } catch (e) { /* offline - the cached list stands */ }
 }
 function populateClassSelect() {
     const sel = $('setupClassSelect');
@@ -2143,7 +2143,7 @@ function renderCsvMap() {
     const cols = Math.max(...csvRows.map(r => r.length));
     let html = '';
     for (let c = 0; c < cols; c++) {
-        const sample = body.slice(0, 3).map(r => escapeHtml((r[c] || '').trim())).filter(Boolean).join(' · ') || '–';
+        const sample = body.slice(0, 3).map(r => escapeHtml((r[c] || '').trim())).filter(Boolean).join(' · ') || '-';
         const label = head ? escapeHtml((head[c] || '').trim() || `Kolonne ${c + 1}`) : `Kolonne ${c + 1}`;
         html += `<label class="csv-col ${c === csvNameCol ? 'is-name' : ''}">
             <input type="radio" name="csvcol" value="${c}" ${c === csvNameCol ? 'checked' : ''}>
@@ -2261,26 +2261,25 @@ function openRulesModal() {
     $('prefAvoidAll').checked = !!state.prefs.avoidAllRepeat;
     $('prefBalanceTags').checked = !!state.prefs.balanceTags;
     fillStudentSelect($('ruleA'));
-    fillMemberPicker();
+    fillMemberPicker(new Set());
     setRuleEditMode(null);
     renderRulesList();
     openModal('rulesModal');
 }
 /* Load a rule into the add-form for editing (rule = null clears the form). */
 function setRuleEditMode(rule) {
-    const boxes = $('ruleMembers').querySelectorAll('input');
     if (rule) {
         editingRuleId = rule.id;
         $('ruleStrength').value = rule.strength;
         $('ruleType').value = rule.type;
         $('ruleA').value = rule.a;
-        const members = new Set(rule.members || []);
-        boxes.forEach(cb => cb.checked = members.has(cb.value));
+        // ruleA first: the picker is built around it.
+        fillMemberPicker(new Set(rule.members || []));
         $('ruleAddBtn').textContent = 'Oppdater regel';
         $('ruleCancelBtn').classList.remove('hidden');
     } else {
         editingRuleId = null;
-        boxes.forEach(cb => cb.checked = false);
+        fillMemberPicker(new Set());
         $('ruleAddBtn').textContent = 'Legg til';
         $('ruleCancelBtn').classList.add('hidden');
     }
@@ -2297,13 +2296,21 @@ function fillStudentSelect(sel) {
     sel.innerHTML = '';
     state.students.forEach(s => { const o = document.createElement('option'); o.value = s.id; o.textContent = s.name; sel.appendChild(o); });
 }
-function fillMemberPicker() {
+/* The checklist is "who does this apply to", so the pupil the rule is ABOUT is
+ * left out of it. They used to appear in their own list, and ticking them was
+ * silently dropped by the add handler below — a control that did nothing.
+ * `keep` seeds the ticks; omit it to carry over whatever is currently ticked. */
+function fillMemberPicker(keep) {
     const box = $('ruleMembers');
+    const checked = keep || new Set([...box.querySelectorAll('input:checked')].map(c => c.value));
+    const self = $('ruleA').value;
     box.innerHTML = '';
     state.students.forEach(s => {
+        if (s.id === self) return;
         const lbl = document.createElement('label');
         lbl.className = 'member-chip';
         const cb = document.createElement('input'); cb.type = 'checkbox'; cb.value = s.id;
+        cb.checked = checked.has(s.id);
         lbl.appendChild(cb);
         lbl.appendChild(document.createTextNode(' ' + s.name));
         box.appendChild(lbl);
@@ -2334,7 +2341,7 @@ function renderRulesList() {
         // together with several members = "next to one of"; apart = away from all
         const phrase = r.type === 'apart' ? 'ikke ved siden av'
             : (names.length > 1 ? 'ved siden av én av' : 'ved siden av');
-        const text = `${chip} ${icon} <strong>${escapeHtml(a.name)}</strong> – ${phrase}: ${names.join(', ')}`;
+        const text = `${chip} ${icon} <strong>${escapeHtml(a.name)}</strong> - ${phrase}: ${names.join(', ')}`;
         const row = document.createElement('div');
         row.className = 'rule-row' + (r.id === editingRuleId ? ' editing' : '');
         row.innerHTML = `<span class="rule-text">${text}</span>`;
@@ -2374,7 +2381,7 @@ function renderRoster() {
             <div class="r-gender" role="group">
                 <button type="button" data-g="G" class="${s.gender === 'G' ? 'on' : ''}">G</button>
                 <button type="button" data-g="J" class="${s.gender === 'J' ? 'on' : ''}">J</button>
-                <button type="button" data-g="" class="${!s.gender ? 'on' : ''}">–</button>
+                <button type="button" data-g="" class="${!s.gender ? 'on' : ''}">-</button>
             </div>
             <select class="r-place" title="Plassering i rommet">
                 <option value="">Fri plass</option>
@@ -2463,7 +2470,7 @@ function openStudentPref(i) {
     prefEditIndex = i;
     const s = rosterWork[i];
     s.wishWith = s.wishWith || []; s.wishAvoid = s.wishAvoid || []; s.tags = s.tags || [];
-    $('prefTitle').textContent = 'Preferanser – ' + (s.name || 'elev');
+    $('prefTitle').textContent = 'Preferanser - ' + (s.name || 'elev');
     $('prefQuiet').checked = !!s.quiet;
     $('prefTagInput').value = '';
     fillPrefPicker($('prefWith'), s.wishWith, s.id);
@@ -2516,7 +2523,7 @@ function normalizeSeatList(seats) {
 }
 function saveRoomTemplate() {
     if (!state.seats.length) { toast('Ingen pulter å lagre', 'err'); return; }
-    const name = (prompt('Navn på oppsettet:', state.name + ' – ' + state.seats.length + ' pulter') || '').trim();
+    const name = (prompt('Navn på oppsettet:', state.name + ' - ' + state.seats.length + ' pulter') || '').trim();
     if (!name) return;
     ensureTemplates();
     store.roomTemplates.push({ id: uid(), name, count: state.seats.length, seats: normalizeSeatList(state.seats) });
@@ -2570,7 +2577,7 @@ function renderRoomTemplates() {
 
 /* -- history modal -- */
 function openHistoryModal() { renderHistory(); openModal('historyModal'); }
-/* 1–5 rating control; clicking the current value clears it */
+/* 1-5 rating control; clicking the current value clears it */
 function ratingDots(h, key, cls) {
     const wrap = document.createElement('div');
     wrap.className = 'rate' + (cls ? ' ' + cls : '');
@@ -2616,7 +2623,7 @@ function renderHistory() {
 
         const note = document.createElement('input');
         note.type = 'text'; note.className = 'h-note';
-        note.placeholder = 'Notat (valgfritt) – hvordan fungerte dette kartet?';
+        note.placeholder = 'Notat (valgfritt) - hvordan fungerte dette kartet?';
         note.value = (h.rating && h.rating.note) || '';
         note.addEventListener('change', () => { h.rating = h.rating || {}; h.rating.note = note.value.trim(); save(); });
         row.appendChild(note);
@@ -2638,7 +2645,7 @@ function saveHistory() {
     if (state.history.length > 30) state.history.length = 30;
     save(); renderHistory();
     // The button is on the Kart tab now, so the toast has to say where it went.
-    toast('Kart lagret – se Innsikt › Historikk', 'ok');
+    toast('Kart lagret - se Innsikt › Historikk', 'ok');
 }
 function restoreHistory(i) {
     const h = state.history[i];
@@ -2860,7 +2867,7 @@ function renderStatsOverview(st) {
         <p class="q-sub">Engasjement, rettferdig plassering og at reglene holder.</p>
         ${indHtml({ label: 'Aldri sittet foran', val: nf.length, valCls: nf.length ? 'warn' : 'good', note: nf.length ? nf.slice(0, 4).map(s => escapeHtml(s.name)).join(', ') + (nf.length > 4 ? ' …' : '') : 'Tilgangen til de fremre plassene er spredt.' })}
         ${indHtml({ label: 'Kjønnsblanding ved pulter', val: totG ? mix + '%' : '—', pct: totG ? mix : 0, note: totG ? 'Andel nabopar på tvers av kjønn.' : 'Sett kjønn på elevene for å måle dette.' })}
-        ${tg ? indHtml({ label: 'Merkelapp-klumping', val: tg.excess, valCls: tg.excess ? 'warn' : 'good', note: tg.excess ? 'Samme merkelapp i samme gruppe – slå på «Spre merkelapper» og kjør smart plassering.' : 'Merkelapper er godt spredd mellom gruppene.' }) : ''}
+        ${tg ? indHtml({ label: 'Merkelapp-klumping', val: tg.excess, valCls: tg.excess ? 'warn' : 'good', note: tg.excess ? 'Samme merkelapp i samme gruppe - slå på «Spre merkelapper» og kjør smart plassering.' : 'Merkelapper er godt spredd mellom gruppene.' }) : ''}
         ${indHtml({ label: 'Lærervurdering: arbeid', val: st.workN ? st.avgWork.toFixed(1) + '/5' : '—', valCls: ratingCls(st.avgWork), pct: st.workN ? st.avgWork / 5 * 100 : 0, meterCls: ratingCls(st.avgWork), note: st.workN ? `Snitt av ${st.workN} vurderte kart.` : 'Vurder kart i Historikk for å fylle dette.' })}
         ${ra.total ? indHtml({ label: 'Regler oppfylt nå', val: `${ra.ok}/${ra.total}`, valCls: ra.ok === ra.total ? 'good' : 'warn', pct: pct(ra.ok, ra.total), meterCls: ra.ok === ra.total ? 'good' : 'warn', note: 'Gjeldende kart mot «Må/Bør»-reglene.' }) : indHtml({ label: 'Regler oppfylt nå', val: '—', note: 'Ingen regler satt enda.' })}
     </div>`;
@@ -2945,7 +2952,7 @@ function renderStatsPatterns(st) {
         <div class="viz-block"><div class="viz-head"><div><h3>Dekningsgrad over tid</h3><p>Hvor stor andel av alle mulige par som er realisert, kart for kart.</p></div></div>
             ${sparkHtml(st.coverageSeries, st.possible)}</div>` +
         ((st.cSeries.length >= 2 || st.wSeries.length >= 2) ?
-            `<div class="viz-block"><div class="viz-head"><div><h3>Lærervurdering over tid</h3><p><span style="color:var(--ok);font-weight:700">●</span> Miljø &nbsp; <span style="color:#0ea5e9;font-weight:700">●</span> Arbeid &nbsp;(1–5, kart for kart)</p></div></div>
+            `<div class="viz-block"><div class="viz-head"><div><h3>Lærervurdering over tid</h3><p><span style="color:var(--ok);font-weight:700">●</span> Miljø &nbsp; <span style="color:#0ea5e9;font-weight:700">●</span> Arbeid &nbsp;(1-5, kart for kart)</p></div></div>
             ${dualSparkHtml(st.cSeries, st.wSeries, 5)}</div>` : '');
 }
 
@@ -2957,8 +2964,8 @@ function renderStatsPatterns(st) {
 const STAT_SOURCES = {
     roorda: {
         tag: 'Roorda m.fl. 2011',
-        what: 'Lærer–elev-relasjoner henger tydelig sammen med engasjement, og noe svakere – men reelt – med prestasjoner. Negative relasjoner slår særlig sterkt ut.',
-        cite: 'Roorda, Koomen, Spilt & Oort (2011). «The Influence of Affective Teacher–Student Relationships on Students’ School Engagement and Achievement.» Review of Educational Research.',
+        what: 'Lærer-elev-relasjoner henger tydelig sammen med engasjement, og noe svakere - men reelt - med prestasjoner. Negative relasjoner slår særlig sterkt ut.',
+        cite: 'Roorda, Koomen, Spilt & Oort (2011). «The Influence of Affective Teacher-Student Relationships on Students’ School Engagement and Achievement.» Review of Educational Research.',
         links: [['journals.sagepub.com', 'https://journals.sagepub.com/doi/abs/10.3102/0034654311421793']],
     },
     korpershoek: {
@@ -2975,7 +2982,7 @@ const STAT_SOURCES = {
         links: [['researchgate.net', 'https://www.researchgate.net/publication/220040324_Cooperative_learning_methods_A_meta-analysis']],
     },
     belonging: {
-        tag: 'Tilhørighet – metaanalyser',
+        tag: 'Tilhørighet - metaanalyser',
         what: 'Opplevd tilhørighet til skolen henger sammen med motivasjon, trivsel, atferd og prestasjoner.',
         cite: 'Metaanalytisk oversikt over school belonging (2019), Educational Research; Allen m.fl. om elevers tilhørighet.',
         links: [['tandfonline.com', 'https://www.tandfonline.com/doi/full/10.1080/02671522.2019.1615116'],
@@ -2989,25 +2996,20 @@ const STAT_SOURCES = {
                 ['files.eric.ed.gov', 'https://files.eric.ed.gov/fulltext/EJ1194750.pdf']],
     },
     mcc: {
-        tag: 'Relasjonskartlegging – Harvard MCC',
+        tag: 'Relasjonskartlegging - Harvard MCC',
         what: 'Å sikre at hver elev har minst én positiv voksenrelasjon reduserer frafall og mobbing. Anbefales gjennomført omtrent to ganger i året.',
         cite: 'Making Caring Common, Harvard Graduate School of Education: «Relationship Mapping Strategy».',
         links: [['mcc.gse.harvard.edu', 'https://mcc.gse.harvard.edu/resources-for-educators/relationship-mapping-strategy']],
-    },
-    praksis: {
-        tag: 'Erfaring',
-        what: 'Ikke et forskningsfunn, men praktisk erfaring med verktøyet. Merket slik med vilje, så det ikke leses som noe det ikke er.',
-        cite: null, links: [],
     },
 };
 
 const STAT_AIMS = [
     {
-        id: 'relations', label: '🤝 Bredere relasjoner', goal: 'Sørg for at alle samarbeider med flere – ingen blir isolert over tid.',
+        id: 'relations', label: '🤝 Bredere relasjoner', goal: 'Sørg for at alle samarbeider med flere - ingen blir isolert over tid.',
         tips: [
             ['Sett elever ved siden av noen de aldri har sittet med. Bredde i samarbeid styrker tilhørighet.', 'belonging'],
-            ['Følg ekstra med på elever med lav «sosial rekkevidde» – de havner ofte hos de samme.', 'mcc'],
-            ['Kjør «Smart plassering» jevnlig for å rotere naboer i stedet for å la vanen styre.', 'praksis']
+            ['Følg ekstra med på elever med lav «sosial rekkevidde» - de havner ofte hos de samme.', 'mcc'],
+            ['Kjør «Smart plassering» jevnlig for å rotere naboer.']
         ],
         callout: st => { const nt = neverTogetherOf(st); const ex = nt.slice(0, 3).map(p => `${escapeHtml(p[0].name)} & ${escapeHtml(p[1].name)}`).join(', '); return `<strong>${nt.length}</strong> par har aldri sittet sammen.${ex ? ' F.eks. ' + ex + '.' : ''}`; }
     },
@@ -3015,24 +3017,24 @@ const STAT_AIMS = [
         id: 'focus', label: '🎯 Mindre uro, mer fokus', goal: 'Reduser forstyrrelser og hold oppmerksomheten i timen.',
         tips: [
             ['Plasser lett distraherte elever nærmere tavla og læreren.', 'seating'],
-            ['Hold kjente «uro-par» fra hverandre med en «Må – ikke ved siden av»-regel.', 'korpershoek'],
+            ['Hold kjente «uro-par» fra hverandre med en «Må - ikke ved siden av»-regel.', 'korpershoek'],
             ['Sosioemosjonelt rettede tiltak gir størst effekt på klassemiljøet.', 'korpershoek']
         ],
-        callout: st => { const ra = currentRuleAdherence(); return ra.total ? `Gjeldende kart oppfyller <strong>${ra.ok}/${ra.total}</strong> regler.` : 'Ingen regler satt enda – lag noen i «Regler».'; }
+        callout: st => { const ra = currentRuleAdherence(); return ra.total ? `Gjeldende kart oppfyller <strong>${ra.ok}/${ra.total}</strong> regler.` : 'Ingen regler satt enda - lag noen i «Regler».'; }
     },
     {
         id: 'hetero', label: '🧩 Blandede grupper', goal: 'Sett sammen grupper som er faglig og sosialt blandet.',
         tips: [
             ['Heterogene grupper fremmer både læring og gode relasjoner.', 'johnson'],
-            ['Unngå at den samme «klikken» alltid havner sammen – bland dem opp.', 'johnson']
+            ['Unngå at den samme «klikken» alltid havner sammen - bland dem.', 'johnson']
         ],
         callout: st => { const mp = mostPairedOf(st); return mp && mp.count > 1 ? `Oftest sammen: <strong>${escapeHtml(mp.pair[0].name)} & ${escapeHtml(mp.pair[1].name)}</strong> (${mp.count}×). Vurder å bryte opp vanen.` : 'Ingen tydelige faste par enda.'; }
     },
     {
         id: 'equity', label: '⚖️ Rettferdig plassering', goal: 'Spre tilgangen til de gode plassene foran.',
         tips: [
-            ['Roter hvem som sitter foran – de bakerste rekkene deltar og presterer ofte mindre.', 'seating'],
-            ['Bruk «Foran/bak»-ønsker bevisst, men ikke la de samme alltid sitte bakerst.', 'praksis']
+            ['Roter hvem som sitter foran - de bakerste rekkene deltar og presterer ofte mindre.', 'seating'],
+            ['Bruk «Foran/bak»-ønsker bevisst, men ikke la de samme alltid sitte bakerst.']
         ],
         callout: st => { const nf = neverFrontOf(st); return nf.length ? `<strong>${nf.length}</strong> elever har aldri sittet foran: ${nf.slice(0, 4).map(s => escapeHtml(s.name)).join(', ')}${nf.length > 4 ? ' …' : ''}.` : 'Tilgangen til de fremre plassene er godt spredt.'; }
     },
@@ -3041,9 +3043,9 @@ const STAT_AIMS = [
         tips: [
             ['Tilhørighet henger sammen med motivasjon, atferd og læring.', 'belonging'],
             ['Sørg for at hver elev har minst én positiv voksenrelasjon på skolen.', 'mcc'],
-            ['Gode lærer–elev-relasjoner løfter både engasjement og prestasjoner.', 'roorda']
+            ['Gode lærer-elev-relasjoner løfter både engasjement og prestasjoner.', 'roorda']
         ],
-        callout: st => { const iso = isolatesOf(st); return iso.length ? `<strong>${iso.length}</strong> elever ser ut til å samarbeide smalt – verdt å følge opp.` : 'Ingen elever peker seg ut som isolerte akkurat nå.'; }
+        callout: st => { const iso = isolatesOf(st); return iso.length ? `<strong>${iso.length}</strong> elever ser ut til å samarbeide smalt - verdt å følge opp.` : 'Ingen elever peker seg ut som isolerte akkurat nå.'; }
     }
 ];
 
@@ -3052,8 +3054,9 @@ const STAT_AIMS = [
 let statsSourcesOpen = false;
 
 function sourceTag(key) {
+    if (!key) return null;   // practical advice, no citation to show
     const s = STAT_SOURCES[key];
-    // A tip citing a source that no longer exists should say so rather than
+    // A tip naming a source that no longer exists should say so rather than
     // quietly render an empty label.
     return s ? s.tag : '(ukjent kilde: ' + key + ')';
 }
@@ -3075,7 +3078,11 @@ function renderStatsAims(st) {
     const box = $('statsAims');
     const chips = STAT_AIMS.map(a => `<button class="aim ${a.id === statsAimId ? 'is-active' : ''}" data-aim="${a.id}" type="button">${a.label}</button>`).join('');
     const aim = STAT_AIMS.find(a => a.id === statsAimId) || STAT_AIMS[0];
-    const tips = aim.tips.map(([t, src]) => `<div class="tip"><div class="tip-text">${escapeHtml(t)}</div><span class="tip-src">${escapeHtml(sourceTag(src))}</span></div>`).join('');
+    const tips = aim.tips.map(([t, src]) => {
+        const tag = sourceTag(src);
+        return `<div class="tip"><div class="tip-text">${escapeHtml(t)}</div>` +
+            (tag ? `<span class="tip-src">${escapeHtml(tag)}</span>` : '') + `</div>`;
+    }).join('');
     const callout = st.charts ? `<div class="callout">${aim.callout(st)}</div>` : '';
     box.innerHTML = `<div class="aim-list">${chips}</div><p class="aim-goal">${escapeHtml(aim.goal)}</p>${callout}${tips}
         <details class="sources"${statsSourcesOpen ? ' open' : ''}>
@@ -3128,7 +3135,7 @@ async function deleteClass() {
     // the group, and the next pull downloads it again. Rather than let the group
     // reappear and look like a bug, require the unlock and delete both copies.
     if (synced && !syncUnlocked()) {
-        toast('Lås opp synkronisering først – ellers kommer gruppa tilbake', 'err');
+        toast('Lås opp synkronisering først - ellers kommer gruppa tilbake', 'err');
         openSyncModal();
         return;
     }
@@ -3142,7 +3149,7 @@ async function deleteClass() {
         catch (e) {
             // Abort rather than delete locally: a half-delete is the resurrection
             // bug with extra steps.
-            toast('Kunne ikke slette på serveren – ingenting er slettet', 'err');
+            toast('Kunne ikke slette på serveren - ingenting er slettet', 'err');
             return;
         }
     }
@@ -3457,6 +3464,8 @@ function wireApp() {
 
     // rules modal
     $('ruleType').addEventListener('change', updateRuleTypeUI);
+    // Whoever the rule is about drops out of the checklist below it.
+    $('ruleA').addEventListener('change', () => fillMemberPicker());
     $('ruleCancelBtn').addEventListener('click', () => { setRuleEditMode(null); renderRulesList(); });
     $('ruleAddBtn').addEventListener('click', () => {
         const a = $('ruleA').value, type = $('ruleType').value;
@@ -3638,7 +3647,7 @@ async function requireSession() {
         const res = await fetch(`${SCRIPT_URL}?action=me`, { credentials: 'include' });
         const data = await res.json();
         if (data && !data.error) return true;
-    } catch (e) { /* offline or unreachable – treat as logged out */ }
+    } catch (e) { /* offline or unreachable - treat as logged out */ }
     if (IS_LOCAL) {
         console.warn('[klassekart] No session — continuing anyway because this is localhost. This never happens on ukeportalen.no.');
         return true;

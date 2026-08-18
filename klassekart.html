@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Klassekartografen | Ukeportalen</title>
     <script>
-        // Same pre-paint theme apply as teacher.html – avoids a light flash before
+        // Same pre-paint theme apply as teacher.html - avoids a light flash before
         // klassekart.css picks up the tokens. "auto" leaves data-theme off.
         (function () {
             try {
@@ -61,7 +61,7 @@
         <div class="setup-or hidden" id="setupOr"><span>eller lag et nytt kart</span></div>
 
         <!-- What the chart is for. A klasse picks a code from the school config;
-             a faggruppe (valgfag, K&H) is free text – Ukeportalen has no
+             a faggruppe (valgfag, K&H) is free text - Ukeportalen has no
              faggruppe register, and by design holds no pupil rosters at all. -->
         <div class="setup-group">
             <label>Hva lager du kart for?</label>
@@ -83,10 +83,10 @@
 
         <div class="setup-grid">
             <div class="setup-names">
-                <label for="setupNames">Elevliste <span class="hint">– ett navn per linje</span></label>
+                <label for="setupNames">Elevliste <span class="hint">- ett navn per linje</span></label>
                 <div class="setup-names-actions">
                     <button class="btn btn-sm" id="setupCsvBtn" type="button">📄 Hent fra CSV</button>
-                    <span class="hint">– eksport fra Vigilo (klasse eller faggruppe)</span>
+                    <span class="hint">- eksport fra Vigilo (klasse eller faggruppe)</span>
                 </div>
                 <textarea id="setupNames" placeholder="Anna&#10;Bjørn&#10;Cecilie&#10;..."></textarea>
                 <div class="setup-count"><span id="setupCount">0</span> elever</div>
@@ -186,7 +186,7 @@
             <button class="btn" id="shuffleBtn" type="button"><span class="btn-ico">🎲</span><span class="btn-txt"> Bland</span></button>
             <!-- Editing the desks happens while looking at the board, so it belongs
                  here rather than behind the Rom tab. -->
-            <button class="btn" id="editDesksBtn" type="button"><span class="btn-ico">✏️</span><span class="btn-txt"> Rediger på kartet</span></button>
+            <button class="btn" id="editDesksBtn" type="button"><span class="btn-ico">✏️</span><span class="btn-txt"> Rediger klassekartet</span></button>
             <!-- You save the arrangement you are looking at, so the button belongs
                  beside it rather than inside the list of things already saved. -->
             <button class="btn" id="historySaveBtn" type="button"><span class="btn-ico">💾</span><span class="btn-txt"> Lagre kartet</span></button>
@@ -241,7 +241,7 @@
                 <p class="modal-hint">Sett kjønn (for «bland kjønn») og hvem som bør/må sitte foran eller bak.</p>
                 <div class="roster" id="roster"></div>
                 <div class="roster-add">
-                    <label for="rosterAdd">Legg til flere <span class="hint">– ett navn per linje</span></label>
+                    <label for="rosterAdd">Legg til flere <span class="hint">- ett navn per linje</span></label>
                     <textarea id="rosterAdd" rows="3" placeholder="Nytt elevnavn..."></textarea>
                     <button class="btn" id="rosterAddBtn" type="button">Legg til</button>
                 </div>
@@ -269,7 +269,12 @@
                 <h3 class="sub">Regler mellom elever</h3>
                 <div class="rules-list" id="rulesList"></div>
     
+                <!-- Reads as the sentence a teacher would say: who, how strictly,
+                     what, and then who it applies to. The buttons follow the
+                     checklist rather than sitting above it, so the row is
+                     completed left to right and top to bottom. -->
                 <div class="rule-add">
+                    <select id="ruleA"></select>
                     <select id="ruleStrength" title="Hvor strengt">
                         <option value="must">Må</option>
                         <option value="should">Bør</option>
@@ -278,10 +283,9 @@
                         <option value="apart">🚫 ikke ved siden av</option>
                         <option value="together">🤝 ved siden av</option>
                     </select>
-                    <select id="ruleA"></select>
+                    <div id="ruleMembers" class="rule-members"></div>
                     <button class="btn btn-primary" id="ruleAddBtn" type="button">Legg til</button>
                     <button class="btn hidden" id="ruleCancelBtn" type="button">Avbryt</button>
-                    <div id="ruleMembers" class="rule-members"></div>
                 </div>
                 <p class="modal-hint" id="ruleAnyHint" style="margin-top:10px;"></p>
                 <p class="modal-hint" style="margin-top:14px;"><strong>Må</strong> = hard regel · <strong>Bør</strong> = mykt ønske. «Foran/bak» settes per elev i <strong>Elever</strong>-listen.</p>
@@ -439,7 +443,7 @@
             <button class="modal-x" id="prefCloseX" type="button">&times;</button>
         </div>
         <div class="modal-body">
-            <p class="modal-hint">Elevinnspill ført inn av lærer (fra egen kartlegging). Påvirker smart plassering som <strong>myke</strong> ønsker – «Må/Bør»-regler går foran.</p>
+            <p class="modal-hint">Elevinnspill ført inn av lærer (fra egen kartlegging). Påvirker smart plassering som <strong>myke</strong> ønsker - «Må/Bør»-regler går foran.</p>
             <div class="pref-sec">
                 <h3 class="sub">🪑 Plassering</h3>
                 <label class="check"><input type="checkbox" id="prefQuiet"> Trenger ro / mye plass (færre naboer)</label>
@@ -452,7 +456,7 @@
             <div class="pref-sec">
                 <h3 class="sub">🚫 Vil helst unngå</h3>
                 <div class="member-picker" id="prefAvoid"></div>
-                <p class="modal-hint" style="margin-top:6px">Sensitivt – vises bare for lærer.</p>
+                <p class="modal-hint" style="margin-top:6px">Sensitivt!</p>
             </div>
             <div class="pref-sec">
                 <h3 class="sub">🏷️ Merkelapper</h3>
@@ -461,7 +465,7 @@
                     <input id="prefTagInput" type="text" placeholder="f.eks. språkstøtte">
                     <button class="btn" id="prefTagAddBtn" type="button">Legg til</button>
                 </div>
-                <p class="modal-hint" style="margin-top:6px">Brukes til blandede grupper – slå på «Spre merkelapper» i Regler.</p>
+                <p class="modal-hint" style="margin-top:6px">Brukes til blandede grupper - slå på «Spre merkelapper» i Regler.</p>
             </div>
         </div>
         <div class="modal-foot">
@@ -503,7 +507,7 @@
     </div>
 </div>
 
-<!-- CSV column mapping. Only shown when the file has more than one column –
+<!-- CSV column mapping. Only shown when the file has more than one column -
      a names-only export imports straight through. Everything not mapped is
      dropped at parse time and never stored. -->
 <div class="modal-overlay" id="csvModal">
