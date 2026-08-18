@@ -1062,6 +1062,15 @@ body.present .zoom-ctrl { display: none; }
    The body stops scrolling and the roster scrolls instead, which also keeps the
    search box pinned above it rather than sailing off the top. */
 #studentsModal .modal-body { display: flex; flex-direction: column; overflow: hidden; }
+/* Regler behaves the same way: the body does not scroll, the list does, and the
+   sub-tabs and search box stay put above it. */
+#rulesModal .modal-body { display: flex; flex-direction: column; overflow: hidden; }
+#rulesModal .seg, #rulesModal .rule-search, #rulesModal .rules-globals { flex-shrink: 0; }
+#rulesModal .rules-between { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+#rulesModal .rules-list { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; }
+#rulesModal .rules-globals { overflow-y: auto; scrollbar-gutter: stable; }
+/* The seg sits inside the body here, not above it like Innsikt's. */
+#rulesModal .kk-sub { margin: 0 0 14px; align-self: flex-start; }
 #studentsModal .modal-hint, #studentsModal .rule-search { flex-shrink: 0; }
 #studentsModal .roster { flex: 1; min-height: 0; max-height: none; margin-bottom: 0; }
 .roster-row { display: flex; align-items: center; gap: 10px; }

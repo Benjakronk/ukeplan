@@ -2310,6 +2310,23 @@ function closeAllDropdowns() { document.querySelectorAll('.dropdown.open').forEa
 
 /* -- rules modal -- */
 let editingRuleId = null;
+/* Two kinds of rule with nothing to say to each other: switches that apply to
+ * the whole class, and entries about named pupils. They were stacked, so the
+ * list started below a screenful of checkboxes. Sub-tabs, as in Innsikt. */
+let rulesSub = 'generelt';
+function setRulesSub(name) {
+    rulesSub = name;
+    document.querySelectorAll('#rulesSeg button').forEach(b =>
+        b.classList.toggle('on', b.dataset.rsub === name));
+    document.querySelectorAll('#rulesModal [data-rsub]').forEach(el => {
+        if (el.closest('#rulesSeg')) return;          // the seg's own buttons
+        el.classList.toggle('hidden', el.dataset.rsub !== name);
+    });
+    // «+ Ny regel» only means something on the list; on the switches it would be
+    // a button that silently changes which section you are looking at.
+    $('ruleAddToggle').classList.toggle('hidden', name !== 'mellom');
+}
+
 function openRulesModal() {
     $('prefBalanceGender').checked = !!state.prefs.balanceGender;
     $('prefAvoidRepeat').checked = !!state.prefs.avoidRepeat;
@@ -2321,6 +2338,7 @@ function openRulesModal() {
     setRuleEditMode(null);
     ruleSearch = ''; $('ruleSearch').value = '';
     renderRulesList();
+    setRulesSub(rulesSub);
     openModal('rulesModal');
 }
 /* Load a rule into the add-form for editing (rule = null clears the form). */
@@ -2346,7 +2364,7 @@ function setRuleEditMode(rule) {
  * fold-out that pushes the list around. The button lives beside the panel title,
  * where it is reachable without scrolling past every rule first. */
 function showRuleForm(show) {
-    if (show) { openModal('ruleAddModal'); $('ruleA').focus(); }
+    if (show) { setRulesSub('mellom'); openModal('ruleAddModal'); $('ruleA').focus(); }
     else closeModal('ruleAddModal');
 }
 function startEditRule(id) {
@@ -3733,6 +3751,10 @@ function wireApp() {
     // rules modal
     $('ruleType').addEventListener('change', updateRuleTypeUI);
     $('ruleSearch').addEventListener('input', e => { ruleSearch = e.target.value; renderRulesList(); });
+    $('rulesSeg').addEventListener('click', e => {
+        const b = e.target.closest('[data-rsub]');
+        if (b) setRulesSub(b.dataset.rsub);
+    });
     $('ruleAddToggle').addEventListener('click', () => { setRuleEditMode(null); showRuleForm(true); });
     // Whoever the rule is about drops out of the checklist below it.
     $('ruleA').addEventListener('change', () => fillMemberPicker());
@@ -3763,7 +3785,9 @@ function wireApp() {
     $('prefAvoidRepeat').addEventListener('change', e => { state.prefs.avoidRepeat = e.target.checked; save(); });
     $('prefAvoidAll').addEventListener('change', e => { state.prefs.avoidAllRepeat = e.target.checked; save(); });
     $('prefBalanceTags').addEventListener('change', e => { state.prefs.balanceTags = e.target.checked; save(); });
-    $('rulesRunBtn').addEventListener('click', () => { closeModal('rulesModal'); smartArrange(false); });
+    // Straight to the board with the result, which is what you wanted the rules
+    // for. setTab rather than closeModal: this is a tab, not a dialog.
+    $('rulesRunBtn').addEventListener('click', () => { setTab('kart'); smartArrange(false); });
 
     // roster modal
     $('addStudentsBtn').addEventListener('click', () => {

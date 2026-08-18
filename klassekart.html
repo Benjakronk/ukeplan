@@ -250,10 +250,15 @@
             <div class="modal-head">
                 <h2>Regler for smart plassering</h2>
                 <button class="btn btn-primary modal-head-action" id="ruleAddToggle" type="button">+ Ny regel</button>
+                <button class="btn" id="rulesRunBtn" type="button">✨ Kjør smart plassering</button>
                 <button class="modal-x" data-close="rulesModal" type="button">&times;</button>
             </div>
             <div class="modal-body">
-                <div class="rules-globals">
+                <div class="seg kk-sub" id="rulesSeg">
+                    <button type="button" data-rsub="generelt" class="on">Generelt</button>
+                    <button type="button" data-rsub="mellom">Mellom elever</button>
+                </div>
+                <div class="rules-globals" data-rsub="generelt">
                     <!-- Each of these needs something to work on. Where that is
                          missing the switch stays visible, so the feature is still
                          discoverable, but disabled with a line saying what it
@@ -267,18 +272,14 @@
                     <p class="modal-hint hidden" id="prefTagsHint">Krever at minst to elever deler en merkelapp — gjøres i Elever.</p>
                 </div>
     
-                <h3 class="sub">Regler og ønsker mellom elever</h3>
                 <!-- Wishes are entered per pupil under Elever, because they come
                      from a survey you fill in one pupil at a time. They are shown
                      here too so this is the one place to see everything binding a
                      pair — read-only, with ✎ jumping to where they are edited. -->
-                <input type="search" id="ruleSearch" class="rule-search" placeholder="Søk etter elev…" autocomplete="off">
-                <div class="rules-list" id="rulesList"></div>
-    
-            </div>
-            <div class="modal-foot">
-                <button class="btn" data-close="rulesModal" type="button">Lukk</button>
-                <button class="btn btn-primary" id="rulesRunBtn" type="button">✨ Kjør smart plassering</button>
+                <div class="rules-between" data-rsub="mellom">
+                    <input type="search" id="ruleSearch" class="rule-search" placeholder="Søk etter elev…" autocomplete="off">
+                    <div class="rules-list" id="rulesList"></div>
+                </div>
             </div>
         </div>
     </div>
