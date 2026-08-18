@@ -151,7 +151,17 @@ body.kk-booting .screen { display: none; }
    better narrowed and centred. Statistikk keeps the full width — its charts and
    heatmap use it. Must come AFTER the .as-view > .modal rule above: equal
    specificity, so the margin-inline override depends on source order. */
-.modal-overlay.as-view > .as-view-narrow { max-width: 780px; margin-inline: auto; }
+.modal-overlay.as-view > .as-view-narrow {
+    /* A DEFINITE width, not a max-width. `margin-inline: auto` is what centres
+       this, and an auto cross-axis margin on a flex item cancels the stretch
+       from .as-view's `align-items: stretch` — which left the panel sized to
+       its contents under a 780px ceiling. It then grew and shrank as rows were
+       expanded, by however much the widest row differed. With the width fixed,
+       the auto margins only position it. */
+    width: min(780px, calc(100% - 28px));
+    max-width: none;
+    margin-inline: auto;
+}
 /* A tab is not dismissible, so the dialog's × would be a dead control. */
 .modal-overlay.as-view .modal-x { display: none; }
 .modal-overlay.as-view .modal-head { border-radius: var(--radius) var(--radius) 0 0; }
