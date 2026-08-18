@@ -187,6 +187,9 @@
             <!-- Editing the desks happens while looking at the board, so it belongs
                  here rather than behind the Rom tab. -->
             <button class="btn" id="editDesksBtn" type="button"><span class="btn-ico">✏️</span><span class="btn-txt"> Rediger på kartet</span></button>
+            <!-- You save the arrangement you are looking at, so the button belongs
+                 beside it rather than inside the list of things already saved. -->
+            <button class="btn" id="historySaveBtn" type="button"><span class="btn-ico">💾</span><span class="btn-txt"> Lagre kartet</span></button>
             <div class="kk-actions-spacer"></div>
             <!-- Getting the chart off the screen and onto paper or a file. Two
                  buttons, because PDF and PNG are the same intent — «ta vare på
@@ -355,8 +358,8 @@
                     <button class="modal-x" data-close="historyModal" type="button">&times;</button>
                 </div>
                 <div class="modal-body">
-                    <p class="modal-hint">Lagre kart du vil ta vare på. «Unngå naboer» bruker det sist lagrede.</p>
-                    <button class="btn btn-primary" id="historySaveBtn" type="button">💾 Lagre nåværende kart</button>
+                    <p class="modal-hint">Kart du har tatt vare på. «Unngå naboer» bruker det sist lagrede.
+                    Du lagrer et kart med «Lagre kartet» på Kart-fanen.</p>
                     <div class="history-list" id="historyList"></div>
                 </div>
                 <div class="modal-foot">

@@ -2622,7 +2622,8 @@ function saveHistory() {
     });
     if (state.history.length > 30) state.history.length = 30;
     save(); renderHistory();
-    toast('Kart lagret i historikk', 'ok');
+    // The button is on the Kart tab now, so the toast has to say where it went.
+    toast('Kart lagret – se Innsikt › Historikk', 'ok');
 }
 function restoreHistory(i) {
     const h = state.history[i];
