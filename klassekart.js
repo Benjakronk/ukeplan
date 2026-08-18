@@ -772,12 +772,20 @@ function renderSyncShare(box) {
 
 /* A quiet marker on the Mer button, so an unresolved conflict is visible without
  * opening anything. */
+/* Sync is a topbar button rather than a menu entry, so its own face carries the
+ * state: off, on, or unlocked-and-running — plus any unresolved conflict, which
+ * used to need the menu opened before it was visible at all. */
 function updateSyncBadge() {
-    const btn = $('menuBtn');
+    const btn = $('syncBtn');
     if (!btn) return;
+    const on = syncOn(), unlocked = on && syncUnlocked();
+    $('syncBtnIco').textContent = !on ? '☁' : unlocked ? '☁' : '🔒';
+    $('syncBtnTxt').textContent = !on ? ' Slå på synk' : unlocked ? ' Synk' : ' Synk (låst)';
     const n = Object.keys(kkConflicts).length;
     btn.classList.toggle('has-conflict', n > 0);
-    btn.title = n ? `${n} gruppe(r) endret et annet sted` : 'Mer';
+    btn.title = n ? `${n} gruppe(r) endret et annet sted`
+        : !on ? 'Slå på synkronisering'
+        : unlocked ? 'Synkronisering' : 'Synkronisering er låst – skriv inn koden din';
 }
 
 async function syncAction(act, el) {
@@ -3321,28 +3329,10 @@ function printChart() {
     w.document.close();
 }
 
-/* ---------------------------------------------------------------- main menu */
-function buildMainMenu() {
-    const dd = $('mainMenu');
-    dd.innerHTML = '';
-    // Everything a teacher reaches for during a lesson now has a home in the
-    // workspace itself: export and print sit with the board, rename and delete
-    // sit with the group pill they act on, and leaving is the ← in the corner.
-    // What is left here is the stuff you touch once a term.
-    const items = [
-        [syncOn() ? (syncUnlocked() ? '☁ Synkronisering' : '🔒 Synkronisering (låst)') : '☁ Slå på synkronisering', openSyncModal],
-        ['sep'],
-        ['💾 Last ned sikkerhetskopi', exportBackup],
-        ['📂 Gjenopprett fra fil', () => $('importFile').click()],
-    ];
-    items.forEach(([label, fn]) => {
-        if (label === 'sep') { const s = document.createElement('div'); s.className = 'dd-sep'; dd.appendChild(s); return; }
-        const b = document.createElement('button');
-        b.className = 'dd-item'; b.textContent = label;
-        b.addEventListener('click', () => { closeAllDropdowns(); fn(); });
-        dd.appendChild(b);
-    });
-}
+/* The ⚙ Mer menu is gone. Everything it held now sits in the workspace: export
+ * and print with the board, rename/delete with the group pill they act on,
+ * backup/restore and sync at the far end of the topbar, and the way out as the
+ * ← in the corner. Nothing a teacher needs is behind an unlabelled glyph. */
 
 /* ---------------------------------------------------------------- wiring     */
 function wireSetup() {
@@ -3441,14 +3431,10 @@ function wireApp() {
         closeAllDropdowns();
         if (opening) { renderClassDropdown(); dd.classList.add('open'); }
     });
-    // main menu
-    $('menuBtn').addEventListener('click', (e) => {
-        e.stopPropagation();
-        const dd = $('mainMenu');
-        const opening = !dd.classList.contains('open');
-        closeAllDropdowns();
-        if (opening) dd.classList.add('open');
-    });
+    // data safety + sync, at the far end of the topbar
+    $('backupBtn').addEventListener('click', exportBackup);
+    $('restoreBtn').addEventListener('click', () => $('importFile').click());
+    $('syncBtn').addEventListener('click', openSyncModal);
     document.addEventListener('click', closeAllDropdowns);
 
     // selection action bar
@@ -3574,7 +3560,7 @@ function wireApp() {
     app.addEventListener('pointerdown', onPointerDown);
     app.addEventListener('click', onClick);
 
-    buildMainMenu();
+    updateSyncBadge();
 }
 
 function wireGlobal() {
@@ -3649,8 +3635,7 @@ async function init() {
     wireSetup(); wireApp(); wireGlobal();
     loadClassCodes();
     // Sync is opt-in and never interrupts a boot: if it is on but locked, the
-    // menu label says so and the local copy works meanwhile.
-    if (syncOn()) buildMainMenu();
+    // button says so and the local copy works meanwhile.
     updateSyncBadge();
     if (loadStore()) { state = store.classes[store.activeClassId]; showApp(); render(); }
     else { showSetup(); }

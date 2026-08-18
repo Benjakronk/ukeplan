@@ -1221,8 +1221,8 @@ body.present .zoom-ctrl { display: none; }
 .sync-ok   { color: var(--success); font-weight: 600; font-size: 0.85rem; }
 .sync-wait { color: var(--ink-soft); font-weight: 600; font-size: 0.85rem; }
 .sync-bad  { color: var(--danger); font-weight: 600; font-size: 0.85rem; }
-/* an unresolved conflict should be visible without opening the menu */
-#menuBtn.has-conflict { border-color: var(--danger); color: var(--danger); }
+/* an unresolved conflict is visible on the button itself, not behind a menu */
+#syncBtn.has-conflict { border-color: var(--danger); color: var(--danger); }
 
 .setup-restore-sep { margin: 0 4px; opacity: .5; }
 

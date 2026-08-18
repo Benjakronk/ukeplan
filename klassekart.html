@@ -156,10 +156,13 @@
         <button class="icon-btn icon-btn-sm" id="renameGroupBtn" title="Gi gruppa nytt navn" type="button">✏️</button>
         <button class="icon-btn icon-btn-sm is-danger" id="deleteGroupBtn" title="Slett gruppe" type="button">🗑️</button>
         <div class="topbar-spacer"></div>
-        <div class="menu-anchor">
-            <button class="btn" id="menuBtn" title="Mer" type="button"><span class="btn-ico">⚙</span><span class="btn-txt"> Mer</span></button>
-            <div class="dropdown dropdown-right" id="mainMenu"></div>
-        </div>
+        <!-- Mirrors the left: a pair of icon buttons for your own data, then the
+             one control whose STATE you need to read at a glance — sync is off,
+             on, or locked — so it keeps a label rather than becoming a glyph. -->
+        <button class="icon-btn icon-btn-sm" id="backupBtn" title="Last ned sikkerhetskopi" type="button">💾</button>
+        <button class="icon-btn icon-btn-sm" id="restoreBtn" title="Gjenopprett fra fil" type="button">📂</button>
+        <span class="topbar-div" aria-hidden="true"></span>
+        <button class="btn" id="syncBtn" type="button"><span class="btn-ico" id="syncBtnIco">☁</span><span class="btn-txt" id="syncBtnTxt"> Synkronisering</span></button>
     </header>
 
     <!-- The layers. Room, pupils and seating change on completely different
