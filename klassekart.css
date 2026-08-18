@@ -952,12 +952,15 @@ body.present .zoom-ctrl { display: none; }
 .rule-row.editing { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
 .rule-add { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .rule-add select {
-    flex: 1 1 170px; min-width: 170px; padding: 9px 10px; border: 1px solid var(--line);
+    flex: 0 1 auto; min-width: 150px; padding: 9px 10px; border: 1px solid var(--line);
     border-radius: 8px; font-size: 0.9rem; font-family: var(--font); background: var(--surface);
 }
 .rule-add #ruleStrength { flex: 0 0 auto; min-width: 74px; }
 .rule-add #ruleType { flex: 0 0 auto; min-width: 156px; }
-.rule-add #ruleA { flex: 2 1 190px; min-width: 190px; }
+/* Not flex-grow: the three controls are a sentence, and a name box stretched to
+   the width of the panel puts «Må» and «ikke ved siden av» a long way from the
+   name they belong to. It may still shrink on a narrow screen. */
+.rule-add #ruleA { flex: 0 1 230px; min-width: 150px; }
 .rule-members {
     flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px;
     max-height: 168px; overflow-y: auto; padding: 8px;
