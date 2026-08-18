@@ -1124,6 +1124,30 @@ body.present .zoom-ctrl { display: none; }
     font-size: 0.88rem; color: var(--ink); }
 .callout strong { color: var(--primary-dark); }
 
+/* --- sources behind the tips --- */
+.sources { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 12px; }
+.sources > summary {
+    cursor: pointer; font-size: 0.86rem; font-weight: 700; color: var(--ink-soft);
+    padding: 6px 2px; list-style: none; display: flex; align-items: center; gap: 8px;
+}
+.sources > summary::-webkit-details-marker { display: none; }
+.sources > summary::before { content: '▸'; font-size: 0.75rem; transition: transform .15s; }
+.sources[open] > summary::before { transform: rotate(90deg); }
+.sources > summary:hover { color: var(--primary); }
+.src-list { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.src { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 11px 13px; background: var(--surface); }
+.src-tag {
+    display: inline-block; font-size: 0.7rem; font-weight: 700; letter-spacing: .02em;
+    color: var(--primary-dark); background: var(--primary-soft);
+    border-radius: 99px; padding: 3px 9px;
+}
+.src-what { margin: 8px 0 0; font-size: 0.86rem; color: var(--ink); }
+.src-cite { margin: 6px 0 0; font-size: 0.76rem; color: var(--ink-soft); font-style: italic; }
+.src-links { margin: 8px 0 0; display: flex; flex-wrap: wrap; gap: 12px; }
+.src-link { font-size: 0.76rem; font-weight: 600; color: var(--primary); text-decoration: none; }
+.src-link:hover { text-decoration: underline; }
+.src-caveat { margin: 12px 0 0; font-size: 0.78rem; color: var(--ink-soft); }
+
 /* --- per-chart teacher rating (in history) --- */
 .hist-card { flex-direction: column; align-items: stretch; gap: 8px; }
 .hist-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }

@@ -2927,60 +2927,143 @@ function renderStatsPatterns(st) {
             ${dualSparkHtml(st.cSeries, st.wSeries, 5)}</div>` : '');
 }
 
+/* The tips used to carry a free-text source label and point at docs/research.md
+ * for the rest — a file that does not exist in this repo, so the reference was
+ * dead. The citations live here instead: a teacher who wants to check a claim
+ * should be able to, from the page making it. Tips name a key from this table,
+ * so a tip can no longer cite something that has no entry. */
+const STAT_SOURCES = {
+    roorda: {
+        tag: 'Roorda m.fl. 2011',
+        what: 'Lærer–elev-relasjoner henger tydelig sammen med engasjement, og noe svakere – men reelt – med prestasjoner. Negative relasjoner slår særlig sterkt ut.',
+        cite: 'Roorda, Koomen, Spilt & Oort (2011). «The Influence of Affective Teacher–Student Relationships on Students’ School Engagement and Achievement.» Review of Educational Research.',
+        links: [['journals.sagepub.com', 'https://journals.sagepub.com/doi/abs/10.3102/0034654311421793']],
+    },
+    korpershoek: {
+        tag: 'Korpershoek m.fl. 2016',
+        what: 'Klasseledelsesprogrammer har små, men reelle effekter (g≈0,22). Sosioemosjonelt rettede tiltak hjelper mest på klassemiljøet; lærerrettede mest faglig.',
+        cite: 'Korpershoek, Harms, de Boer, van Kuijk & Doolaard (2016). «A Meta-Analysis of the Effects of Classroom Management Strategies…» Review of Educational Research. Oppdatert 2025.',
+        links: [['eric.ed.gov', 'https://eric.ed.gov/?id=EJ1108420'],
+                ['oppdatering 2025', 'https://journals.sagepub.com/doi/10.3102/00346543251361903']],
+    },
+    johnson: {
+        tag: 'Johnson & Johnson 2000',
+        what: 'Samarbeidslæring virker best med strukturerte, ofte heterogene grupper. Langvarige blandede basisgrupper støtter både faglig og sosial utvikling.',
+        cite: 'Johnson, Johnson & Stanne (2000). «Cooperative Learning Methods: A Meta-Analysis.»',
+        links: [['researchgate.net', 'https://www.researchgate.net/publication/220040324_Cooperative_learning_methods_A_meta-analysis']],
+    },
+    belonging: {
+        tag: 'Tilhørighet – metaanalyser',
+        what: 'Opplevd tilhørighet til skolen henger sammen med motivasjon, trivsel, atferd og prestasjoner.',
+        cite: 'Metaanalytisk oversikt over school belonging (2019), Educational Research; Allen m.fl. om elevers tilhørighet.',
+        links: [['tandfonline.com', 'https://www.tandfonline.com/doi/full/10.1080/02671522.2019.1615116'],
+                ['ies.ed.gov', 'https://ies.ed.gov/rel-midwest/2025/01/student-sense-belonging']],
+    },
+    seating: {
+        tag: 'Plassering & engasjement',
+        what: 'Nærhet til læreren og mindre radvendte oppsett øker deltakelse. Hvordan elevene er gruppert påvirker engasjementet.',
+        cite: 'Kvasi-eksperimentelle studier av plassering, gruppering og deltakelse.',
+        links: [['pmc.ncbi.nlm.nih.gov', 'https://pmc.ncbi.nlm.nih.gov/articles/PMC8814094/'],
+                ['files.eric.ed.gov', 'https://files.eric.ed.gov/fulltext/EJ1194750.pdf']],
+    },
+    mcc: {
+        tag: 'Relasjonskartlegging – Harvard MCC',
+        what: 'Å sikre at hver elev har minst én positiv voksenrelasjon reduserer frafall og mobbing. Anbefales gjennomført omtrent to ganger i året.',
+        cite: 'Making Caring Common, Harvard Graduate School of Education: «Relationship Mapping Strategy».',
+        links: [['mcc.gse.harvard.edu', 'https://mcc.gse.harvard.edu/resources-for-educators/relationship-mapping-strategy']],
+    },
+    praksis: {
+        tag: 'Erfaring',
+        what: 'Ikke et forskningsfunn, men praktisk erfaring med verktøyet. Merket slik med vilje, så det ikke leses som noe det ikke er.',
+        cite: null, links: [],
+    },
+};
+
 const STAT_AIMS = [
     {
         id: 'relations', label: '🤝 Bredere relasjoner', goal: 'Sørg for at alle samarbeider med flere – ingen blir isolert over tid.',
         tips: [
-            ['Sett elever ved siden av noen de aldri har sittet med. Bredde i samarbeid styrker tilhørighet.', 'Tilhørighet – Allen m.fl.'],
-            ['Følg ekstra med på elever med lav «sosial rekkevidde» – de havner ofte hos de samme.', 'Relasjonskartlegging – Harvard MCC'],
-            ['Kjør «Smart plassering» jevnlig for å rotere naboer i stedet for å la vanen styre.', 'Praksis']
+            ['Sett elever ved siden av noen de aldri har sittet med. Bredde i samarbeid styrker tilhørighet.', 'belonging'],
+            ['Følg ekstra med på elever med lav «sosial rekkevidde» – de havner ofte hos de samme.', 'mcc'],
+            ['Kjør «Smart plassering» jevnlig for å rotere naboer i stedet for å la vanen styre.', 'praksis']
         ],
         callout: st => { const nt = neverTogetherOf(st); const ex = nt.slice(0, 3).map(p => `${escapeHtml(p[0].name)} & ${escapeHtml(p[1].name)}`).join(', '); return `<strong>${nt.length}</strong> par har aldri sittet sammen.${ex ? ' F.eks. ' + ex + '.' : ''}`; }
     },
     {
         id: 'focus', label: '🎯 Mindre uro, mer fokus', goal: 'Reduser forstyrrelser og hold oppmerksomheten i timen.',
         tips: [
-            ['Plasser lett distraherte elever nærmere tavla og læreren.', 'Plassering & engasjement'],
-            ['Hold kjente «uro-par» fra hverandre med en «Må – ikke ved siden av»-regel.', 'Klasseledelse – Korpershoek 2016'],
-            ['Sosioemosjonelt rettede tiltak gir størst effekt på klassemiljøet.', 'Korpershoek 2016']
+            ['Plasser lett distraherte elever nærmere tavla og læreren.', 'seating'],
+            ['Hold kjente «uro-par» fra hverandre med en «Må – ikke ved siden av»-regel.', 'korpershoek'],
+            ['Sosioemosjonelt rettede tiltak gir størst effekt på klassemiljøet.', 'korpershoek']
         ],
         callout: st => { const ra = currentRuleAdherence(); return ra.total ? `Gjeldende kart oppfyller <strong>${ra.ok}/${ra.total}</strong> regler.` : 'Ingen regler satt enda – lag noen i «Regler».'; }
     },
     {
         id: 'hetero', label: '🧩 Blandede grupper', goal: 'Sett sammen grupper som er faglig og sosialt blandet.',
         tips: [
-            ['Heterogene grupper fremmer både læring og gode relasjoner.', 'Samarbeidslæring – Johnson & Johnson'],
-            ['Unngå at den samme «klikken» alltid havner sammen – bland dem opp.', 'Samarbeidslæring']
+            ['Heterogene grupper fremmer både læring og gode relasjoner.', 'johnson'],
+            ['Unngå at den samme «klikken» alltid havner sammen – bland dem opp.', 'johnson']
         ],
         callout: st => { const mp = mostPairedOf(st); return mp && mp.count > 1 ? `Oftest sammen: <strong>${escapeHtml(mp.pair[0].name)} & ${escapeHtml(mp.pair[1].name)}</strong> (${mp.count}×). Vurder å bryte opp vanen.` : 'Ingen tydelige faste par enda.'; }
     },
     {
         id: 'equity', label: '⚖️ Rettferdig plassering', goal: 'Spre tilgangen til de gode plassene foran.',
         tips: [
-            ['Roter hvem som sitter foran – de bakerste rekkene deltar og presterer ofte mindre.', 'Plassering & engasjement'],
-            ['Bruk «Foran/bak»-ønsker bevisst, men ikke la de samme alltid sitte bakerst.', 'Praksis']
+            ['Roter hvem som sitter foran – de bakerste rekkene deltar og presterer ofte mindre.', 'seating'],
+            ['Bruk «Foran/bak»-ønsker bevisst, men ikke la de samme alltid sitte bakerst.', 'praksis']
         ],
         callout: st => { const nf = neverFrontOf(st); return nf.length ? `<strong>${nf.length}</strong> elever har aldri sittet foran: ${nf.slice(0, 4).map(s => escapeHtml(s.name)).join(', ')}${nf.length > 4 ? ' …' : ''}.` : 'Tilgangen til de fremre plassene er godt spredt.'; }
     },
     {
         id: 'belonging', label: '💚 Tilhørighet & miljø', goal: 'Bygg et trygt klassemiljø der hver elev hører til.',
         tips: [
-            ['Tilhørighet henger sammen med motivasjon, atferd og læring.', 'Tilhørighet – metaanalyser'],
-            ['Sørg for at hver elev har minst én positiv voksenrelasjon på skolen.', 'Relasjonskartlegging – Harvard MCC'],
-            ['Gode lærer–elev-relasjoner løfter både engasjement og prestasjoner.', 'Roorda m.fl. 2011']
+            ['Tilhørighet henger sammen med motivasjon, atferd og læring.', 'belonging'],
+            ['Sørg for at hver elev har minst én positiv voksenrelasjon på skolen.', 'mcc'],
+            ['Gode lærer–elev-relasjoner løfter både engasjement og prestasjoner.', 'roorda']
         ],
         callout: st => { const iso = isolatesOf(st); return iso.length ? `<strong>${iso.length}</strong> elever ser ut til å samarbeide smalt – verdt å følge opp.` : 'Ingen elever peker seg ut som isolerte akkurat nå.'; }
     }
 ];
 
+/* The panel is re-rendered on every chip click, which would slam the Kilder
+ * section shut under the teacher each time. Remember whether it was open. */
+let statsSourcesOpen = false;
+
+function sourceTag(key) {
+    const s = STAT_SOURCES[key];
+    // A tip citing a source that no longer exists should say so rather than
+    // quietly render an empty label.
+    return s ? s.tag : '(ukjent kilde: ' + key + ')';
+}
+function renderSourceList() {
+    return Object.keys(STAT_SOURCES).map(key => {
+        const s = STAT_SOURCES[key];
+        const links = s.links.map(([label, url]) =>
+            `<a class="src-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)} ↗</a>`).join('');
+        return `<li class="src">
+            <span class="src-tag">${escapeHtml(s.tag)}</span>
+            <p class="src-what">${escapeHtml(s.what)}</p>
+            ${s.cite ? `<p class="src-cite">${escapeHtml(s.cite)}</p>` : ''}
+            ${links ? `<p class="src-links">${links}</p>` : ''}
+        </li>`;
+    }).join('');
+}
+
 function renderStatsAims(st) {
     const box = $('statsAims');
     const chips = STAT_AIMS.map(a => `<button class="aim ${a.id === statsAimId ? 'is-active' : ''}" data-aim="${a.id}" type="button">${a.label}</button>`).join('');
     const aim = STAT_AIMS.find(a => a.id === statsAimId) || STAT_AIMS[0];
-    const tips = aim.tips.map(([t, src]) => `<div class="tip"><div class="tip-text">${escapeHtml(t)}</div><span class="tip-src">${escapeHtml(src)}</span></div>`).join('');
+    const tips = aim.tips.map(([t, src]) => `<div class="tip"><div class="tip-text">${escapeHtml(t)}</div><span class="tip-src">${escapeHtml(sourceTag(src))}</span></div>`).join('');
     const callout = st.charts ? `<div class="callout">${aim.callout(st)}</div>` : '';
     box.innerHTML = `<div class="aim-list">${chips}</div><p class="aim-goal">${escapeHtml(aim.goal)}</p>${callout}${tips}
-        <p class="modal-hint" style="margin-top:14px">Rådene er forskningsbaserte – kilder i <strong>docs/research.md</strong>.</p>`;
+        <details class="sources"${statsSourcesOpen ? ' open' : ''}>
+            <summary>Kilder</summary>
+            <ul class="src-list">${renderSourceList()}</ul>
+            <p class="src-caveat">Merk: tallene som sirkulerer om bakerste rad stammer i hovedsak fra
+            sekundærkilder. Behandle dem som en pekepinn, ikke et funn.</p>
+        </details>`;
+    const det = box.querySelector('.sources');
+    det.addEventListener('toggle', () => { statsSourcesOpen = det.open; });
 }
 
 /* ------------------------------------------------------- class management   */
