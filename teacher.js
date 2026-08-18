@@ -1575,7 +1575,10 @@ function renderAdminConfig(reset) {
   advance.type = 'button'; advance.className = 'btn btn-ghost btn-tiny';
   advance.textContent = '↑ Rykk opp ett skoleår';
   advance.title = 'Øker alle kull-år med 1 – ved skolestart når elevene rykker opp et trinn.';
-  advance.addEventListener('click', () => {
+  advance.addEventListener('click', async () => {
+    if (!d.grades.some(g => Number.isInteger(g.gradYear))) { await uiAlert('Ingen kull-år er satt ennå. Bruk «Foreslå kull-år» først.'); return; }
+    if (!await uiConfirm('Rykke opp ett skoleår? Alle kull-år øker med 1 (elevene har rykket opp et trinn). Endringen lagres først når du trykker «Lagre skoleoppsett».',
+        { title: 'Rykk opp ett skoleår', okText: 'Rykk opp' })) return;
     d.grades.forEach(g => { if (Number.isInteger(g.gradYear)) g.gradYear += 1; });
     renderAdminConfig();
   });
