@@ -1498,10 +1498,6 @@ function currentConfigDraft() {
     electiveSubjects: ELECTIVE_SUBJECTS.slice(),
   };
 }
-function currentSchoolYearEnd() {
-  try { return Number(String(getSchoolYearBounds(new Date()).end || '').slice(0, 4)) || null; }
-  catch { return null; }
-}
 function schoolYearLabelFor(endYear) { return (endYear - 1) + '–' + endYear; }
 function configChip(text, onRemove) {
   const chip = document.createElement('span'); chip.className = 'admin-config-chip';
@@ -1559,30 +1555,18 @@ function renderAdminConfig(reset) {
   // Cohort helpers: suggest years from the current school year, or bump everyone
   // up one year at rollover. Both edit the draft; the admin still hits «Lagre».
   const gyTools = document.createElement('div'); gyTools.className = 'admin-config-gy-tools';
-  const suggest = document.createElement('button');
-  suggest.type = 'button'; suggest.className = 'btn btn-ghost btn-tiny';
-  suggest.textContent = 'Foreslå kull-år';
-  suggest.title = 'Fyll inn kull-år ut fra inneværende skoleår (øverste trinn går ut i år).';
-  suggest.addEventListener('click', () => {
-    const end = currentSchoolYearEnd();
-    const nums = d.grades.map(g => parseInt(g.label, 10)).filter(n => !isNaN(n));
-    const top = nums.length ? Math.max(...nums) : null;
-    if (!end || top == null) { uiAlert('Kunne ikke utlede trinn-nummer fra etikettene.'); return; }
-    d.grades.forEach(g => { const n = parseInt(g.label, 10); if (!isNaN(n)) g.gradYear = end + (top - n); });
-    renderAdminConfig();
-  });
   const advance = document.createElement('button');
   advance.type = 'button'; advance.className = 'btn btn-ghost btn-tiny';
   advance.textContent = '↑ Rykk opp ett skoleår';
   advance.title = 'Øker alle kull-år med 1 – ved skolestart når elevene rykker opp et trinn.';
   advance.addEventListener('click', async () => {
-    if (!d.grades.some(g => Number.isInteger(g.gradYear))) { await uiAlert('Ingen kull-år er satt ennå. Bruk «Foreslå kull-år» først.'); return; }
+    if (!d.grades.some(g => Number.isInteger(g.gradYear))) { await uiAlert('Ingen kull-år er satt ennå. Fyll inn kull-år per trinn først.'); return; }
     if (!await uiConfirm('Rykke opp ett skoleår? Alle kull-år øker med 1 (elevene har rykket opp et trinn). Endringen lagres først når du trykker «Lagre skoleoppsett».',
         { title: 'Rykk opp ett skoleår', okText: 'Rykk opp' })) return;
     d.grades.forEach(g => { if (Number.isInteger(g.gradYear)) g.gradYear += 1; });
     renderAdminConfig();
   });
-  gyTools.appendChild(suggest); gyTools.appendChild(advance);
+  gyTools.appendChild(advance);
   body.appendChild(gyTools);
 
   const ch = document.createElement('h3'); ch.className = 'admin-config-h'; ch.textContent = 'Fag (felles for alle)';
