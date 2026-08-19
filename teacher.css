@@ -154,8 +154,7 @@
 .hw-edit-row { display: flex; flex-direction: column; gap: 3px; }
 .hw-edit-rowhead { display: flex; align-items: center; gap: 6px; }
 .hw-edit-spacer { flex: 1; }
-.hw-edit-actions { display: none; align-items: center; gap: 2px; }
-.hw-edit-row:focus-within .hw-edit-actions { display: flex; }
+.hw-edit-actions { display: flex; align-items: center; gap: 2px; }
 .hw-day {
   flex-shrink: 0; width: 96px; padding: 5px 6px; font-family: var(--font); font-size: 12px;
   border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); cursor: pointer;
