@@ -13,6 +13,8 @@ const VURD_CACHE_KEY = 'up_vurd';
 const VURD_TS_KEY    = 'up_vurd_ts';
 const HEND_CACHE_KEY = 'up_hend';
 const HEND_TS_KEY    = 'up_hend_ts';
+const TB_CACHE_KEY   = 'up_timebank';        // { cls, seconds, period } – class time-bank balance
+const TB_TS_KEY      = 'up_timebank_ts';
 const DONE_KEY       = 'up_done';            // { elementId: true } – locally checked-off homework
 const ALL_CACHE_KEY  = 'up_all';             // all plan elements (for fag-progresjon)
 const ALL_TS_KEY     = 'up_all_ts';
@@ -168,6 +170,7 @@ let previewWeekData = [];               // next week's elements (Friday "day bef
 let previewWeekKey  = null;             // "class|week" the preview data is for / in flight
 let vurdData      = [];                 // all assessments (filtered client-side)
 let hendData      = [];                 // all calendar events (filtered client-side by class/date)
+let timebankData  = null;               // { cls, seconds, period } – this class's time-bank balance
 let lastFocusedEl = null;
 let schoolDays    = loadCachedSchoolDays() || {}; // ISO date -> { type, summaries }
 
@@ -245,6 +248,7 @@ function setupListeners() {
     // added vurdering shows up without waiting for the cache to expire.
     loadAssessments({ skipCache: true });
     loadHendelser({ skipCache: true });
+    loadTimebank({ skipCache: true });
   });
 
   // Theme lives in the profile modal now (segmented Auto/Lyst/Mørkt, live).
@@ -420,6 +424,7 @@ async function loadWeek(opts = {}) {
   // Assessments + events caches (small datasets, fetched once per hour).
   loadAssessments({ skipCache });
   loadHendelser({ skipCache });
+  loadTimebank({ skipCache });
 
   if (!skipCache) {
     const cached = getCachedWeek(key, week);
@@ -531,6 +536,59 @@ async function loadHendelser(opts = {}) {
     localStorage.setItem(HEND_TS_KEY, String(Date.now()));
     render();
   } catch { /* keep cached */ }
+}
+
+// The class's shared time-bank balance (banked leftover lesson time). Public,
+// balance-only read (never the log). Scoped to the real class — variant students
+// see their base class's bank. Cached briefly; a change re-renders the dashboard.
+async function loadTimebank(opts = {}) {
+  const { skipCache = false } = opts;
+  const cls = selectedClass;
+  if (!cls) { timebankData = null; return; }
+  if (!skipCache) {
+    const ts = localStorage.getItem(TB_TS_KEY);
+    let cached = null;
+    try { cached = JSON.parse(localStorage.getItem(TB_CACHE_KEY)); } catch {}
+    if (ts && Date.now() - Number(ts) < CACHE_TTL && cached && cached.cls === cls) {
+      timebankData = cached; return;
+    }
+  }
+  try {
+    const res = await fetch(`${SCRIPT_URL}?action=timebank_public&class=${encodeURIComponent(cls)}`);
+    if (!res.ok) return;
+    const d = await res.json();
+    if (!d || d.error) return;
+    const next = { cls, seconds: Math.max(0, Number(d.seconds) || 0), period: Number(d.period) || 45 };
+    const changed = !timebankData || timebankData.cls !== cls || timebankData.seconds !== next.seconds;
+    timebankData = next;
+    localStorage.setItem(TB_CACHE_KEY, JSON.stringify(next));
+    localStorage.setItem(TB_TS_KEY, String(Date.now()));
+    if (changed && currentTab === 'hjem') renderDashboard();
+  } catch { /* keep cached */ }
+}
+
+// "1 t 30 min" / "45 min" – mirrors timebank.js fmtHuman (seconds → t/min).
+function formatTbTime(s) {
+  s = Math.max(0, Math.round(s));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  const parts = [];
+  if (h) parts.push(h + ' t');
+  if (m) parts.push(m + ' min');
+  return parts.length ? parts.join(' ') : (s ? '<1 min' : '0 min');
+}
+
+// The Min uke time-bank card. Null when there is no bank or it is empty (an empty
+// bank is not motivating, and would just add clutter to the landing page).
+function buildTimebankCard() {
+  if (!timebankData || timebankData.cls !== selectedClass) return null;
+  const secs = timebankData.seconds;
+  if (secs <= 0) return null;
+  const card = document.createElement('div');
+  card.className = 'dash-timebank';
+  card.innerHTML = `<span class="tb-emoji" aria-hidden="true">🐷</span>
+    <span class="tb-text"><span class="tb-label">Klassens tidsbank</span>
+    <strong class="tb-amount">${formatTbTime(secs)} spart</strong></span>`;
+  return card;
 }
 
 // The ISO dates a hendelse covers (single day when dateTo empty), capped.
@@ -935,6 +993,9 @@ function renderDashboard() {
   wk.textContent = 'Uke ' + getWeekNumber(weekMonday) + (thisWeek ? ' – denne uka' : '');
   header.appendChild(h); header.appendChild(wk);
   view.appendChild(header);
+
+  const tb = buildTimebankCard();
+  if (tb) view.appendChild(tb);
 
   if (planDataKey !== weekKey()) {   // still loading this week's data
     const p = document.createElement('p'); p.className = 'dash-loading'; p.textContent = 'Laster …';
