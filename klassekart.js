@@ -832,7 +832,10 @@ function renderSyncShare(box) {
     if (!d) { box.innerHTML = '<p class="modal-hint">Henter…</p>'; return; }
 
     const members = d.members.map(m => {
-        const isMe = m.method === 'self' && m.wrappedBy === m.id;
+        // "deg" = the logged-in teacher (d.me from the server). Fall back to the old
+        // owner heuristic only if an older server didn't send it, so this is safe to
+        // ship before the backend deploy.
+        const isMe = d.me ? (m.id === d.me) : (m.method === 'self' && m.wrappedBy === m.id);
         const rm = (d.members.length > 1 && !isMe)
             ? `<button class="btn btn-sm" data-syncact="revoke" data-id="${m.id}" type="button">Fjern</button>` : '';
         return `<div class="sync-row"><span class="sync-name">${escapeHtml(m.name)}</span>
