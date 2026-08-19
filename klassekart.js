@@ -518,7 +518,9 @@ async function resolvePending() {
     if (!syncUnlocked() || !kkPriv) return 0;
     let done = 0;
     try {
-        const { toComplete } = await kkGet('kk_pending');
+        const { toComplete, forMe } = await kkGet('kk_pending');
+        syncMyInvites = Array.isArray(forMe) ? forMe : [];   // refresh my own pending invites too
+        updateSetupInvite();
         for (const inv of toComplete || []) {
             const cls = store.classes[inv.group];
             if (!cls) continue;
@@ -602,6 +604,7 @@ let syncNewSecret = null;   // held only while the "write this down" step is ope
 let syncHasIdentity = null; // server says an identity exists (null = not asked yet)
 let syncShareGroup = null;  // group whose sharing panel is open
 let syncShareData = null;   // { members, pending } for that group
+let syncMyInvites = null;   // groups a colleague shared with me but I can't open yet (kk_pending.forMe)
 
 /* The local `kk_sync_on` flag says nothing about a device that has never been used
  * before — which is exactly the case a teacher hits when they open Klassekartografen
@@ -628,6 +631,44 @@ function updateSetupFetch() {
     const show = !!syncHasIdentity && !syncUnlocked();
     box.classList.toggle('hidden', !show);
     if (or) or.classList.toggle('hidden', !show);
+}
+
+/* Pending invites addressed to ME (kk_pending.forMe): groups a colleague shared
+ * that I can't open yet. Works before sync is on, so an invited teacher who has
+ * never started is met with a way in rather than "create a group first". */
+async function fetchMyInvites() {
+    try { const r = await kkGet('kk_pending'); syncMyInvites = Array.isArray(r.forMe) ? r.forMe : []; }
+    catch (e) { if (syncMyInvites === null) syncMyInvites = []; }
+    updateSetupInvite();
+}
+function updateSetupInvite() {
+    const box = $('setupInvite'); if (!box) return;
+    const invites = syncMyInvites || [];
+    if (!invites.length) { box.classList.add('hidden'); return; }
+    box.classList.remove('hidden');
+    const first = invites[0];
+    const by = first.byName || 'En kollega';
+    const label = first.label || 'et klassekart';
+    const more = invites.length > 1 ? ' (+ ' + (invites.length - 1) + ' til)' : '';
+    const title = $('setupInviteTitle'), msg = $('setupInviteMsg'), btn = $('setupInviteBtn');
+    if (!syncUnlocked()) {
+        // Not started / locked: route them into turning sync on to get their key.
+        title.textContent = 'Du er invitert';
+        msg.textContent = by + ' har delt «' + label + '»' + more + ' med deg. Slå på synkronisering og få din egen kode for å bli med – du trenger ikke ' + by + ' sin kode.';
+        btn.textContent = 'Bli med';
+        btn.dataset.mode = 'join';
+    } else {
+        // Key set up, but the wrap only completes on the inviter's next sync.
+        title.textContent = 'Venter på nøkkel';
+        msg.textContent = 'Du er invitert til «' + label + '»' + more + '. Tilgangen kommer neste gang ' + by + ' åpner Klassekartografen. Prøv «Sjekk på nytt» litt senere.';
+        btn.textContent = 'Sjekk på nytt';
+        btn.dataset.mode = 'recheck';
+    }
+}
+async function recheckInvites() {
+    try { await syncPullAll(); } catch (e) { /* offline – just refresh the box */ }
+    await fetchMyInvites();
+    enterPulledCharts();
 }
 
 function openSyncModal() {
@@ -2060,6 +2101,7 @@ function showSetup() {
     // Coming back from the board is a normal way to reach this screen, so the
     // fetch panel has to be decided here too — not only on first load.
     probeIdentity().then(updateSetupFetch);
+    fetchMyInvites();   // surface any group a colleague shared with me
 }
 
 /* -------------------------------------------- class codes (school config)   */
@@ -3689,6 +3731,10 @@ function wireSetup() {
     $('setupImportBtn').addEventListener('click', () => $('importFile').click());
     $('setupSyncBtn').addEventListener('click', openSyncModal);
     $('setupFetchBtn').addEventListener('click', openSyncModal);
+    $('setupInviteBtn').addEventListener('click', () => {
+        if ($('setupInviteBtn').dataset.mode === 'recheck') recheckInvites();
+        else openSyncModal();   // route into turning sync on to get their own key
+    });
 
     $('setupGoBtn').addEventListener('click', () => {
         const list = parseNames(names.value);

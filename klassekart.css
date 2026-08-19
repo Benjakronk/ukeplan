@@ -1373,6 +1373,8 @@ body.present .zoom-ctrl { display: none; }
 .setup-fetch-main { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 2px; }
 .setup-fetch-main strong { font-size: 1.02rem; }
 .setup-fetch-main span { color: var(--ink-soft); font-size: 0.9rem; }
+/* An invitation is the thing they came for – accent it apart from «fetch mine». */
+.setup-invite { border: 2px solid var(--accent); }
 
 .setup-or {
     display: flex; align-items: center; gap: 12px;

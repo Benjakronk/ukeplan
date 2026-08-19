@@ -48,6 +48,17 @@
             <p class="setup-tagline">Lim inn navn, velg et oppsett, og få et ferdig kart på sekunder.</p>
         </div>
 
+        <!-- A colleague has shared a group with this teacher. Shown even before
+             they have set up sync, so an invited teacher joins the existing group
+             instead of creating one. `forMe` from kk_pending drives it. -->
+        <div class="setup-fetch setup-invite hidden" id="setupInvite">
+            <div class="setup-fetch-main">
+                <strong id="setupInviteTitle">Du er invitert</strong>
+                <span id="setupInviteMsg"></span>
+            </div>
+            <button class="btn btn-primary" id="setupInviteBtn" type="button">Bli med</button>
+        </div>
+
         <!-- Shown only when the server already knows this teacher, i.e. they have
              charts waiting. Then this is what they came for, not group creation. -->
         <div class="setup-fetch hidden" id="setupFetch">
