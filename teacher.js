@@ -6241,7 +6241,8 @@ function hjemSubjectsFor(cls) {
 function hjemStatusFrom(subs, has) {
   const rows = subs.map(s => ({ subject: s, tema: has(s, 'læringsmål'), ressurs: has(s, 'ressurs'), lekse: has(s, 'lekse') }));
   const pins = pinnedSubjects();
-  const score = r => (r.tema ? (r.lekse ? 0 : 1) : 2);
+  // Most-incomplete first: needs tema → needs lekser → needs ressurs → ferdig.
+  const score = r => (!r.tema ? 3 : !r.lekse ? 2 : !r.ressurs ? 1 : 0);
   rows.sort((a, b) => {
     const pa = pins.includes(a.subject), pb = pins.includes(b.subject);
     if (pa !== pb) return pa ? -1 : 1;       // pinned subjects float to the top
@@ -6251,7 +6252,8 @@ function hjemStatusFrom(subs, has) {
     rows,
     total: subs.length,
     temaDone: rows.filter(r => r.tema).length,
-    allDone: subs.length > 0 && rows.every(r => r.tema && r.lekse),
+    // «ferdig» = all three present; the card's "Alt klart" now requires ressurs too.
+    allDone: subs.length > 0 && rows.every(r => r.tema && r.lekse && r.ressurs),
   };
 }
 function hjemClassStatus(cls) {
