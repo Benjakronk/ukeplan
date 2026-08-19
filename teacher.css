@@ -155,13 +155,13 @@
   border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); cursor: pointer;
 }
 .hw-edit-text { flex: 1; }
-.hw-edit-del, .hw-edit-copy {
+.hw-edit-del, .hw-edit-copy, .hw-edit-open {
   flex-shrink: 0; width: 24px; height: 24px; font-size: 15px; line-height: 1;
   background: transparent; border: none; color: var(--text-muted); cursor: pointer; border-radius: 4px;
 }
 .hw-edit-del:hover { background: var(--hover-soft); color: var(--danger); }
-.hw-edit-copy { font-size: 13px; }
-.hw-edit-copy:hover { background: var(--hover-soft); color: var(--primary); }
+.hw-edit-copy, .hw-edit-open { font-size: 13px; }
+.hw-edit-copy:hover, .hw-edit-open:hover { background: var(--hover-soft); color: var(--primary); }
 .hw-edit-add {
   margin-top: 4px; font-family: var(--font); font-size: 12px; font-weight: 600;
   color: var(--primary); background: transparent; border: none; cursor: pointer; padding: 2px 0;
@@ -396,7 +396,7 @@
   }
   .no-print, .controls, .toolbar, .tabs, .pane-head .btn, .pane-head .view-toggle,
   .vurd-filter-summary, .th-caret, .teacher-header-actions,
-  .general-del, .vurd-hint, .hw-edit-del, .hw-edit-copy, .hw-edit-add, .week-nav-btn, .class-pill-change,
+  .general-del, .vurd-hint, .hw-edit-del, .hw-edit-copy, .hw-edit-open, .hw-edit-add, .week-nav-btn, .class-pill-change,
   .board-filter-note, .row-copy-btn { display: none !important; }
   body { background: #fff; }
   .page { max-width: 100%; padding: 0; }

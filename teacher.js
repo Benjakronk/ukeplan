@@ -3997,6 +3997,29 @@ function buildHomeworkRow(subject, el, opts = {}) {
 
   row.appendChild(daySel);
   row.appendChild(ed);
+  // Open this lekse in the modal's bigger field (see the rich-cell ✎). Hands the
+  // current text + day off to the modal and suppresses the inline blur-commit.
+  const editBtn = document.createElement('button');
+  editBtn.type = 'button';
+  editBtn.className = 'hw-edit-open';
+  editBtn.textContent = '✎';
+  editBtn.title = 'Rediger i et større vindu';
+  editBtn.addEventListener('mousedown', e => e.preventDefault());
+  editBtn.addEventListener('click', () => {
+    const id = ed.dataset.id;
+    if (!id) { ed.blur(); showToast('Lagret. Trykk «✎» igjen for å redigere i et større vindu.'); return; }
+    const clean = sanitizeHtml(ed.innerHTML);
+    ed._original = clean;                       // modal owns it now → skip the blur-commit
+    const existing = findLoadedElement(id);
+    const el = existing
+      ? Object.assign({}, existing, { description: clean, day: daySel.value })
+      : { id, type: 'lekse', subject, description: clean, day: daySel.value,
+          classes: writeClassesFor(subject, ed.dataset.cls || planKey()),
+          week: ed.dataset.week || dateToWeek(weekMonday),
+          weekTo: ed.dataset.week || dateToWeek(weekMonday), teacher: teacherName };
+    openElementEdit(el);
+  });
+  row.appendChild(editBtn);
   // Copy this subject's lekser to the teacher's other classes (core only; electives
   // are year-wide). Kept off the modal-edited (variant) board.
   if (!isElective(subject) && !opts.cls) {
