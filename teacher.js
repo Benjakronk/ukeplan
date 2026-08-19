@@ -6239,7 +6239,7 @@ function hjemSubjectsFor(cls) {
 // Build a status object from a subject list + a has(subject,type) predicate:
 // pinned subjects first, then most-incomplete first (needs tema → lekser → done).
 function hjemStatusFrom(subs, has) {
-  const rows = subs.map(s => ({ subject: s, tema: has(s, 'læringsmål'), lekse: has(s, 'lekse') }));
+  const rows = subs.map(s => ({ subject: s, tema: has(s, 'læringsmål'), ressurs: has(s, 'ressurs'), lekse: has(s, 'lekse') }));
   const pins = pinnedSubjects();
   const score = r => (r.tema ? (r.lekse ? 0 : 1) : 2);
   rows.sort((a, b) => {
@@ -6352,6 +6352,10 @@ function renderHjem() {
   gjHead.className = 'hjem-section-title';
   gjHead.textContent = 'Gjøremål';
   pane.appendChild(gjHead);
+  const gjTip = document.createElement('p');
+  gjTip.className = 'hjem-section-tip';
+  gjTip.textContent = 'Tips: klikk på et fag for å gå rett til det i ukeplanen.';
+  pane.appendChild(gjTip);
 
   const grid = document.createElement('div');
   grid.className = 'hjem-grid';
@@ -6447,29 +6451,31 @@ function buildHjemChecklist(rows, gotoClass) {
     spin.title = sPinned ? 'Festet øverst i kortet – klikk for å løsne' : 'Fest faget øverst i kortet';
     spin.setAttribute('aria-label', spin.title);
     spin.addEventListener('click', () => toggleSubjectPin(r.subject));
-    const nm = document.createElement('span');
+    // The subject name is the jump-to-board affordance (tip under the section head).
+    const nm = document.createElement('button');
+    nm.type = 'button';
     nm.className = 'hjem-subj-name' + (r.tema ? ' is-done' : '');
     nm.textContent = r.subject;
+    nm.title = 'Gå til ' + r.subject + ' i ukeplanen';
+    nm.addEventListener('click', () => hjemJumpToBoard(gotoClass, r.subject));
     const status = document.createElement('div');
     status.className = 'hjem-subj-status';
-    if (!r.tema) {
+    const addBtn = (cls, label, type) => {
       const b = document.createElement('button');
-      b.type = 'button'; b.className = 'hjem-task hjem-task-tema';
-      b.textContent = 'Fyll inn tema';
-      b.addEventListener('click', () => openAddModal({ type: 'læringsmål', subject: r.subject, classes: [gotoClass], weekFrom: weekMonday }));
+      b.type = 'button'; b.className = 'hjem-task ' + cls;
+      b.textContent = label;
+      b.addEventListener('click', () => openAddModal({ type, subject: r.subject, classes: [gotoClass], weekFrom: weekMonday }));
       status.appendChild(b);
+    };
+    if (!r.tema) {
+      addBtn('hjem-task-tema', 'Fyll inn tema', 'læringsmål');
     } else {
       const tag = document.createElement('span');
       tag.className = 'hjem-done-tag';
       tag.textContent = '✓ tema';
       status.appendChild(tag);
-      if (!r.lekse) {
-        const b = document.createElement('button');
-        b.type = 'button'; b.className = 'hjem-task hjem-task-lekse';
-        b.textContent = '+ lekser';
-        b.addEventListener('click', () => openAddModal({ type: 'lekse', subject: r.subject, classes: [gotoClass], weekFrom: weekMonday }));
-        status.appendChild(b);
-      }
+      if (!r.lekse) addBtn('hjem-task-lekse', '+ lekser', 'lekse');
+      if (!r.ressurs) addBtn('hjem-task-ressurs', '+ ressurs', 'ressurs');
     }
     row.appendChild(spin); row.appendChild(nm); row.appendChild(status);
     list.appendChild(row);
@@ -6542,6 +6548,33 @@ function buildValgfagCard(group, week) {
   card.appendChild(buildHjemProgress(st.temaDone, st.total));
   card.appendChild(st.allDone ? hjemAllClear() : buildHjemChecklist(st.rows, group.classes[0]));
   return card;
+}
+
+// Jump from a Hjem subject name to that subject's row on the Ukeplan board (best
+// effort). Switches to the class + Ukeplan tab, then scrolls the row into view and
+// flashes it so the teacher sees where they landed.
+function hjemJumpToBoard(cls, subject) {
+  if (cls !== selectedClass || variantCode) {
+    selectedClass = cls;
+    variantCode = null;
+    localStorage.setItem(CLASS_KEY, cls);
+    localStorage.removeItem(VARIANT_KEY);
+    saveProfileToServer();
+    planData = [];
+    updateClassLabel();
+  }
+  setTeacherTab('ukeplan');
+  loadData();
+  setTimeout(() => {
+    let row = null;
+    document.querySelectorAll('#board tr[data-subject]').forEach(r => { if (r.dataset.subject === subject) row = r; });
+    if (!row) return;
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    row.classList.add('board-row-flash');
+    setTimeout(() => row.classList.remove('board-row-flash'), 1600);
+    const field = row.querySelector('.rich-field');
+    if (field) field.focus();
+  }, 350);
 }
 
 // ─── Kontaktlærer tab (class-workload overview for the team) ──

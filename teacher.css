@@ -772,6 +772,7 @@
 .hjem-intern-head { font-size: 13px; font-weight: 700; color: var(--primary-dark); letter-spacing: .02em; }
 .hjem-intern-list { display: flex; flex-direction: column; gap: 6px; }
 .hjem-section-title { font-size: 15px; font-weight: 700; color: var(--text); margin: 6px 0 2px; }
+.hjem-section-tip { font-size: 12px; color: var(--text-muted); margin: 0 0 8px; }
 .hjem-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
 .hjem-card {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card);
@@ -788,12 +789,19 @@
 .hjem-checklist { display: flex; flex-direction: column; }
 .hjem-subj {
   display: flex; align-items: center; justify-content: flex-start; gap: 8px;
-  padding: 7px 0; border-top: 1px solid var(--border);
+  padding: 7px 0; border-top: 1px solid var(--border); flex-wrap: wrap;
 }
 .hjem-subj:first-child { border-top: none; }
-.hjem-subj-name { font-size: 14px; font-weight: 600; color: var(--text); }
+/* The subject name is a link-like button that jumps to the Ukeplan board row. */
+.hjem-subj-name {
+  appearance: none; background: none; border: none; padding: 0; cursor: pointer;
+  font-family: var(--font); font-size: 14px; font-weight: 600; color: var(--text);
+  text-align: left; border-radius: 3px;
+}
+.hjem-subj-name:hover { color: var(--primary); text-decoration: underline; }
 .hjem-subj-name.is-done { color: var(--text-muted); font-weight: 500; }
-.hjem-subj-status { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.hjem-subj-name.is-done:hover { color: var(--primary); }
+.hjem-subj-status { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
 /* Pin toggle: faded/greyed when idle, full colour when pinned. */
 .hjem-pin {
   margin-left: auto; appearance: none; background: transparent; border: none; cursor: pointer;
@@ -815,6 +823,12 @@
 /* Lekser = secondary: a light dashed outline, clearly a lesser task. */
 .hjem-task-lekse { background: transparent; color: var(--primary); border: 1px dashed var(--border); }
 .hjem-task-lekse:hover { border-color: var(--primary); background: var(--hover-soft); }
+/* Ressurs = optional extra: same dashed outline, muted so it reads as tertiary. */
+.hjem-task-ressurs { background: transparent; color: var(--text-muted); border: 1px dashed var(--border); }
+.hjem-task-ressurs:hover { border-color: var(--primary); color: var(--primary); background: var(--hover-soft); }
+/* Brief highlight on the Ukeplan row a Hjem subject-name click jumped to. */
+@keyframes boardRowFlash { 0% { background: var(--primary-light); } 100% { background: transparent; } }
+.board-row-flash > * { animation: boardRowFlash 1.6s ease-out; }
 .hjem-allclear { font-size: 14px; font-weight: 600; color: var(--success); }
 .hjem-vurd { display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--border); padding-top: 10px; }
 .hjem-vurd-line { font-size: 12.5px; color: var(--text-muted); }
