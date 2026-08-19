@@ -6430,8 +6430,9 @@ function hjemAllClear() {
   return done;
 }
 // The per-subject checklist (class cards + the valgfag card). `gotoClass` is the
-// class the fill-buttons deep-link to (a representative year class for valgfag,
-// where the write is year-scoped). Each row carries a subject-pin toggle.
+// class a fill-button targets — passed to the «Legg til» modal as its class (a
+// representative year class for valgfag, where the modal picks the year and the
+// write is year-scoped). Each row carries a subject-pin toggle.
 function buildHjemChecklist(rows, gotoClass) {
   const list = document.createElement('div');
   list.className = 'hjem-checklist';
@@ -6455,7 +6456,7 @@ function buildHjemChecklist(rows, gotoClass) {
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'hjem-task hjem-task-tema';
       b.textContent = 'Fyll inn tema';
-      b.addEventListener('click', () => hjemGoto(gotoClass, r.subject, 'læringsmål'));
+      b.addEventListener('click', () => openAddModal({ type: 'læringsmål', subject: r.subject, classes: [gotoClass], weekFrom: weekMonday }));
       status.appendChild(b);
     } else {
       const tag = document.createElement('span');
@@ -6466,7 +6467,7 @@ function buildHjemChecklist(rows, gotoClass) {
         const b = document.createElement('button');
         b.type = 'button'; b.className = 'hjem-task hjem-task-lekse';
         b.textContent = '+ lekser';
-        b.addEventListener('click', () => hjemGoto(gotoClass, r.subject, 'lekse'));
+        b.addEventListener('click', () => openAddModal({ type: 'lekse', subject: r.subject, classes: [gotoClass], weekFrom: weekMonday }));
         status.appendChild(b);
       }
     }
@@ -6541,30 +6542,6 @@ function buildValgfagCard(group, week) {
   card.appendChild(buildHjemProgress(st.temaDone, st.total));
   card.appendChild(st.allDone ? hjemAllClear() : buildHjemChecklist(st.rows, group.classes[0]));
   return card;
-}
-
-// Deep-link from a dashboard action to that class's board cell (best effort).
-function hjemGoto(cls, subject, type) {
-  if (cls !== selectedClass || variantCode) {
-    selectedClass = cls;
-    variantCode = null;
-    localStorage.setItem(CLASS_KEY, cls);
-    localStorage.removeItem(VARIANT_KEY);
-    saveProfileToServer();
-    planData = [];
-    updateClassLabel();
-  }
-  setTeacherTab('ukeplan');
-  loadData();
-  setTimeout(() => {
-    let row = null;
-    document.querySelectorAll('#board tr[data-subject]').forEach(r => { if (r.dataset.subject === subject) row = r; });
-    if (!row) return;
-    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    let field = null;
-    row.querySelectorAll('.rich-field').forEach(f => { if (f.dataset.type === type) field = f; });
-    (field || row.querySelector('.rich-field'))?.focus();
-  }, 350);
 }
 
 // ─── Kontaktlærer tab (class-workload overview for the team) ──
