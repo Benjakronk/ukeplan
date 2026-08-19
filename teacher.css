@@ -174,10 +174,12 @@
 .hw-edit-add:hover { text-decoration: underline; }
 
 /* ── Add modal extras ──────────────────────────────────────── */
-.add-modal { width: 520px; display: flex; flex-direction: column; }
+.add-modal { width: 640px; max-height: 92vh; display: flex; flex-direction: column; }
 /* Fixed-height scrollable body so collapsing/expanding the Type & Klasse(r)
-   sections scrolls inside it instead of resizing the modal. */
-.add-modal-body { height: 60vh; overflow-y: auto; padding-right: 6px; margin-right: -6px; }
+   sections scrolls inside it instead of resizing the modal. Roomy by default so
+   everything fits comfortably; the calc() caps it on short screens so the header +
+   actions still fit inside the modal's 92vh (no double scrollbar). */
+.add-modal-body { height: min(74vh, calc(92vh - 150px)); overflow-y: auto; padding-right: 6px; margin-right: -6px; }
 .form-row { margin-bottom: 16px; }
 .form-label { display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; }
 .desc-input { width: 100%; min-height: 110px; padding: 10px 12px; resize: vertical; font-family: var(--font); font-size: 14px; line-height: 1.5; }
