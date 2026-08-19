@@ -605,6 +605,8 @@ let syncHasIdentity = null; // server says an identity exists (null = not asked 
 let syncShareGroup = null;  // group whose sharing panel is open
 let syncShareData = null;   // { members, pending } for that group
 let syncMyInvites = null;   // groups a colleague shared with me but I can't open yet (kk_pending.forMe)
+let syncConfirmSecret = false;   // true while the "type the sentence" acknowledgement step is open
+const SYNC_CONFIRM_PHRASE = 'Jeg har kopiert og lagret koden, og skjønner at den aldri vil vises her igjen. Hvis jeg mister den, er jeg låst ute.';
 
 /* The local `kk_sync_on` flag says nothing about a device that has never been used
  * before — which is exactly the case a teacher hits when they open Klassekartografen
@@ -644,7 +646,7 @@ async function fetchMyInvites() {
 function updateSetupInvite() {
     const box = $('setupInvite'); if (!box) return;
     const invites = syncMyInvites || [];
-    if (!invites.length) { box.classList.add('hidden'); return; }
+    if (!invites.length) { box.classList.add('hidden'); maybePollForInvites(); return; }
     box.classList.remove('hidden');
     const first = invites[0];
     const by = first.byName || 'En kollega';
@@ -664,11 +666,41 @@ function updateSetupInvite() {
         btn.textContent = 'Sjekk på nytt';
         btn.dataset.mode = 'recheck';
     }
+    maybePollForInvites();
 }
 async function recheckInvites() {
     try { await syncPullAll(); } catch (e) { /* offline – just refresh the box */ }
     await fetchMyInvites();
     enterPulledCharts();
+}
+
+/* Auto-enter: while waiting for an invite's key, poll so the group opens itself
+ * the moment the inviter's next sync completes the wrap – no "Sjekk på nytt". */
+let invitePollTimer = null;
+function maybePollForInvites() {
+    const setup = $('setup');
+    const waiting = syncUnlocked() && setup && !setup.classList.contains('hidden')
+        && document.visibilityState === 'visible' && (syncMyInvites || []).length > 0;
+    if (waiting && !invitePollTimer) invitePollTimer = setInterval(pollInviteTick, 15000);
+    else if (!waiting && invitePollTimer) { clearInterval(invitePollTimer); invitePollTimer = null; }
+}
+async function pollInviteTick() {
+    const waitingIds = (syncMyInvites || []).map(x => x.group);
+    try { await syncPullAll(); } catch (e) { return; }   // refreshes syncMyInvites via resolvePending
+    const landed = waitingIds.find(id => store && store.classes && store.classes[id]);
+    if (landed) enterInvitedGroup(landed);
+    else maybePollForInvites();
+}
+function enterInvitedGroup(id) {
+    if (!store.classes[id]) return;
+    if (invitePollTimer) { clearInterval(invitePollTimer); invitePollTimer = null; }
+    store.activeClassId = id;
+    state = store.classes[id];
+    saveQuiet();
+    if ($('app').classList.contains('hidden')) showApp();
+    render();
+    updateSetupInvite();
+    toast('Du er med i «' + (store.classes[id].name || 'gruppa') + '» nå', 'ok');
 }
 
 function openSyncModal() {
@@ -698,6 +730,23 @@ function renderSyncBody() {
     if (!box) return;
 
     if (syncShareGroup) { renderSyncShare(box); return; }
+
+    if (syncNewSecret && syncConfirmSecret) {
+        // Force an explicit, typed acknowledgement before the code is thrown away.
+        box.innerHTML = `
+            <p class="modal-hint">Siste sjekk. Skriv setningen under <strong>nøyaktig</strong> for å bekrefte at koden er trygt lagret:</p>
+            <p class="sync-confirm-phrase">${escapeHtml(SYNC_CONFIRM_PHRASE)}</p>
+            <textarea id="syncConfirmInput" class="sync-confirm-input" rows="3" placeholder="Skriv setningen her…" autocomplete="off" autocapitalize="sentences"></textarea>
+            <div class="sync-actions">
+                <button class="btn" data-syncact="backToCode" type="button">← Se koden igjen</button>
+                <button class="btn btn-primary" data-syncact="confirmSaved" id="syncConfirmBtn" type="button" disabled>Bekreft</button>
+            </div>`;
+        const inp = $('syncConfirmInput'), btn = $('syncConfirmBtn');
+        const norm = s => String(s).toLowerCase().replace(/\s+/g, ' ').trim().replace(/[.\s]+$/, '');
+        inp.addEventListener('input', () => { btn.disabled = norm(inp.value) !== norm(SYNC_CONFIRM_PHRASE); });
+        setTimeout(() => inp.focus(), 60);
+        return;
+    }
 
     if (syncNewSecret) {
         box.innerHTML = `
@@ -843,8 +892,10 @@ async function syncAction(act, el) {
             catch (e) { toast('Kunne ikke kopiere - skriv den ned', 'err'); }
             return;
         }
-        if (act === 'savedIt') {
-            syncNewSecret = null;
+        if (act === 'savedIt') { syncConfirmSecret = true; renderSyncBody(); return; }
+        if (act === 'backToCode') { syncConfirmSecret = false; renderSyncBody(); return; }
+        if (act === 'confirmSaved') {
+            syncNewSecret = null; syncConfirmSecret = false;
             const r = await syncPullAll();
             toast(`Synk slått på — ${r.pushed || 0} gruppe(r) lastet opp`, 'ok');
             renderSyncBody(); updateSyncBadge(); return;
@@ -3734,6 +3785,16 @@ function wireSetup() {
     $('setupInviteBtn').addEventListener('click', () => {
         if ($('setupInviteBtn').dataset.mode === 'recheck') recheckInvites();
         else openSyncModal();   // route into turning sync on to get their own key
+    });
+    // Returning to the tab while waiting for an invite: check right away, then let
+    // maybePollForInvites re-arm the interval for the current visibility state.
+    document.addEventListener('visibilitychange', () => {
+        const setup = $('setup');
+        if (document.visibilityState === 'visible' && syncUnlocked()
+            && (syncMyInvites || []).length && setup && !setup.classList.contains('hidden')) {
+            pollInviteTick();
+        }
+        maybePollForInvites();
     });
 
     $('setupGoBtn').addEventListener('click', () => {

@@ -1323,6 +1323,19 @@ body.present .zoom-ctrl { display: none; }
     background: var(--surface); color: var(--ink);
 }
 .sync-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--kk-focus-ring); }
+/* Typed acknowledgement: the phrase can't be selected, so it must be typed. */
+.sync-confirm-phrase {
+    font-weight: 600; padding: 10px 12px; margin: 0 0 10px; border-radius: var(--radius-sm);
+    background: var(--primary-soft); color: var(--ink);
+    user-select: none; -webkit-user-select: none;
+}
+.sync-confirm-input {
+    width: 100%; box-sizing: border-box; padding: 10px 12px; margin-bottom: 8px;
+    font-family: inherit; font-size: 0.95rem; line-height: 1.4; resize: vertical;
+    border: 1px solid var(--line); border-radius: var(--radius-sm);
+    background: var(--surface); color: var(--ink);
+}
+.sync-confirm-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--kk-focus-ring); }
 .sync-actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; margin-top: 16px; }
 .sync-list { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
 .sync-row {
