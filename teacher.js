@@ -3872,6 +3872,25 @@ function addCellActions(td, ed, subject, type) {
     b.addEventListener('click', onClick);
     return b;
   };
+  // Open the same content in the add/edit modal, whose bigger field is easier
+  // when a cell is packed. Hands the current text off to the modal and suppresses
+  // the inline commit so the two don't both write.
+  bar.appendChild(mk('cell-action-edit', 'Rediger i et større vindu', '✎', () => {
+    const ids = JSON.parse(ed.dataset.ids || '[]');
+    if (ids.length > 1) { showToast('Cellen har flere oppføringer – rediger dem her.'); return; }
+    const id = ids[0];
+    if (!id) { ed.blur(); showToast('Lagret. Trykk «✎» igjen for å redigere i et større vindu.'); return; }
+    const clean = sanitizeHtml(ed.innerHTML);
+    ed._original = clean;                       // modal owns it now → skip the blur-commit
+    const existing = findLoadedElement(id);
+    const el = existing
+      ? Object.assign({}, existing, { description: clean })
+      : { id, type, subject, description: clean, day: '',
+          classes: writeClassesFor(subject, ed.dataset.cls || planKey()),
+          week: ed.dataset.week || dateToWeek(weekMonday),
+          weekTo: ed.dataset.week || dateToWeek(weekMonday), teacher: teacherName };
+    openElementEdit(el);
+  }));
   if (!isElective(subject)) {   // electives are year-wide – no per-class copy
     bar.appendChild(mk('cell-action-copy', 'Kopier til dine andre klasser', '⧉',
       () => { ed.blur(); copyRowToClasses(subject, { types: [type] }); }));   // commit first, then copy
