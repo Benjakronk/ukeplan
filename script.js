@@ -599,8 +599,8 @@ function renderTidsbank() {
   }
   const bank = tb.seconds, cost = (tb.period || 45) * 60;
   const freeHint = bank >= cost
-    ? 'Nok til en fri time! 🎉'
-    : 'Mangler ' + formatTbTime(cost - bank) + ' til en fri time.';
+    ? 'Nok til en fritime! 🎉'
+    : 'Mangler ' + formatTbTime(cost - bank) + ' til en fritime.';
   view.innerHTML = `
     <section class="tb-card tb-balance-card">
       <div class="tb-balance-inner">

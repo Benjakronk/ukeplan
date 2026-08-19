@@ -79,8 +79,8 @@ function render() {
 
   const cost = state.period * 60;
   document.getElementById('tbFreeHint').textContent = bank >= cost
-    ? 'Nok til en fri time! 🎉'
-    : 'Mangler ' + fmtHuman(cost - bank) + ' til en fri time.';
+    ? 'Nok til en fritime! 🎉'
+    : 'Mangler ' + fmtHuman(cost - bank) + ' til en fritime.';
   document.getElementById('tbFreeCost').textContent = 'Koster ' + fmtHuman(cost);
   document.getElementById('tbFree').disabled = bank < cost;
 
@@ -192,9 +192,9 @@ async function spend(secs) {
 async function buyFreePeriod() {
   const cost = state.period * 60;
   if (state.seconds < cost) return;
-  if (!await uiConfirm('Kjøpe en fri time for ' + fmtHuman(cost) + '? Da står det ' + fmtHuman(state.seconds - cost) + ' igjen i banken.',
-      { title: 'Kjøp fri time', okText: 'Kjøp' })) return;
-  await doAdjust(-cost, 'Kjøpte fri time (' + state.period + ' min)');
+  if (!await uiConfirm('Kjøpe en fritime for ' + fmtHuman(cost) + '? Da står det ' + fmtHuman(state.seconds - cost) + ' igjen i banken.',
+      { title: 'Kjøp fritime', okText: 'Kjøp' })) return;
+  await doAdjust(-cost, 'Kjøpte fritime (' + state.period + ' min)');
 }
 
 // ── controls / init ───────────────────────────────────────────────────────────
