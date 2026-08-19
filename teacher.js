@@ -6470,9 +6470,10 @@ function buildHjemChecklist(rows, gotoClass) {
     if (!r.tema) {
       addBtn('hjem-task-tema', 'Fyll inn tema', 'læringsmål');
     } else {
+      const allThree = r.lekse && r.ressurs;   // tema is already true in this branch
       const tag = document.createElement('span');
-      tag.className = 'hjem-done-tag';
-      tag.textContent = '✓ tema';
+      tag.className = 'hjem-done-tag' + (allThree ? ' hjem-done-all' : '');
+      tag.textContent = allThree ? '✓ ferdig' : '✓ tema';
       status.appendChild(tag);
       if (!r.lekse) addBtn('hjem-task-lekse', '+ lekser', 'lekse');
       if (!r.ressurs) addBtn('hjem-task-ressurs', '+ ressurs', 'ressurs');

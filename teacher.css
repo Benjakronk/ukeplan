@@ -812,6 +812,9 @@
 @media (hover: hover) { .hjem-pin:hover { opacity: .75; } .hjem-pin.pinned:hover { opacity: 1; } }
 .hjem-pin-sm { margin-left: 0; font-size: 12px; padding: 0 2px; }
 .hjem-done-tag { font-size: 12px; font-weight: 700; color: var(--success); white-space: nowrap; }
+/* «ferdig» = all three (tema + lekser + ressurs): a filled pill, a clear step up
+   from the plain "✓ tema" text so a fully-done subject stands out. */
+.hjem-done-all { padding: 3px 10px; border-radius: 999px; background: var(--success-bg); color: var(--success); }
 .hjem-task {
   font-family: var(--font); font-size: 12.5px; font-weight: 700; white-space: nowrap;
   padding: 5px 11px; border-radius: var(--radius-btn); cursor: pointer;
