@@ -567,16 +567,10 @@ body.scroll-locked { overflow: hidden; }
 .dash-header { margin: 2px 0 0; }
 .dash-greeting { font-family: var(--font-display); font-size: 24px; font-weight: 700; color: var(--text); }
 .dash-week { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
-.dash-timebank {
-  display: flex; align-items: center; gap: 12px;
-  margin: 14px 0 2px; padding: 12px 16px;
-  background: var(--success-bg); border: 1px solid var(--success-border, var(--success));
-  border-radius: var(--radius, 12px);
-}
-.dash-timebank .tb-emoji { font-size: 26px; line-height: 1; }
-.dash-timebank .tb-text { display: flex; flex-direction: column; gap: 1px; }
-.dash-timebank .tb-label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .03em; }
-.dash-timebank .tb-amount { font-family: var(--font-display); font-size: 19px; color: var(--success); }
+/* Tidsbank tab: reuse the teacher balance-card look (timebank.css .tb-*), just
+   constrain the width so the card doesn't stretch full-bleed on wide screens. */
+.tidsbank-view { max-width: 560px; }
+.tidsbank-view .tb-card { margin-bottom: 0; }
 .dash-loading { color: var(--text-muted); }
 .dash-section { display: flex; flex-direction: column; gap: 12px; }
 .dash-section-title { font-size: 15px; font-weight: 700; color: var(--text); }

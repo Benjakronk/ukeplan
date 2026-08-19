@@ -293,6 +293,7 @@ function setupListeners() {
   document.getElementById('tabUkeplan').addEventListener('click', () => setTab('ukeplan'));
   document.getElementById('tabFag').addEventListener('click', () => setTab('fag'));
   document.getElementById('tabVurd').addEventListener('click', () => setTab('vurd'));
+  document.getElementById('tabTidsbank').addEventListener('click', () => setTab('tidsbank'));
   document.getElementById('viewUke').addEventListener('click', () => setView('uke'));
   document.getElementById('viewDag').addEventListener('click', () => setView('dag'));
   document.getElementById('calStart').addEventListener('change', onCalDateChange);
@@ -334,7 +335,7 @@ function setupListeners() {
 function setTab(tab) {
   currentTab = tab;
   localStorage.setItem(TAB_KEY, tab);   // restore where they were on next reload
-  [['tabHjem', 'hjem'], ['tabUkeplan', 'ukeplan'], ['tabFag', 'fag'], ['tabVurd', 'vurd']].forEach(([id, t]) => {
+  [['tabHjem', 'hjem'], ['tabUkeplan', 'ukeplan'], ['tabFag', 'fag'], ['tabVurd', 'vurd'], ['tabTidsbank', 'tidsbank']].forEach(([id, t]) => {
     const btn = document.getElementById(id);
     const on = tab === t;
     btn.classList.toggle('active', on);
@@ -352,7 +353,9 @@ function setTab(tab) {
   document.getElementById('fagView').hidden    = tab !== 'fag';
   document.getElementById('calControls').hidden = tab !== 'vurd';
   document.getElementById('calendar').hidden   = tab !== 'vurd';
+  document.getElementById('tidsbankView').hidden = tab !== 'tidsbank';
   if (tab === 'fag') loadAllPlan();
+  else if (tab === 'tidsbank') { loadTimebank(); renderTidsbank(); }
   else render();
 }
 
@@ -563,7 +566,7 @@ async function loadTimebank(opts = {}) {
     timebankData = next;
     localStorage.setItem(TB_CACHE_KEY, JSON.stringify(next));
     localStorage.setItem(TB_TS_KEY, String(Date.now()));
-    if (changed && currentTab === 'hjem') renderDashboard();
+    if (changed && currentTab === 'tidsbank') renderTidsbank();
   } catch { /* keep cached */ }
 }
 
@@ -577,18 +580,38 @@ function formatTbTime(s) {
   return parts.length ? parts.join(' ') : (s ? '<1 min' : '0 min');
 }
 
-// The Min uke time-bank card. Null when there is no bank or it is empty (an empty
-// bank is not motivating, and would just add clutter to the landing page).
-function buildTimebankCard() {
-  if (!timebankData || timebankData.cls !== selectedClass) return null;
-  const secs = timebankData.seconds;
-  if (secs <= 0) return null;
-  const card = document.createElement('div');
-  card.className = 'dash-timebank';
-  card.innerHTML = `<span class="tb-emoji" aria-hidden="true">🐷</span>
-    <span class="tb-text"><span class="tb-label">Klassens tidsbank</span>
-    <strong class="tb-amount">${formatTbTime(secs)} spart</strong></span>`;
-  return card;
+// The Tidsbank tab: a read-only balance, using the SAME balance-card presentation
+// as the teacher Tidsbank page (tb-balance-card markup + timebank.css). No timer,
+// spend, adjust or history (the log carries teacher usernames) – just the balance
+// and the "how far to a free period" line the teacher card also shows.
+function renderTidsbank() {
+  const view = document.getElementById('tidsbankView');
+  if (!view) return;
+  if (!selectedClass) {
+    view.innerHTML = '<p class="tb-gate">Velg klassen din for å se tidsbanken.</p>';
+    return;
+  }
+  const tb = (timebankData && timebankData.cls === selectedClass) ? timebankData : null;
+  if (!tb) {                       // not fetched yet for this class
+    view.innerHTML = '<p class="tb-gate">Laster …</p>';
+    loadTimebank();
+    return;
+  }
+  const bank = tb.seconds, cost = (tb.period || 45) * 60;
+  const freeHint = bank >= cost
+    ? 'Nok til en fri time! 🎉'
+    : 'Mangler ' + formatTbTime(cost - bank) + ' til en fri time.';
+  view.innerHTML = `
+    <section class="tb-card tb-balance-card">
+      <div class="tb-balance-inner">
+        <span class="tb-coin" aria-hidden="true">🪙</span>
+        <div>
+          <div class="tb-balance-num">${formatTbTime(bank)}</div>
+          <div class="tb-balance-lbl">spart i tidsbanken for <strong>${selectedClass}</strong></div>
+        </div>
+      </div>
+      <div class="tb-freehint">${freeHint}</div>
+    </section>`;
 }
 
 // The ISO dates a hendelse covers (single day when dateTo empty), capped.
@@ -922,6 +945,7 @@ function playSVictory() { UPJourney.victory(document.getElementById('sOnboardPro
 function render() {
   if (!selectedClass) return;
   updateDashBadge();
+  if (currentTab === 'tidsbank') { renderTidsbank(); return; }
   if (currentTab === 'hjem') { renderDashboard(); return; }
   if (currentTab === 'fag')  { renderFag(); return; }
   if (currentTab === 'vurd') { renderCalendar(); return; }
@@ -993,9 +1017,6 @@ function renderDashboard() {
   wk.textContent = 'Uke ' + getWeekNumber(weekMonday) + (thisWeek ? ' – denne uka' : '');
   header.appendChild(h); header.appendChild(wk);
   view.appendChild(header);
-
-  const tb = buildTimebankCard();
-  if (tb) view.appendChild(tb);
 
   if (planDataKey !== weekKey()) {   // still loading this week's data
     const p = document.createElement('p'); p.className = 'dash-loading'; p.textContent = 'Laster …';

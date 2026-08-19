@@ -15,6 +15,7 @@
     })();
   </script>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="timebank.css">
   <link rel="manifest" href="manifest.json">
   <meta name="description" content="Ukeplaner for elever og lærere ved Runni ungdomsskole.">
   <meta name="theme-color" content="#eef2f0" media="(prefers-color-scheme: light)">
@@ -156,6 +157,7 @@
         <button id="tabUkeplan" class="tab" type="button" role="tab" aria-selected="false">Ukeplan</button>
         <button id="tabFag" class="tab" type="button" role="tab" aria-selected="false">Fag</button>
         <button id="tabVurd" class="tab" type="button" role="tab" aria-selected="false">Kalender</button>
+        <button id="tabTidsbank" class="tab" type="button" role="tab" aria-selected="false">Tidsbank</button>
       </div>
 
       <div id="viewToggle" class="view-toggle">
@@ -188,6 +190,8 @@
         <label class="oversikt-field">Til <input type="date" id="calEnd" class="input"></label>
       </div>
       <div id="calendar" class="calendar" hidden></div>
+
+      <div id="tidsbankView" class="tidsbank-view" hidden></div>
     </main>
 
     <footer class="site-footer">
