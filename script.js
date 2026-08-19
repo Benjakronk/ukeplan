@@ -611,7 +611,8 @@ function renderTidsbank() {
         </div>
       </div>
       <div class="tb-freehint">${freeHint}</div>
-    </section>`;
+    </section>
+    <p class="tb-note">Å bruke tid eller ta ut en fritime må avtales mellom klassen og en lærer.</p>`;
 }
 
 // The ISO dates a hendelse covers (single day when dateTo empty), capped.

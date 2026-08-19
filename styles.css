@@ -571,6 +571,7 @@ body.scroll-locked { overflow: hidden; }
    constrain the width so the card doesn't stretch full-bleed on wide screens. */
 .tidsbank-view { max-width: 560px; }
 .tidsbank-view .tb-card { margin-bottom: 0; }
+.tidsbank-view .tb-note { margin: 12px 2px 0; font-size: 13px; color: var(--text-muted); }
 .dash-loading { color: var(--text-muted); }
 .dash-section { display: flex; flex-direction: column; gap: 12px; }
 .dash-section-title { font-size: 15px; font-weight: 700; color: var(--text); }
