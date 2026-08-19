@@ -208,6 +208,8 @@ button { font-family: inherit; }
     color: var(--on-accent);
 }
 .btn-primary:hover { background: var(--primary-dark); border-color: var(--primary-dark); }
+.btn-danger { background: var(--surface); border-color: var(--kk-danger-line); color: var(--danger); }
+.btn-danger:hover { background: var(--kk-danger-soft); border-color: var(--danger); }
 .btn-lg { padding: 14px 28px; font-size: 1.05rem; border-radius: 12px; }
 
 .icon-btn {
@@ -1346,6 +1348,11 @@ body.present .zoom-ctrl { display: none; }
 .sync-name { font-weight: 700; flex: 1; }
 .sync-ok   { color: var(--success); font-weight: 600; font-size: 0.85rem; }
 .sync-wait { color: var(--ink-soft); font-weight: 600; font-size: 0.85rem; }
+.sync-owner-box { margin: 12px 0; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2); padding: 0 12px; }
+.sync-owner-box > summary { cursor: pointer; font-weight: 700; padding: 10px 0; font-size: 0.9rem; }
+.sync-owner-box[open] > summary { border-bottom: 1px solid var(--line); margin-bottom: 10px; }
+.sync-owner-box .setup-field { margin-bottom: 10px; }
+.sync-owner-box > .btn { margin-bottom: 12px; }
 .sync-bad  { color: var(--danger); font-weight: 600; font-size: 0.85rem; }
 /* an unresolved conflict is visible on the button itself, not behind a menu */
 #syncBtn.has-conflict { border-color: var(--danger); color: var(--danger); }

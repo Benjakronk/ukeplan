@@ -831,21 +831,47 @@ function renderSyncShare(box) {
     if (!cls) { syncShareGroup = null; renderSyncBody(); return; }
     if (!d) { box.innerHTML = '<p class="modal-hint">Henter…</p>'; return; }
 
+    // "deg" = the logged-in teacher (d.me from the server). The owner (d.owner) is
+    // protected: no peer may remove them, and only the owner may delete or transfer.
+    // Fall back to the old method='self' heuristic only if an older server sent
+    // neither field, so this stays safe to render before the backend deploy.
+    const meId = d.me || '';
+    const ownerId = d.owner || (d.members.find(m => m.method === 'self' && m.wrappedBy === m.id) || {}).id || '';
+    const iAmOwner = !!meId && ownerId === meId;
+
     const members = d.members.map(m => {
-        // "deg" = the logged-in teacher (d.me from the server). Fall back to the old
-        // owner heuristic only if an older server didn't send it, so this is safe to
-        // ship before the backend deploy.
-        const isMe = d.me ? (m.id === d.me) : (m.method === 'self' && m.wrappedBy === m.id);
-        const rm = (d.members.length > 1 && !isMe)
+        const isMe = meId ? (m.id === meId) : (m.method === 'self' && m.wrappedBy === m.id);
+        const isOwner = !!ownerId && m.id === ownerId;
+        const role = isOwner ? (isMe ? 'eier (deg)' : 'eier') : (isMe ? 'deg' : 'har tilgang');
+        // Owner can't be removed by a peer; you can't remove yourself here (use Forlat).
+        const rm = (d.members.length > 1 && !isMe && !isOwner)
             ? `<button class="btn btn-sm" data-syncact="revoke" data-id="${m.id}" type="button">Fjern</button>` : '';
-        return `<div class="sync-row"><span class="sync-name">${escapeHtml(m.name)}</span>
-                <span class="sync-wait">${isMe ? 'deg' : 'har tilgang'}</span>${rm}</div>`;
+        return `<div class="sync-row"><span class="sync-name">${escapeHtml(m.name)}${isOwner ? ' 👑' : ''}</span>
+                <span class="sync-wait">${role}</span>${rm}</div>`;
     }).join('');
     const pending = d.pending.map(pp => `<div class="sync-row"><span class="sync-name">${escapeHtml(pp.name)}</span>
         <span class="sync-wait">venter på nøkkel</span></div>`).join('');
     const have = new Set(d.members.map(m => m.id).concat(d.pending.map(x => x.id)));
     const opts = (kkDir || []).filter(t => !have.has(t.id))
         .map(t => `<option value="${t.id}">${escapeHtml(t.name)}${t.hasKeypair ? '' : ' (ikke i gang enda)'}</option>`).join('');
+
+    // The owner hands the group over to another member (a single pointer move — no
+    // re-keying); everyone else can step out of the group without deleting it for all.
+    const others = d.members.filter(m => m.id !== ownerId);
+    const transferOpts = others.map(m => `<option value="${m.id}">${escapeHtml(m.name)}</option>`).join('');
+    const transferBox = (iAmOwner && others.length) ? `
+        <details class="sync-owner-box">
+            <summary>Overfør eierskap</summary>
+            <p class="modal-hint">Den nye eieren kan slette gruppa og overføre den videre.
+            Du blir værende som vanlig medlem.</p>
+            <div class="setup-field">
+                <label for="syncTransferTo">Ny eier</label>
+                <select id="syncTransferTo">${transferOpts}</select>
+            </div>
+            <button class="btn" data-syncact="transfer" type="button">Overfør eierskap</button>
+        </details>` : '';
+    const leaveBtn = (!iAmOwner && d.members.length > 1)
+        ? '<button class="btn btn-danger" data-syncact="leave" type="button">Forlat gruppe</button>' : '';
 
     box.innerHTML = `
         <p class="modal-hint"><strong>${escapeHtml(cls.name)}</strong> — hvem har tilgang.
@@ -857,8 +883,10 @@ function renderSyncShare(box) {
         </div>` : '<p class="modal-hint">Alle andre lærere er alt invitert.</p>'}
         <p class="modal-hint">Å fjerne noen stopper videre tilgang. Det de alt har åpnet,
         har de fortsatt — det kan ingen ta tilbake.</p>
+        ${transferBox}
         <div class="sync-actions">
             <button class="btn" data-syncact="shareBack" type="button">← Tilbake</button>
+            ${leaveBtn}
             ${opts ? '<button class="btn btn-primary" data-syncact="invite" type="button">Inviter</button>' : ''}
         </div>`;
 }
@@ -936,6 +964,25 @@ async function syncAction(act, el) {
             toast(r.rotated ? 'Fjernet og ny nøkkel laget' : 'Fjernet', 'ok');
             syncShareData = await kkGet('kk_members', { group: syncShareGroup });
             renderSyncBody(); return;
+        }
+        if (act === 'transfer') {
+            const to = $('syncTransferTo').value;
+            const nm = (syncShareData.members.find(m => m.id === to) || {}).name || 'læreren';
+            if (!confirm(`Gjøre ${nm} til eier av «${store.classes[syncShareGroup].name}»?\n\n${nm} kan da slette gruppa og overføre eierskapet videre. Du blir værende som vanlig medlem.`)) return;
+            await kkPost('kk_transfer', { group: syncShareGroup, teacherId: to });
+            toast(`${nm} er nå eier`, 'ok');
+            syncShareData = await kkGet('kk_members', { group: syncShareGroup });
+            renderSyncBody(); return;
+        }
+        if (act === 'leave') {
+            const gid = syncShareGroup;
+            const nm = store.classes[gid] ? store.classes[gid].name : 'gruppa';
+            if (!confirm(`Forlate «${nm}»?\n\nDu mister tilgangen og gruppa forsvinner herfra, men de andre beholder den. Det du alt har åpnet, har du fortsatt.`)) return;
+            await kkPost('kk_leave', { group: gid });
+            syncShareGroup = null; syncShareData = null;
+            forgetGroupLocally(gid);
+            renderSyncBody(); updateSyncBadge();
+            toast('Du forlot gruppa', 'ok'); return;
         }
         if (act === 'lock') { syncShareGroup = null; syncLock(); renderSyncBody(); return; }
         if (act === 'off') {
@@ -3536,19 +3583,37 @@ async function deleteClass() {
     if (synced) {
         try { await kkPost('kk_group_delete', { group: id }); }
         catch (e) {
-            // Abort rather than delete locally: a half-delete is the resurrection
-            // bug with extra steps.
+            // The server refuses delete-for-everyone from a non-owner who shares the
+            // group. Offer the right action (leave) rather than dead-ending; any other
+            // failure aborts without touching local data (a half-delete is the
+            // resurrection bug with extra steps).
+            if (/Bare eieren/.test(e.message || '')) {
+                if (confirm(`Du eier ikke «${cls.name}», så du kan ikke slette den for alle.\n\nVil du forlate gruppa i stedet? De andre beholder den.`)) {
+                    try { await kkPost('kk_leave', { group: id }); }
+                    catch (e2) { toast('Kunne ikke forlate gruppa: ' + e2.message, 'err'); return; }
+                    forgetGroupLocally(id); updateSyncBadge();
+                    toast('Du forlot gruppa', 'ok');
+                }
+                return;
+            }
             toast('Kunne ikke slette på serveren - ingenting er slettet', 'err');
             return;
         }
     }
+    forgetGroupLocally(id);
+    updateSyncBadge();
+    toast('Gruppe slettet', 'ok');
+}
+
+/* Remove a group from this device only (after a server-side delete or leave):
+ * drop its local copy + sync bookkeeping and move on to another group, or the
+ * setup screen if none remain. */
+function forgetGroupLocally(id) {
     delete store.classes[id];
     delete kkServer[id]; delete kkCeks[id]; delete kkConflicts[id];
     const next = Object.keys(store.classes)[0];
     if (next) { setActiveClass(next); }
     else { state = null; store.activeClassId = null; saveQuiet(); showSetup(); resetSetupForm(); }
-    updateSyncBadge();
-    toast('Gruppe slettet', 'ok');
 }
 
 /* ------------------------------------------------------- backup / restore   */
