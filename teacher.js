@@ -1237,15 +1237,54 @@ async function deleteSignedEntry(e, opts = {}) {
   }
 }
 
-// Shared filter+render. Matches free text across text/subject/classes/usernames;
-// a leading @ is stripped so "@ola" and "ola" both match usernames. opts.actions
-// adds per-row Rediger/Slett (Mine registreringer only).
-function renderSignedList(listEl, countEl, entries, query, opts) {
+// The classes a signed entry touches, as uppercase tokens (electives list several;
+// a variant code stays one token, which just never matches a plain-class filter).
+function signedClassTokens(e) {
+  return String(e.classes || '').toUpperCase().split(/[\s,]+/).filter(Boolean);
+}
+
+// Populate the Type/Fag/Klasse filter dropdowns for a surface from its entries
+// (options reflect what's actually present); a still-valid selection is preserved,
+// otherwise it falls back to «Alle».
+function fillSignedFilters(prefix, entries) {
+  const fill = (id, values, allLabel) => {
+    const sel = document.getElementById(prefix + id);
+    if (!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = '';
+    const o0 = document.createElement('option'); o0.value = ''; o0.textContent = allLabel; sel.appendChild(o0);
+    values.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o); });
+    sel.value = values.includes(cur) ? cur : '';
+  };
+  const cmp = (a, b) => a.localeCompare(b, 'no');
+  const types    = [...new Set(entries.map(signedKindLabel))].sort(cmp);
+  const subjects = [...new Set(entries.map(e => e.subject).filter(Boolean))].sort(cmp);
+  const classes  = [...new Set(entries.flatMap(signedClassTokens).filter(c => CLASSES.includes(c)))].sort(cmp);
+  fill('FilterType', types, 'Alle typer');
+  fill('FilterSubject', subjects, 'Alle fag');
+  fill('FilterClass', classes, 'Alle klasser');
+}
+function signedFiltersOf(prefix) {
+  const v = id => (document.getElementById(prefix + id)?.value || '');
+  return { type: v('FilterType'), subject: v('FilterSubject'), cls: v('FilterClass') };
+}
+
+// Shared filter+render. Matches free text across text/subject/classes/usernames
+// (a leading @ is stripped so "@ola" and "ola" both match usernames), plus the
+// Type/Fag/Klasse dropdown filters. opts.actions adds per-row Rediger/Slett.
+function renderSignedList(listEl, countEl, entries, query, opts, filters) {
   const raw = (query || '').trim().toLowerCase();
   const q = raw.startsWith('@') ? raw.slice(1) : raw;
-  const filtered = !q ? entries : entries.filter(e => [
-    signedText(e), e.subject, e.classes, e.createdBy, (e.editedBy || []).join(' '), e.teacher, signedKindLabel(e),
-  ].join(' ').toLowerCase().includes(q));
+  const f = filters || {};
+  const filtered = entries.filter(e => {
+    if (q && ![
+      signedText(e), e.subject, e.classes, e.createdBy, (e.editedBy || []).join(' '), e.teacher, signedKindLabel(e),
+    ].join(' ').toLowerCase().includes(q)) return false;
+    if (f.type && signedKindLabel(e) !== f.type) return false;
+    if (f.subject && e.subject !== f.subject) return false;
+    if (f.cls && !signedClassTokens(e).includes(f.cls)) return false;
+    return true;
+  });
   listEl.innerHTML = '';
   if (!entries.length) { listEl.innerHTML = '<p class="muted">Ingen registreringer ennå.</p>'; if (countEl) countEl.textContent = ''; return; }
   if (!filtered.length) { listEl.innerHTML = '<p class="muted">Ingen treff.</p>'; if (countEl) countEl.textContent = ''; return; }
@@ -1258,6 +1297,7 @@ async function loadAdminContent() {
   list.innerHTML = '<p class="muted">Laster…</p>';
   try {
     signedAll = await fetchSignedContent('all');
+    fillSignedFilters('adminContent', signedAll);
     renderAdminContent();
   } catch (err) {
     signedAll = [];
@@ -1268,17 +1308,21 @@ async function loadAdminContent() {
 }
 function renderAdminContent() {
   renderSignedList(document.getElementById('adminContentList'), document.getElementById('adminContentCount'),
-    signedAll || [], document.getElementById('adminContentSearch')?.value, { actions: true, context: 'admin' });
+    signedAll || [], document.getElementById('adminContentSearch')?.value, { actions: true, context: 'admin' },
+    signedFiltersOf('adminContent'));
 }
-// Reopen the admin panel on the Innhold tab after an edit, keeping the search
-// filter (the async loadAdminContent render reads the input value).
+// Reopen the admin panel on the Innhold tab after an edit, keeping the search box
+// AND the Type/Fag/Klasse filters (the async loadAdminContent render + fill read
+// the current values, so a still-valid selection is preserved).
 function reopenAdminContent() {
-  const cur = document.getElementById('adminContentSearch');
-  const q = cur ? cur.value : '';
-  openAdminModal();
+  const q = document.getElementById('adminContentSearch')?.value || '';
+  const saved = signedFiltersOf('adminContent');
+  openAdminModal();   // clears search + filters
   setAdminTab('content');
   const s = document.getElementById('adminContentSearch');
   if (s && q) s.value = q;
+  const set = (id, v) => { const el = document.getElementById('adminContent' + id); if (el && v) el.value = v; };
+  set('FilterType', saved.type); set('FilterSubject', saved.subject); set('FilterClass', saved.cls);
 }
 
 function openMyEntries() {
@@ -1286,6 +1330,7 @@ function openMyEntries() {
   document.getElementById('myEntriesModal').classList.add('open');
   document.body.classList.add('scroll-locked');
   const s = document.getElementById('myEntriesSearch'); if (s) s.value = '';
+  ['FilterType', 'FilterSubject', 'FilterClass'].forEach(id => { const el = document.getElementById('myEntries' + id); if (el) el.value = ''; });
   loadMyEntries();
 }
 function closeMyEntries() {
@@ -1298,6 +1343,7 @@ async function loadMyEntries() {
   list.innerHTML = '<p class="muted">Laster…</p>';
   try {
     signedMine = await fetchSignedContent('mine');
+    fillSignedFilters('myEntries', signedMine);
     renderMyEntries();
   } catch (err) {
     signedMine = [];
@@ -1308,7 +1354,8 @@ async function loadMyEntries() {
 }
 function renderMyEntries() {
   renderSignedList(document.getElementById('myEntriesList'), document.getElementById('myEntriesCount'),
-    signedMine || [], document.getElementById('myEntriesSearch')?.value, { actions: true, context: 'mine' });
+    signedMine || [], document.getElementById('myEntriesSearch')?.value, { actions: true, context: 'mine' },
+    signedFiltersOf('myEntries'));
 }
 
 function openAdminModal() {
@@ -1321,6 +1368,7 @@ function openAdminModal() {
   if (vsearch) vsearch.value = '';
   const csearch = document.getElementById('adminContentSearch');
   if (csearch) csearch.value = '';
+  ['FilterType', 'FilterSubject', 'FilterClass'].forEach(id => { const el = document.getElementById('adminContent' + id); if (el) el.value = ''; });
   document.getElementById('adminTabConfig').hidden = !isSuperadmin;    // school config = super-admin only
   document.getElementById('adminTabCleanup').hidden = !isSuperadmin;   // data cleanup = super-admin only
   setAdminTab('teachers');
@@ -3066,10 +3114,14 @@ function setupDashboardListeners() {
   document.getElementById('adminTabConfig').addEventListener('click', () => setAdminTab('config'));
   document.getElementById('adminTabCleanup').addEventListener('click', () => setAdminTab('cleanup'));
   document.getElementById('adminContentSearch').addEventListener('input', renderAdminContent);
+  ['FilterType', 'FilterSubject', 'FilterClass'].forEach(id =>
+    document.getElementById('adminContent' + id).addEventListener('change', renderAdminContent));
   document.getElementById('myEntriesBtn').addEventListener('click', openMyEntries);
   document.getElementById('myEntriesClose').addEventListener('click', closeMyEntries);
   document.getElementById('myEntriesOverlay').addEventListener('click', closeMyEntries);
   document.getElementById('myEntriesSearch').addEventListener('input', renderMyEntries);
+  ['FilterType', 'FilterSubject', 'FilterClass'].forEach(id =>
+    document.getElementById('myEntries' + id).addEventListener('change', renderMyEntries));
   document.getElementById('adminVariantSearch').addEventListener('input', renderAdminVariants);
   document.getElementById('adminConfigSave').addEventListener('click', saveAdminConfig);
   document.getElementById('adminConfigReset').addEventListener('click', () => renderAdminConfig(true));

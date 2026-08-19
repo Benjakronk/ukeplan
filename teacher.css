@@ -510,6 +510,10 @@
 .admin-search-row { display: flex; align-items: center; gap: 10px; margin: 4px 0 12px; }
 .admin-search { flex: 1; }
 .admin-count { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+/* Type / Fag / Klasse dropdown filters below the search box (Mine registreringer
+   + admin Innhold). Wrap on narrow modals; each grows to share the width. */
+.signed-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+.signed-filter { flex: 1 1 140px; min-width: 0; font-size: 13px; padding: 7px 10px; }
 .admin-list { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; overflow-y: auto; margin-top: 4px; padding-right: 4px; }
 
 /* Signed-content rows (admin «Innhold» + «Mine registreringer») – read-only. */

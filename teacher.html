@@ -577,6 +577,11 @@
                autocomplete="off" aria-label="Søk i innhold">
         <span id="adminContentCount" class="admin-count" aria-live="polite"></span>
       </div>
+      <div class="signed-filters">
+        <select id="adminContentFilterType" class="input signed-filter" aria-label="Filtrer på type"></select>
+        <select id="adminContentFilterSubject" class="input signed-filter" aria-label="Filtrer på fag"></select>
+        <select id="adminContentFilterClass" class="input signed-filter" aria-label="Filtrer på klasse"></select>
+      </div>
       <div id="adminContentList" class="admin-list signed-list"></div>
     </div>
 
@@ -608,6 +613,11 @@
       <input type="text" id="myEntriesSearch" class="input admin-search" placeholder="Søk i tekst, fag, klasse…"
              autocomplete="off" aria-label="Søk i mine registreringer">
       <span id="myEntriesCount" class="admin-count" aria-live="polite"></span>
+    </div>
+    <div class="signed-filters">
+      <select id="myEntriesFilterType" class="input signed-filter" aria-label="Filtrer på type"></select>
+      <select id="myEntriesFilterSubject" class="input signed-filter" aria-label="Filtrer på fag"></select>
+      <select id="myEntriesFilterClass" class="input signed-filter" aria-label="Filtrer på klasse"></select>
     </div>
     <div id="myEntriesList" class="admin-list signed-list"></div>
   </div>
