@@ -249,6 +249,7 @@ let oversiktWeek = null;
 let hjemData     = [];         // all-classes plan elements for the dashboard's viewed week
 let hjemWeek     = null;       // the week hjemData is for (cache guard; null = stale)
 let kontaktViewClass = null;   // which of the teacher's kontaktlærer classes is shown
+let hjemBeClass  = null;       // Hjem «Beskjeder og hendelser» class filter (null = alle)
 let kontaktSubtab = 'team';    // Kontaktlærer sub-tab: team|vurd|dekning|beskjeder|tilpasset
 let kontaktTeam  = null;       // last class_team result { class, kontakt, subjects }
 let kontaktWeekData = [];      // all-classes plan elements for the coverage week
@@ -6362,15 +6363,47 @@ function renderHjem() {
 
   // Combined Beskjeder og praktisk info | Hendelser, below the tasks. Beskjeder
   // are aggregated across taught classes (class-tagged, read-only overview);
-  // intern reminders keep their own banner up top.
+  // intern reminders keep their own banner up top. A per-class switcher (like the
+  // Kontaktlærer tab's) filters the whole section to one class to cut clutter, with
+  // «Alle» to show everything.
   const beHead = document.createElement('h3');
   beHead.className = 'hjem-section-title';
   beHead.textContent = 'Beskjeder og hendelser';
   pane.appendChild(beHead);
-  const hjemGeneral = hjemData.filter(p => GENERAL_TYPES.includes(p.type) && p.type !== 'intern'
+
+  const hjemGeneralAll = hjemData.filter(p => GENERAL_TYPES.includes(p.type) && p.type !== 'intern'
     && p.description && classesTaught.some(c => classMatches(p.classes, c)));
-  const beskjed = buildBeskjedCards(hjemGeneral, { readonly: true, showClass: true });
-  const events = buildUpcomingEvents(hendForTeacher, { clickable: true });
+  const eventRowsAll = upcomingEventRows(hendForTeacher);
+
+  // Switcher options = taught classes that have a class-specific beskjed or event
+  // here. (School-wide events carry no class, so they don't create an option, but
+  // they still show under every filter since they concern every class.)
+  const beClasses = hjemClasses().filter(cls =>
+    hjemGeneralAll.some(p => classMatches(p.classes, cls)) ||
+    eventRowsAll.some(r => r.ev.classes && classMatches(r.ev.classes, cls)));
+  if (hjemBeClass && !beClasses.includes(hjemBeClass)) hjemBeClass = null;   // stale pick
+
+  if (beClasses.length > 1) {
+    const sw = document.createElement('div');
+    sw.className = 'kontakt-switch hjem-be-switch';
+    const mk = (val, label) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'kontakt-switch-btn' + ((hjemBeClass || 'all') === val ? ' active' : '');
+      b.textContent = label;
+      b.addEventListener('click', () => { hjemBeClass = val === 'all' ? null : val; renderHjem(); });
+      return b;
+    };
+    sw.appendChild(mk('all', 'Alle'));
+    beClasses.forEach(c => sw.appendChild(mk(c, c)));
+    pane.appendChild(sw);
+  }
+
+  const sel = hjemBeClass;
+  const hjemGeneral = sel ? hjemGeneralAll.filter(p => classMatches(p.classes, sel)) : hjemGeneralAll;
+  const eventMatch = sel ? (h => hendMatchesClass(h, sel)) : hendForTeacher;
+  const beskjed = buildBeskjedCards(hjemGeneral, { readonly: true, showClass: !sel });
+  const events = buildUpcomingEvents(eventMatch, { clickable: true });
   pane.appendChild(beskjedEventsGrid(beskjed, events));
 }
 
