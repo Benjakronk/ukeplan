@@ -527,7 +527,7 @@ function enterDashboard(profile) {
   if (landing === 'ukeplan') tab = 'ukeplan';
   else if (landing === 'last') {
     const saved = localStorage.getItem(TAB_KEY);
-    if (['hjem', 'ukeplan', 'vurd', 'oversikt', 'kontakt'].includes(saved)) tab = saved;
+    if (['hjem', 'ukeplan', 'vurd', 'oversikt', 'stats', 'kontakt'].includes(saved)) tab = saved;
   }
   if (tab === 'kontakt' && !kontaktClasses.length) tab = 'hjem';
   if ((tab === 'ukeplan' || tab === 'vurd' || tab === 'oversikt') && !selectedClass) tab = 'hjem';
@@ -3047,6 +3047,7 @@ function setupDashboardListeners() {
   document.getElementById('tTabUkeplan').addEventListener('click', () => setTeacherTab('ukeplan'));
   document.getElementById('tTabVurd').addEventListener('click', () => setTeacherTab('vurd'));
   document.getElementById('tTabOversikt').addEventListener('click', () => setTeacherTab('oversikt'));
+  document.getElementById('tTabStats').addEventListener('click', () => setTeacherTab('stats'));
   document.getElementById('tTabKontakt').addEventListener('click', () => setTeacherTab('kontakt'));
   document.getElementById('addVurdBtn').addEventListener('click', () => openAddModal({ type: 'vurdering' }));
 
@@ -5626,7 +5627,7 @@ async function cloneFromBaseClass() {
 function setTeacherTab(tab) {
   teacherTab = tab;
   localStorage.setItem(TAB_KEY, tab);   // restore where they were on next reload
-  [['hjem', 'tTabHjem', 'paneHjem'], ['ukeplan', 'tTabUkeplan', 'paneUkeplan'], ['vurd', 'tTabVurd', 'paneVurd'], ['oversikt', 'tTabOversikt', 'paneOversikt'], ['kontakt', 'tTabKontakt', 'paneKontakt']]
+  [['hjem', 'tTabHjem', 'paneHjem'], ['ukeplan', 'tTabUkeplan', 'paneUkeplan'], ['vurd', 'tTabVurd', 'paneVurd'], ['oversikt', 'tTabOversikt', 'paneOversikt'], ['stats', 'tTabStats', 'paneStats'], ['kontakt', 'tTabKontakt', 'paneKontakt']]
     .forEach(([t, btnId, paneId]) => {
       const btn = document.getElementById(btnId);
       btn.classList.toggle('active', t === tab);
@@ -5634,16 +5635,19 @@ function setTeacherTab(tab) {
       document.getElementById(paneId).hidden = t !== tab;
     });
   document.getElementById('toolbar').style.display = tab === 'ukeplan' ? '' : 'none';
-  // Hjem keys off classesTaught (all classes at once), not the selected class, so
-  // the class pill – and the variant banner – are meaningless there; hide them.
-  document.getElementById('classBtn').style.display = tab === 'hjem' ? 'none' : '';
+  // Hjem + Statistikk key off all classes at once, not the selected class, so the
+  // class pill – and the variant banner – are meaningless there; hide them.
+  const crossClass = tab === 'hjem' || tab === 'stats';
+  document.getElementById('classBtn').style.display = crossClass ? 'none' : '';
   const vb = document.getElementById('variantBanner');
-  if (vb) vb.hidden = !variantCode || tab === 'hjem';
-  // visibility (not display) so the controls-row keeps a constant size across tabs
-  document.querySelector('.week-nav').style.visibility = tab === 'vurd' ? 'hidden' : 'visible';
+  if (vb) vb.hidden = !variantCode || crossClass;
+  // visibility (not display) so the controls-row keeps a constant size across tabs.
+  // Vurderinger + Statistikk have their own date/week range, so hide the week-nav.
+  document.querySelector('.week-nav').style.visibility = (tab === 'vurd' || tab === 'stats') ? 'hidden' : 'visible';
   if (tab === 'hjem') { loadHjem(); startHjemPoll(); return; }   // keys off classesTaught, not selectedClass
   stopHjemPoll();
   if (tab === 'kontakt') { loadKontakt(); return; }   // keys off kontaktClasses
+  if (tab === 'stats') { loadStats(); return; }        // cross-class, no selectedClass needed
   if (!selectedClass) return;
   if (tab === 'vurd') renderVurd();
   else if (tab === 'oversikt') {
@@ -5687,6 +5691,7 @@ function refreshAfterChange() {
   if (teacherTab === 'oversikt') refreshOversikt();
   else if (teacherTab === 'hjem') loadHjem({ force: true });
   else if (teacherTab === 'kontakt') loadKontakt({ force: true });
+  else if (teacherTab === 'stats') loadStats();
   else loadData({ background: true, skipCache: true });
 }
 
@@ -7074,6 +7079,218 @@ function renderOversikt() {
 
   div.appendChild(table);
   board.appendChild(div);
+}
+
+// ─── Statistikk tab ───────────────────────────────────────────
+// Read-only visual overview of vurdering-/lekse-load and coverage, sliceable by
+// class / trinn / subject / week-range. No new backend: reuses the all-plan fetch
+// (allPlanData) + assessments (vurdData). Counts are only as complete as staff
+// have registered (same caveat as the Kontaktlærer tab).
+let statsScope   = 'all';   // 'all' | a trinn label ('9.') | a class ('9B')
+let statsSubject = '';       // '' = all subjects
+let statsFrom    = null;     // ISO Monday of the first week shown
+let statsTo      = null;     // ISO Monday of the last week shown
+
+async function loadStats() {
+  if (!(allPlanData.length && Date.now() - allPlanTs < 60 * 60 * 1000)) {
+    showBgLoading();
+    try { const d = await (await fetch(`${SCRIPT_URL}?action=public`)).json(); if (Array.isArray(d)) { allPlanData = d; allPlanTs = Date.now(); } }
+    catch { /* keep whatever we have */ }
+    hideBgLoading();
+  }
+  await loadAssessments();
+  renderStats();
+}
+
+function statsScopeClasses() {
+  if (statsScope === 'all') return CLASSES.slice();
+  const g = CLASS_GRADES.find(x => x.label === statsScope);
+  if (g) return g.classes.slice();
+  return CLASSES.includes(statsScope) ? [statsScope] : CLASSES.slice();
+}
+function statsClosestWeek(all, iso) {
+  if (all.some(w => w.value === iso)) return iso;
+  const ge = all.find(w => w.value >= iso);
+  return ge ? ge.value : all[all.length - 1].value;
+}
+// The week columns in range, each with its ISO-week string (to match plan elements)
+// and week number (for labels). Defaults to a ~term window from the current week.
+function statsWeekCols() {
+  const all = schoolYearWeeks();
+  if (!all.length) return [];
+  if (!statsFrom || !all.some(w => w.value === statsFrom)) statsFrom = statsClosestWeek(all, toISODate(weekMonday));
+  if (!statsTo || !all.some(w => w.value === statsTo)) {
+    const fi = Math.max(0, all.findIndex(w => w.value === statsFrom));
+    statsTo = all[Math.min(fi + 11, all.length - 1)].value;
+  }
+  let from = statsFrom, to = statsTo;
+  if (from > to) [from, to] = [to, from];
+  return all.filter(w => w.value >= from && w.value <= to)
+            .map(w => ({ mondayISO: w.value, weekNo: w.weekNo, weekStr: dateToWeek(isoToDate(w.value)) }));
+}
+// True if an element's week span (week..weekTo) covers a given ISO-week string.
+function statsElCoversWeek(el, weekStr) {
+  const a = el.week || '', b = el.weekTo || el.week || '';
+  return !!a && weekStr >= a && weekStr <= b;
+}
+function statsSubjSort(a, b) {
+  const idx = s => { const k = SUBJECTS.indexOf(s); return k < 0 ? 999 : k; };
+  return idx(a) - idx(b) || String(a).localeCompare(String(b), 'no');
+}
+
+function renderStats() {
+  const pane = document.getElementById('paneStats');
+  if (!pane) return;
+  const cols = statsWeekCols();               // also fixes up statsFrom/statsTo defaults
+  const classes = statsScopeClasses();
+  pane.innerHTML = `
+    <div class="stat-head">
+      <h2 class="stat-title">Statistikk</h2>
+      <p class="stat-note">Tallene er så komplette som det lærerne har registrert.</p>
+    </div>
+    ${statsFilterBarHtml()}
+    ${statsBelastningCard(classes, cols)}
+    ${statsLekseCard(classes, cols)}
+    ${statsDekningCard(classes, cols)}
+    ${statsFordelingCard(classes, cols)}`;
+  statsWireControls();
+}
+
+function statsFilterBarHtml() {
+  const all = schoolYearWeeks();
+  const scopeOpts = [`<option value="all"${statsScope === 'all' ? ' selected' : ''}>Hele skolen</option>`]
+    .concat(CLASS_GRADES.map(g => `<optgroup label="${g.label} trinn">`
+      + `<option value="${g.label}"${statsScope === g.label ? ' selected' : ''}>Hele ${g.label} trinn</option>`
+      + g.classes.map(c => `<option value="${c}"${statsScope === c ? ' selected' : ''}>${c}</option>`).join('')
+      + `</optgroup>`)).join('');
+  const subjOpts = [`<option value=""${!statsSubject ? ' selected' : ''}>Alle fag</option>`]
+    .concat(SUBJECTS_SORTED.map(s => `<option value="${escapeHtml(s)}"${statsSubject === s ? ' selected' : ''}>${escapeHtml(s)}</option>`)).join('');
+  const wkOpts = sel => all.map(w => `<option value="${w.value}"${sel === w.value ? ' selected' : ''}>Uke ${w.weekNo}</option>`).join('');
+  return `
+    <div class="stat-filters">
+      <label class="stat-field">Omfang<select id="statScope" class="input">${scopeOpts}</select></label>
+      <label class="stat-field">Fag<select id="statSubject" class="input">${subjOpts}</select></label>
+      <label class="stat-field">Fra uke<select id="statFrom" class="input">${wkOpts(statsFrom)}</select></label>
+      <label class="stat-field">Til uke<select id="statTo" class="input">${wkOpts(statsTo)}</select></label>
+    </div>`;
+}
+function statsWireControls() {
+  const bind = (id, set) => { const el = document.getElementById(id); if (el) el.addEventListener('change', () => { set(el.value); renderStats(); }); };
+  bind('statScope',  v => statsScope = v);
+  bind('statSubject', v => statsSubject = v);
+  bind('statFrom',   v => statsFrom = v);
+  bind('statTo',     v => statsTo = v);
+}
+function statsCard(title, bodyHtml) {
+  return `<section class="stat-card"><h3 class="stat-card-title">${title}</h3>${bodyHtml}</section>`;
+}
+
+// 1) Vurderingsbelastning: class × week heatmap, tinted past the flag threshold.
+function statsBelastningCard(classes, cols) {
+  if (!cols.length) return statsCard('Vurderingsbelastning', '<p class="stat-empty">Velg et ukeområde.</p>');
+  const colSet = new Set(cols.map(c => c.weekStr));
+  const map = {}; let total = 0;
+  vurdData.forEach(v => {
+    if (!v.date || (statsSubject && v.subject !== statsSubject)) return;
+    const wk = dateToWeek(new Date(v.date));
+    if (!colSet.has(wk)) return;
+    classes.forEach(cls => { if (classMatches(v.classes, cls)) { const k = cls + '|' + wk; map[k] = (map[k] || 0) + 1; total++; } });
+  });
+  if (!total) return statsCard('Vurderingsbelastning – klasse × uke', '<p class="stat-empty">Ingen vurderinger i dette området.</p>');
+  const head = `<tr><th></th>${cols.map(c => `<th class="stat-collab">${c.weekNo}</th>`).join('')}</tr>`;
+  const rows = classes.map(cls => {
+    const tds = cols.map(c => {
+      const n = map[cls + '|' + c.weekStr] || 0;
+      const lvl = n === 0 ? 0 : n === 1 ? 1 : n < KONTAKT_LOAD_FLAG ? 2 : 3;
+      return `<td><div class="stat-heat stat-heat-${lvl}" title="${cls} uke ${c.weekNo}: ${n} vurdering${n === 1 ? '' : 'er'}">${n || ''}</div></td>`;
+    }).join('');
+    return `<tr><th class="stat-rowlab">${cls}</th>${tds}</tr>`;
+  }).join('');
+  const legend = `<p class="stat-legend"><span class="stat-heat stat-heat-1">1</span> lav
+    <span class="stat-heat stat-heat-2">2</span> middels
+    <span class="stat-heat stat-heat-3">${KONTAKT_LOAD_FLAG}+</span> høy belastning</p>`;
+  return statsCard('Vurderingsbelastning – klasse × uke',
+    `<div class="stat-scroll"><table class="stat-heatmap"><thead>${head}</thead><tbody>${rows}</tbody></table></div>${legend}`);
+}
+
+// 2) Lekse-mengde per uke: one horizontal bar per week (count in scope).
+function statsLekseCard(classes, cols) {
+  if (!cols.length) return '';
+  const counts = cols.map(c => {
+    let n = 0;
+    allPlanData.forEach(el => {
+      if (el.type !== 'lekse' || !el.description) return;
+      if (statsSubject && el.subject !== statsSubject) return;
+      if (!statsElCoversWeek(el, c.weekStr)) return;
+      if (classes.some(cls => classMatches(el.classes, cls))) n++;
+    });
+    return { weekNo: c.weekNo, n };
+  });
+  const total = counts.reduce((a, c) => a + c.n, 0);
+  if (!total) return statsCard('Lekse-mengde per uke', '<p class="stat-empty">Ingen lekser i dette området.</p>');
+  const max = Math.max(1, ...counts.map(c => c.n));
+  const bars = counts.map(c => `
+    <div class="stat-bar-row">
+      <span class="stat-bar-lab">Uke ${c.weekNo}</span>
+      <div class="stat-bar"><div class="stat-bar-fill" style="width:${Math.round(c.n / max * 100)}%"></div></div>
+      <span class="stat-bar-val">${c.n}</span>
+    </div>`).join('');
+  return statsCard('Lekse-mengde per uke', `<div class="stat-bars">${bars}</div>`);
+}
+
+// 3) Fag-dekning: subject × week, dots for tema / ressurs / lekse present in scope.
+function statsDekningCard(classes, cols) {
+  if (!cols.length) return '';
+  let subjects;
+  if (statsSubject) subjects = [statsSubject];
+  else {
+    const present = new Set();
+    allPlanData.forEach(el => {
+      if (!['læringsmål', 'ressurs', 'lekse'].includes(el.type) || !el.description) return;
+      if (!classes.some(cls => classMatches(el.classes, cls))) return;
+      if (cols.some(c => statsElCoversWeek(el, c.weekStr))) present.add(el.subject);
+    });
+    subjects = [...present].filter(Boolean).sort(statsSubjSort);
+  }
+  if (!subjects.length) return statsCard('Fag-dekning – fag × uke', '<p class="stat-empty">Ingen fag med innhold i dette området.</p>');
+  const has = (subject, weekStr, type) => allPlanData.some(el =>
+    el.type === type && el.subject === subject && el.description && statsElCoversWeek(el, weekStr)
+    && classes.some(cls => classMatches(el.classes, cls)));
+  const dot = (on, lab) => `<span class="stat-dot${on ? ' on' : ''}" title="${lab}"></span>`;
+  const head = `<tr><th></th>${cols.map(c => `<th class="stat-collab">${c.weekNo}</th>`).join('')}</tr>`;
+  const rows = subjects.map(s => {
+    const tds = cols.map(c => `<td><div class="stat-cov" title="${escapeHtml(s)} uke ${c.weekNo}">${
+      dot(has(s, c.weekStr, 'læringsmål'), 'Tema')}${dot(has(s, c.weekStr, 'ressurs'), 'Ressurs')}${dot(has(s, c.weekStr, 'lekse'), 'Lekse')}</div></td>`).join('');
+    return `<tr><th class="stat-rowlab">${escapeHtml(s)}</th>${tds}</tr>`;
+  }).join('');
+  const legend = '<p class="stat-legend">Prikker per uke: Tema · Ressurs · Lekse (fylt = finnes)</p>';
+  return statsCard('Fag-dekning – fag × uke',
+    `<div class="stat-scroll"><table class="stat-heatmap stat-cov-table"><thead>${head}</thead><tbody>${rows}</tbody></table></div>${legend}`);
+}
+
+// 4) Fordeling per fag: vurderinger per subject in scope+range (horizontal bars).
+function statsFordelingCard(classes, cols) {
+  if (!cols.length) return '';
+  const colSet = new Set(cols.map(c => c.weekStr));
+  const counts = {};
+  vurdData.forEach(v => {
+    if (!v.date || (statsSubject && v.subject !== statsSubject)) return;
+    const wk = dateToWeek(new Date(v.date));
+    if (!colSet.has(wk)) return;
+    if (!classes.some(cls => classMatches(v.classes, cls))) return;
+    const s = v.subject || '(uten fag)';
+    counts[s] = (counts[s] || 0) + 1;
+  });
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  if (!entries.length) return statsCard('Vurderinger per fag', '<p class="stat-empty">Ingen vurderinger i dette området.</p>');
+  const max = Math.max(...entries.map(e => e[1]));
+  const bars = entries.map(([s, n]) => `
+    <div class="stat-bar-row">
+      <span class="stat-bar-lab stat-bar-lab-wide">${escapeHtml(s)}</span>
+      <div class="stat-bar"><div class="stat-bar-fill" style="width:${Math.round(n / max * 100)}%"></div></div>
+      <span class="stat-bar-val">${n}</span>
+    </div>`).join('');
+  return statsCard('Vurderinger per fag', `<div class="stat-bars">${bars}</div>`);
 }
 
 // Progresjon: one class + one subject, week by week.

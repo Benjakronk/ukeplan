@@ -923,3 +923,36 @@
   transition: border-color var(--transition), box-shadow var(--transition);
 }
 .desc-rich .rich-field:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
+
+/* ── Statistikk tab ─────────────────────────────────────────── */
+.stat-head { margin-bottom: 4px; }
+.stat-title { font-size: 20px; font-weight: 700; color: var(--text); margin: 0; }
+.stat-note { font-size: 12px; color: var(--text-muted); margin: 2px 0 0; }
+.stat-filters { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0 16px; }
+.stat-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.stat-field .input { font-size: 13px; padding: 7px 10px; min-width: 130px; }
+.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); padding: 16px 18px; margin-bottom: 16px; box-shadow: var(--shadow-card); }
+.stat-card-title { font-size: 15px; font-weight: 700; color: var(--text); margin: 0 0 12px; }
+.stat-empty { font-size: 13px; color: var(--text-muted); margin: 4px 0; }
+.stat-scroll { overflow-x: auto; }
+.stat-heatmap { border-collapse: separate; border-spacing: 4px; }
+.stat-heatmap th { font-size: 12px; font-weight: 700; color: var(--text-muted); }
+.stat-collab { text-align: center; min-width: 28px; }
+.stat-rowlab { text-align: right; padding-right: 6px; white-space: nowrap; color: var(--text); font-size: 13px; }
+.stat-heat { text-align: center; font-weight: 700; font-size: 12px; border-radius: 6px; padding: 6px 8px; min-width: 28px; }
+.stat-heat-0 { background: var(--surface-2); color: var(--text-muted); }
+.stat-heat-1 { background: color-mix(in oklab, var(--danger) 14%, var(--surface)); color: var(--text); }
+.stat-heat-2 { background: color-mix(in oklab, var(--danger) 34%, var(--surface)); color: var(--text); }
+.stat-heat-3 { background: var(--danger); color: var(--on-accent); }
+.stat-legend { font-size: 12px; color: var(--text-muted); margin: 10px 0 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.stat-legend .stat-heat { display: inline-block; padding: 2px 7px; min-width: 0; }
+.stat-bars { display: flex; flex-direction: column; gap: 7px; }
+.stat-bar-row { display: flex; align-items: center; gap: 10px; }
+.stat-bar-lab { font-size: 12px; color: var(--text-muted); width: 58px; flex: none; text-align: right; }
+.stat-bar-lab-wide { width: 140px; text-align: left; color: var(--text); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stat-bar { flex: 1; height: 16px; background: var(--surface-2); border-radius: 8px; overflow: hidden; min-width: 60px; }
+.stat-bar-fill { height: 100%; background: var(--primary); border-radius: 8px; min-width: 2px; }
+.stat-bar-val { font-size: 12px; font-weight: 700; color: var(--text); width: 26px; flex: none; }
+.stat-cov { display: flex; gap: 3px; justify-content: center; padding: 5px 6px; background: var(--surface-2); border-radius: 6px; }
+.stat-dot { width: 8px; height: 8px; border-radius: 50%; background: transparent; border: 1px solid var(--border); }
+.stat-dot.on { background: var(--success); border-color: var(--success); }
