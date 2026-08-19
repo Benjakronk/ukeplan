@@ -4254,6 +4254,7 @@ function setupModalListeners() {
   document.getElementById('modalOverlay').addEventListener('click', () => closeAddModal());
   document.getElementById('addSave').addEventListener('click', saveFromModal);
   document.getElementById('addDelete').addEventListener('click', deleteFromModal);
+  document.getElementById('addCopyClass').addEventListener('click', openCopyToClass);
   // Switching Fag to/from an elective flips the class picker between per-class and
   // per-year (electives are a year unit).
   document.getElementById('subjectSelect').addEventListener('change', () => { buildModalClassBtns(); refreshConflicts(); });
@@ -4616,6 +4617,9 @@ function selectModalType(t) {
   // Intern: offer one shared entry for all ticked classes vs one per class (create only).
   const internRow = document.getElementById('internCombineRow');
   if (internRow) internRow.hidden = !(t === 'intern' && !editingElement && !variantPlan);
+  // «Kopier til klasse» – only when editing an existing entry.
+  const copyBtn = document.getElementById('addCopyClass');
+  if (copyBtn) copyBtn.hidden = !(editingElement || editingVurd || editingHend);
   syncRecurVisibility();
   refreshConflicts();
   updateDateInfo();
@@ -5097,6 +5101,152 @@ async function deleteFromModal() {
     setSaving();
     try { const el = editingElement; await api('delete', { id: el.id }); recordDelete(el, 'slettet element'); setSaved(); closeAddModal({ force: true }); refreshAfterChange(); }
     catch (err) { setSaveError(err.message); }
+  }
+}
+
+// ─── Kopier til klasse (from the edit modal) ──────────────────
+// Make a NEW entry for other classes with the CURRENT modal content, on an
+// (optionally different) date/week. The original is untouched; the copy is
+// undoable and the modal stays open so you can copy again.
+
+// Grade-grouped multi-select; the origin class(es) are locked (already have it).
+function copyClassGrid(originClasses) {
+  const wrap = document.createElement('div');
+  wrap.className = 'class-modal-grid copy-class-grid';
+  const selected = new Set();
+  const origin = new Set((originClasses || []).map(c => String(c).toUpperCase()));
+  CLASS_GRADES.forEach(group => {
+    const g = document.createElement('div'); g.className = 'class-modal-group';
+    const lbl = document.createElement('span'); lbl.className = 'class-grade-label'; lbl.textContent = group.label; g.appendChild(lbl);
+    group.classes.forEach(cls => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'class-modal-btn'; b.textContent = cls;
+      if (origin.has(cls)) { b.disabled = true; b.classList.add('locked'); b.title = 'Denne klassen har allerede oppføringen'; }
+      else b.addEventListener('click', () => {
+        if (selected.has(cls)) { selected.delete(cls); b.classList.remove('active'); }
+        else { selected.add(cls); b.classList.add('active'); }
+      });
+      g.appendChild(b);
+    });
+    wrap.appendChild(g);
+  });
+  return { wrap, selected };
+}
+function copyDateField(labelText, value) {
+  const field = document.createElement('label'); field.className = 'ui-dialog-field';
+  const span = document.createElement('span'); span.className = 'ui-dialog-label'; span.textContent = labelText; field.appendChild(span);
+  const input = document.createElement('input'); input.type = 'date'; input.className = 'ui-dialog-input'; input.value = value || '';
+  const b = getSchoolYearBounds(new Date()); input.min = b.start; input.max = b.end;
+  field.appendChild(input);
+  return { field, input };
+}
+function fillWeekSelect(sel, centerMonday, selectedISO) {
+  sel.innerHTML = '';
+  const endMonday  = mondayOf(isoToDate(getSchoolYearBounds(centerMonday).end));
+  const weeksToEnd = Math.round((endMonday - mondayOf(centerMonday)) / (7 * 86400000));
+  const maxOff     = Math.max(44, weeksToEnd + 1);
+  for (let off = -4; off <= maxOff; off++) {
+    const m = addDays(centerMonday, off * 7);
+    const o = document.createElement('option');
+    o.value = toISODate(m);
+    o.textContent = 'Uke ' + getWeekNumber(m) + ' · ' + formatWeekRange(m, addDays(m, 4));
+    if (o.value === selectedISO) o.selected = true;
+    sel.appendChild(o);
+  }
+}
+
+async function openCopyToClass() {
+  const kind = editingVurd ? 'vurd' : editingHend ? 'hend' : editingElement ? 'element' : null;
+  if (!kind) return;
+  const d = modalDescGet();
+  if (!d.text) { showToast('Skriv inn innhold først.'); return; }
+  const desc = d.value;
+  const subject = document.getElementById('subjectSelect').value;
+  const teacher = modalTeacherValue();
+  const orig = kind === 'vurd' ? editingVurd : kind === 'hend' ? editingHend : editingElement;
+  const originClasses = String(orig.classes || '').toUpperCase().replace(/,/g, ' ').split(/\s+/).filter(Boolean);
+
+  let grid, dateInput, dateToInput, weekFromSel, weekToSel;
+  const result = await buildUiDialog({
+    title: 'Kopier til klasse',
+    render: ctx => {
+      const p = document.createElement('p'); p.className = 'ui-dialog-message';
+      p.textContent = 'Lag en kopi for andre klasser med innholdet du har nå. Originalen røres ikke.';
+      ctx.body.appendChild(p);
+      grid = copyClassGrid(originClasses);
+      ctx.body.appendChild(grid.wrap);
+      if (kind === 'vurd') {
+        const f = copyDateField('Dato', orig.date); dateInput = f.input; ctx.body.appendChild(f.field);
+      } else if (kind === 'hend') {
+        const f1 = copyDateField('Fra dato', orig.date); dateInput = f1.input; ctx.body.appendChild(f1.field);
+        const f2 = copyDateField('Til dato (valgfritt)', orig.dateTo || ''); dateToInput = f2.input; ctx.body.appendChild(f2.field);
+      } else {
+        const l = document.createElement('span'); l.className = 'ui-dialog-label'; l.textContent = 'Uke (fra–til)'; ctx.body.appendChild(l);
+        const row = document.createElement('div'); row.className = 'copy-week-row';
+        weekFromSel = document.createElement('select'); weekFromSel.className = 'input';
+        weekToSel   = document.createElement('select'); weekToSel.className = 'input';
+        const center = weekStringToMonday(orig.week);
+        fillWeekSelect(weekFromSel, center, toISODate(weekStringToMonday(orig.week)));
+        fillWeekSelect(weekToSel, center, toISODate(weekStringToMonday(orig.weekTo || orig.week)));
+        const sep = document.createElement('span'); sep.className = 'copy-week-sep'; sep.textContent = 'til';
+        row.appendChild(weekFromSel); row.appendChild(sep); row.appendChild(weekToSel);
+        ctx.body.appendChild(row);
+      }
+      return {};
+    },
+    buttons: [
+      { label: 'Avbryt', className: 'btn-ghost', value: null },
+      { label: 'Kopier', className: 'btn-primary', primary: true, onClick: ctx => {
+        const classes = [...grid.selected];
+        if (!classes.length) { ctx.setError('Velg minst én klasse.'); return; }
+        if (kind === 'vurd') {
+          const date = dateInput.value;
+          if (!date) { ctx.setError('Velg en dato.'); return; }
+          const problem = vurdDateProblem(date);
+          if (problem) { ctx.setError(problem + '. Velg en vanlig skoledag.'); return; }
+          return { classes, date };
+        }
+        if (kind === 'hend') {
+          let date = dateInput.value;
+          if (!date) { ctx.setError('Velg en fra-dato.'); return; }
+          let dateTo = dateToInput.value || '';
+          if (dateTo && dateTo < date) { const t = date; date = dateTo; dateTo = t; }
+          return { classes, date, dateTo };
+        }
+        let wf = dateToWeek(isoToDate(weekFromSel.value)), wt = dateToWeek(isoToDate(weekToSel.value));
+        if (wf > wt) { const t = wf; wf = wt; wt = t; }
+        return { classes, weekFrom: wf, weekTo: wt };
+      } },
+    ],
+  });
+  if (!result) return;
+
+  const where = result.classes.join(', ');
+  setSaving();
+  try {
+    if (kind === 'vurd') {
+      const params = { date: result.date, subject, classes: result.classes.join(' '), description: desc, teacher };
+      const r = await vurdApi('create', params);
+      if (r && r.id) recordVurdCreate(params, r.id, 'kopierte vurdering');
+      setSaved(); loadAssessments();
+    } else if (kind === 'hend') {
+      const params = { date: result.date, dateTo: result.dateTo, classes: result.classes.join(' '), description: desc, teacher };
+      const r = await hendApi('create', params);
+      if (r && r.id) recordHendCreate(params, r.id, 'kopierte hendelse');
+      setSaved(); loadHendelser({ force: true });
+    } else {
+      const creates = [];
+      for (const classes of electiveWriteGroups(subject, result.classes)) {
+        const params = { type: editingElement.type, classes, week: result.weekFrom, weekTo: result.weekTo, day: editingElement.day || '', subject, description: desc, teacher };
+        const r = await api('create', params);
+        creates.push({ params, id: r && r.id });
+      }
+      recordCreateMany(creates, 'kopierte til ' + where);
+      setSaved(); refreshAfterChange();
+    }
+    showToast('Kopiert til ' + where + '.');
+  } catch (err) {
+    setSaveError(err.message);
   }
 }
 

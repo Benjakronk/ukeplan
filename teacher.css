@@ -570,6 +570,12 @@
 .admin-cleanup-select { flex: none; width: auto; }
 .admin-cleanup-impact { font-size: 13px; color: var(--text-muted); margin: 10px 0; }
 .admin-cleanup-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* «Kopier til klasse» dialog */
+.copy-class-grid { max-height: 38vh; overflow-y: auto; padding-right: 2px; }
+.copy-week-row { display: flex; align-items: center; gap: 8px; }
+.copy-week-row .input { flex: 1; min-width: 0; }
+.copy-week-sep { color: var(--text-muted); font-size: 13px; flex-shrink: 0; }
 .admin-config-chips { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 0; }
 .admin-config-chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 4px 4px 10px;
   background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--text); }
