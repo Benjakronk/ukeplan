@@ -3995,8 +3995,20 @@ function buildHomeworkRow(subject, el, opts = {}) {
 
   daySel.addEventListener('change', () => commitHomeworkRow(row));
 
-  row.appendChild(daySel);
+  // Header row: the day picker on the left, action buttons on the right (shown on
+  // focus, like the rich-cell bar). The content field sits full-width below, so
+  // the buttons never squeeze it.
+  const head = document.createElement('div');
+  head.className = 'hw-edit-rowhead';
+  head.appendChild(daySel);
+  const spacer = document.createElement('span'); spacer.className = 'hw-edit-spacer';
+  head.appendChild(spacer);
+  const actions = document.createElement('div');
+  actions.className = 'hw-edit-actions no-print';
+  head.appendChild(actions);
+  row.appendChild(head);
   row.appendChild(ed);
+
   // Open this lekse in the modal's bigger field (see the rich-cell ✎). Hands the
   // current text + day off to the modal and suppresses the inline blur-commit.
   const editBtn = document.createElement('button');
@@ -4019,7 +4031,7 @@ function buildHomeworkRow(subject, el, opts = {}) {
           weekTo: ed.dataset.week || dateToWeek(weekMonday), teacher: teacherName };
     openElementEdit(el);
   });
-  row.appendChild(editBtn);
+  actions.appendChild(editBtn);
   // Copy this subject's lekser to the teacher's other classes (core only; electives
   // are year-wide). Kept off the modal-edited (variant) board.
   if (!isElective(subject) && !opts.cls) {
@@ -4030,7 +4042,7 @@ function buildHomeworkRow(subject, el, opts = {}) {
     cp.title = 'Kopier til dine andre klasser';
     cp.addEventListener('mousedown', e => e.preventDefault());
     cp.addEventListener('click', () => copyRowToClasses(subject, { types: ['lekse'] }));
-    row.appendChild(cp);
+    actions.appendChild(cp);
   }
   const del = document.createElement('button');
   del.type = 'button';
@@ -4038,7 +4050,7 @@ function buildHomeworkRow(subject, el, opts = {}) {
   del.textContent = '×';
   del.title = 'Slett lekse';
   del.addEventListener('click', () => deleteHomeworkRow(row));
-  row.appendChild(del);
+  actions.appendChild(del);
   return row;
 }
 

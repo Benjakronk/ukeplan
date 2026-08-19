@@ -149,12 +149,18 @@
 /* Lekser per-item editor */
 .cell-homework-edit { padding: 6px 8px; }
 .hw-edit-list { display: flex; flex-direction: column; gap: 4px; }
-.hw-edit-row { display: flex; align-items: flex-start; gap: 4px; }
+/* Each lekse: a header (day + actions) above a full-width content field, so the
+   buttons never squeeze the text. Actions appear on focus, like the rich cells. */
+.hw-edit-row { display: flex; flex-direction: column; gap: 3px; }
+.hw-edit-rowhead { display: flex; align-items: center; gap: 6px; }
+.hw-edit-spacer { flex: 1; }
+.hw-edit-actions { display: none; align-items: center; gap: 2px; }
+.hw-edit-row:focus-within .hw-edit-actions { display: flex; }
 .hw-day {
-  flex-shrink: 0; width: 52px; padding: 5px 2px; font-family: var(--font); font-size: 12px;
+  flex-shrink: 0; width: 96px; padding: 5px 6px; font-family: var(--font); font-size: 12px;
   border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); cursor: pointer;
 }
-.hw-edit-text { flex: 1; }
+.hw-edit-text { width: 100%; }
 .hw-edit-del, .hw-edit-copy, .hw-edit-open {
   flex-shrink: 0; width: 24px; height: 24px; font-size: 15px; line-height: 1;
   background: transparent; border: none; color: var(--text-muted); cursor: pointer; border-radius: 4px;
