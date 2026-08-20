@@ -887,12 +887,17 @@ function renderSyncShare(box) {
             <span class="sync-name">${escapeHtml(t.name)}${t.hasKeypair ? '' : ' <span class="sync-invite-note">(ikke i gang enda)</span>'}</span>
             <button class="btn btn-sm btn-primary" data-syncact="inviteOne" data-id="${t.id}" type="button">Inviter</button>
         </div>`).join('');
+    const anyNotStarted = addable.some(t => !t.hasKeypair);
     const inviteSection = addable.length ? `
         <div class="sync-invite">
             <label class="sync-invite-lbl" for="syncInviteeSearch">Inviter en kollega</label>
             <input type="text" id="syncInviteeSearch" class="sync-input sync-invite-search" placeholder="Søk etter navn…"
                    autocomplete="off" value="${escapeHtml(syncInviteeFilter)}">
             <div class="sync-invite-list" id="syncInviteList">${inviteRows}</div>
+            ${anyNotStarted ? `<p class="modal-hint sync-invite-hint">Har en kollega ikke startet ennå
+                («ikke i gang enda»), får hen tilgang først når hen har slått på synkronisering <strong>og</strong>
+                noen som allerede har tilgang er inne i Klassekartografen samtidig – nøkkelen må lages av en av oss.
+                Det holder å la fanen stå åpen en liten stund.</p>` : ''}
         </div>` : '<p class="modal-hint">Alle andre lærere er alt invitert.</p>';
 
     // The owner hands the group over to another member (a single pointer move — no
@@ -1005,7 +1010,7 @@ async function syncAction(act, el) {
         if (act === 'inviteOne') {
             const r = await inviteTeacher(syncShareGroup, id);
             if (r.error) { toast(r.error, 'err'); return; }
-            toast(r.pending ? `${r.name} får tilgang så snart hen har startet – det skjer av seg selv`
+            toast(r.pending ? `${r.name} er invitert. Tilgang gis når hen har startet og noen med tilgang er inne samtidig – la gjerne fanen stå åpen.`
                             : `${r.name} har nå tilgang`, 'ok');
             syncShareData = await kkGet('kk_members', { group: syncShareGroup });
             renderSyncBody();

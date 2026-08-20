@@ -1361,6 +1361,7 @@ body.present .zoom-ctrl { display: none; }
     border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); font-size: 0.9rem; }
 .sync-invite-row .sync-name { font-weight: 600; }
 .sync-invite-note { color: var(--ink-soft); font-weight: 400; font-size: 0.82rem; }
+.sync-invite-hint { margin-top: 8px; }
 .sync-owner-box { margin: 12px 0; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2); padding: 0 12px; }
 .sync-owner-box > summary { cursor: pointer; font-weight: 700; padding: 10px 0; font-size: 0.9rem; }
 .sync-owner-box[open] > summary { border-bottom: 1px solid var(--line); margin-bottom: 10px; }
