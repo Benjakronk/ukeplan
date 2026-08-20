@@ -5194,7 +5194,12 @@ function copyDateField(labelText, value) {
   field.appendChild(input);
   return { field, input };
 }
-function fillWeekSelect(sel, centerMonday, selectedISO) {
+// Populate a Kopier-til-klasse week <select> (a DOM element) with the school
+// year's weeks around a center Monday. NB: distinct from the Oversikt
+// `fillWeekSelect(id, weeks, selected)` below – a same-name declaration there used
+// to hoist over this one, leaving these dropdowns empty (copies saved with no week,
+// so they never showed for students). Keep the names distinct.
+function fillCopyWeekSelect(sel, centerMonday, selectedISO) {
   sel.innerHTML = '';
   const endMonday  = mondayOf(isoToDate(getSchoolYearBounds(centerMonday).end));
   const weeksToEnd = Math.round((endMonday - mondayOf(centerMonday)) / (7 * 86400000));
@@ -5240,8 +5245,8 @@ async function openCopyToClass() {
         weekFromSel = document.createElement('select'); weekFromSel.className = 'input';
         weekToSel   = document.createElement('select'); weekToSel.className = 'input';
         const center = weekStringToMonday(orig.week);
-        fillWeekSelect(weekFromSel, center, toISODate(weekStringToMonday(orig.week)));
-        fillWeekSelect(weekToSel, center, toISODate(weekStringToMonday(orig.weekTo || orig.week)));
+        fillCopyWeekSelect(weekFromSel, center, toISODate(weekStringToMonday(orig.week)));
+        fillCopyWeekSelect(weekToSel, center, toISODate(weekStringToMonday(orig.weekTo || orig.week)));
         const sep = document.createElement('span'); sep.className = 'copy-week-sep'; sep.textContent = 'til';
         row.appendChild(weekFromSel); row.appendChild(sep); row.appendChild(weekToSel);
         ctx.body.appendChild(row);
@@ -5267,6 +5272,7 @@ async function openCopyToClass() {
           if (dateTo && dateTo < date) { const t = date; date = dateTo; dateTo = t; }
           return { classes, date, dateTo };
         }
+        if (!weekFromSel.value || !weekToSel.value) { ctx.setError('Velg uke (fra og til).'); return; }
         let wf = dateToWeek(isoToDate(weekFromSel.value)), wt = dateToWeek(isoToDate(weekToSel.value));
         if (wf > wt) { const t = wf; wf = wt; wt = t; }
         return { classes, weekFrom: wf, weekTo: wt };
