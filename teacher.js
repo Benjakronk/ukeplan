@@ -4394,7 +4394,10 @@ function openAddModal(preset = {}) {
   editingVurd    = null;
   editingHend    = null;
   editingElement = null;
-  modalType      = preset.type || 'lekse';
+  // No type is pre-selected for a bare «+ Legg til»: the teacher must choose one,
+  // so tema content doesn't get filed as lekse (etc.) by an unnoticed default.
+  // Contexts that open the modal with intent still pass preset.type.
+  modalType      = preset.type || '';
   // In an adapted plan, plan elements are saved under the code; assessments
   // (vurdering) + events (hendelse) stay on the base class so they're class-wide.
   modalClasses   = preset.classes ? preset.classes.slice()
@@ -4628,7 +4631,28 @@ function modalDescGet() {
   return { value: v, text: v };
 }
 
+// Rows/fields that only make sense once a type is chosen – hidden in the
+// "no type yet" state so the modal shows just the Type picker + a prompt.
+const NO_TYPE_ROWS = ['weekRangeRow', 'recurRow', 'dateRow', 'dateToRow', 'subjectRow',
+  'classRow', 'internCombineRow', 'variantClassNote', 'dayRow', 'descRow', 'teacherRow', 'conflictPanel'];
+
 function selectModalType(t) {
+  const prompt = document.getElementById('typePrompt');
+  // No type chosen yet (bare «+ Legg til»): show only the Type picker + a prompt,
+  // clear any leftover description, and require an explicit choice before saving.
+  if (!t) {
+    modalType = '';
+    modalPendingDesc = null;
+    buildModalDescEditor('');   // empty editor so nothing reads as unsaved on close
+    document.querySelectorAll('#typeBtns .type-btn').forEach(b => b.classList.remove('active'));
+    const typeSum = document.getElementById('typeSummary'); if (typeSum) typeSum.textContent = 'Velg type';
+    const typeRow = document.getElementById('typeRow'); if (typeRow) typeRow.open = true;
+    NO_TYPE_ROWS.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+    if (prompt) prompt.hidden = false;
+    return;
+  }
+  if (prompt) prompt.hidden = true;
+  NO_TYPE_ROWS.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });   // the body below re-hides the ones this type doesn't use
   // Preserve what's typed across a type switch; on open, seed from modalPendingDesc.
   const seed = (modalPendingDesc !== null) ? modalPendingDesc : modalDescGet().value;
   modalPendingDesc = null;
@@ -4979,6 +5003,11 @@ async function editIntoRecurrence(orig, specs, common) {
 
 async function saveFromModal() {
   if (modalSaving) return;   // a save is already running – ignore extra clicks
+  if (!modalType) {          // no type picked yet (bare «+ Legg til»)
+    showToast('Velg en type for oppføringen.');
+    const tr = document.getElementById('typeRow'); if (tr) tr.open = true;
+    return;
+  }
   const d = modalDescGet();
   const desc = d.value;      // rich HTML for plan elements, plain text for vurdering
   if (!d.text) { showToast('Skriv inn innhold først.'); return; }
