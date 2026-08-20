@@ -55,8 +55,8 @@ function fmtHuman(s) {
   const parts = [];
   if (h) parts.push(h + ' t');
   if (m) parts.push(m + ' min');
-  if (sec && !h) parts.push(sec + ' s');
-  return parts.length ? parts.join(' ') : '0 min';
+  if (sec) parts.push(sec + ' s');   // always show seconds (matches the student tidsbank)
+  return parts.length ? parts.join(' ') : '0 s';
 }
 function fmtAgo(ts) {
   const diff = Date.now() - ts;
