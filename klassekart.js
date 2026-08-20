@@ -348,7 +348,10 @@ async function syncUnlock(input) {
     try { localStorage.setItem(SYNC_ON_KEY, '1'); } catch (e) {}
     return { ok: true, groups: groups.length };
 }
-function syncLock() { kkPersonal = null; kkCeks = {}; kkSalt = null; kkPriv = null; kkPubs = {}; kkDir = null; }
+function syncLock() {
+    kkPersonal = null; kkCeks = {}; kkSalt = null; kkPriv = null; kkPubs = {}; kkDir = null;
+    if (memberPollTimer) { clearInterval(memberPollTimer); memberPollTimer = null; }   // no keys → can't complete invites
+}
 
 /* ---- group keys ----------------------------------------------------------- */
 /* A group's CEK, creating and registering it the first time. Note the group row
@@ -605,6 +608,8 @@ let syncHasIdentity = null; // server says an identity exists (null = not asked 
 let syncShareGroup = null;  // group whose sharing panel is open
 let syncShareData = null;   // { members, pending } for that group
 let syncMyInvites = null;   // groups a colleague shared with me but I can't open yet (kk_pending.forMe)
+let syncInviteeFilter = '';   // search term in the Del panel's "invite a colleague" list
+let memberPollTimer = null;   // background poll that completes parked invites for others
 let syncConfirmSecret = false;   // true while the "type the sentence" acknowledgement step is open
 const SYNC_CONFIRM_PHRASE = 'Jeg har kopiert og lagret koden, og skjønner at den aldri vil vises her igjen. Hvis jeg mister den, er jeg låst ute.';
 
@@ -703,6 +708,26 @@ function enterInvitedGroup(id) {
     toast('Du er med i «' + (store.classes[id].name || 'gruppa') + '» nå', 'ok');
 }
 
+/* When I invite a colleague who hasn't started yet, the wrap can only be made by a
+ * member once they DO start. So while I have Klassekartografen open and unlocked,
+ * quietly complete any such parked invites in the background (resolvePending is
+ * cheap + safe: it never mutates my local charts). This is what lets a shared group
+ * reach the invitee without me reopening the page. Paused when the tab is hidden. */
+function maybeMemberPoll() {
+    const active = syncUnlocked() && kkPriv && document.visibilityState === 'visible'
+        && $('app') && !$('app').classList.contains('hidden');
+    if (active && !memberPollTimer) memberPollTimer = setInterval(memberPollTick, 25000);
+    else if (!active && memberPollTimer) { clearInterval(memberPollTimer); memberPollTimer = null; }
+}
+async function memberPollTick() {
+    if (!syncUnlocked() || !kkPriv) { maybeMemberPoll(); return; }
+    try {
+        const done = await resolvePending();
+        if (done > 0) toast(done === 1 ? 'Ga tilgang til én som ventet' : ('Ga tilgang til ' + done + ' som ventet'), 'ok');
+    } catch (e) { /* offline – try again next tick */ }
+    maybeMemberPoll();
+}
+
 function openSyncModal() {
     // Always open on the overview: a share panel left over from last time is
     // stale and confusing.
@@ -723,6 +748,7 @@ function enterPulledCharts() {
     saveQuiet();
     if ($('app').classList.contains('hidden')) showApp();
     render();
+    maybeMemberPoll();   // now unlocked + in the app: complete others' parked invites
 }
 
 function renderSyncBody() {
@@ -812,7 +838,7 @@ function renderSyncBody() {
             : c.sv ? `<span class="sync-ok">lagret (v${c.sv})</span>`
             : '<span class="sync-wait">ikke sendt opp</span>';
         const share = c.sv ? `<button class="btn btn-sm" data-syncact="share" data-id="${id}" type="button">👥 Del</button>` : '';
-        return `<div class="sync-row"><span class="sync-name">${escapeHtml(c.name)}</span>${status}${share}</div>`;
+        return `<div class="sync-row"><button class="sync-name sync-open" data-syncact="open" data-id="${id}" type="button" title="Åpne ${escapeHtml(c.name)}">${escapeHtml(c.name)}</button>${status}${share}</div>`;
     }).join('') || '<div class="empty-line">Ingen grupper her enda. Trykk «Synk nå» for å hente.</div>';
 
     box.innerHTML = `
@@ -852,8 +878,22 @@ function renderSyncShare(box) {
     const pending = d.pending.map(pp => `<div class="sync-row"><span class="sync-name">${escapeHtml(pp.name)}</span>
         <span class="sync-wait">venter på nøkkel</span></div>`).join('');
     const have = new Set(d.members.map(m => m.id).concat(d.pending.map(x => x.id)));
-    const opts = (kkDir || []).filter(t => !have.has(t.id))
-        .map(t => `<option value="${t.id}">${escapeHtml(t.name)}${t.hasKeypair ? '' : ' (ikke i gang enda)'}</option>`).join('');
+    // Addable colleagues: a searchable list where each row invites immediately
+    // (no select-then-confirm) — Tilbake/× still exit the panel.
+    const addable = (kkDir || []).filter(t => !have.has(t.id))
+        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'no'));
+    const inviteRows = addable.map(t => `
+        <div class="sync-invite-row" data-name="${escapeHtml(String(t.name || '').toLowerCase())}">
+            <span class="sync-name">${escapeHtml(t.name)}${t.hasKeypair ? '' : ' <span class="sync-invite-note">(ikke i gang enda)</span>'}</span>
+            <button class="btn btn-sm btn-primary" data-syncact="inviteOne" data-id="${t.id}" type="button">Inviter</button>
+        </div>`).join('');
+    const inviteSection = addable.length ? `
+        <div class="sync-invite">
+            <label class="sync-invite-lbl" for="syncInviteeSearch">Inviter en kollega</label>
+            <input type="text" id="syncInviteeSearch" class="sync-input sync-invite-search" placeholder="Søk etter navn…"
+                   autocomplete="off" value="${escapeHtml(syncInviteeFilter)}">
+            <div class="sync-invite-list" id="syncInviteList">${inviteRows}</div>
+        </div>` : '<p class="modal-hint">Alle andre lærere er alt invitert.</p>';
 
     // The owner hands the group over to another member (a single pointer move — no
     // re-keying); everyone else can step out of the group without deleting it for all.
@@ -877,18 +917,28 @@ function renderSyncShare(box) {
         <p class="modal-hint"><strong>${escapeHtml(cls.name)}</strong> — hvem har tilgang.
         Alle med tilgang kan redigere kartet og invitere flere.</p>
         <div class="sync-list">${members}${pending}</div>
-        ${opts ? `<div class="setup-field">
-            <label for="syncInvitee">Inviter en kollega</label>
-            <select id="syncInvitee">${opts}</select>
-        </div>` : '<p class="modal-hint">Alle andre lærere er alt invitert.</p>'}
+        ${inviteSection}
         <p class="modal-hint">Å fjerne noen stopper videre tilgang. Det de alt har åpnet,
         har de fortsatt — det kan ingen ta tilbake.</p>
         ${transferBox}
         <div class="sync-actions">
             <button class="btn" data-syncact="shareBack" type="button">← Tilbake</button>
             ${leaveBtn}
-            ${opts ? '<button class="btn btn-primary" data-syncact="invite" type="button">Inviter</button>' : ''}
         </div>`;
+
+    // Live-filter the invite list in place (keeps focus; no full re-render).
+    const search = $('syncInviteeSearch');
+    if (search) {
+        const applyFilter = () => {
+            syncInviteeFilter = search.value;
+            const q = search.value.trim().toLowerCase();
+            $('syncInviteList').querySelectorAll('.sync-invite-row').forEach(r => {
+                r.style.display = (!q || r.dataset.name.includes(q)) ? '' : 'none';
+            });
+        };
+        search.addEventListener('input', applyFilter);
+        applyFilter();
+    }
 }
 
 /* Sync is a topbar button rather than a menu entry, so its own face carries the
@@ -939,21 +989,28 @@ async function syncAction(act, el) {
             enterPulledCharts();
             renderSyncBody(); updateSyncBadge(); return;
         }
+        if (act === 'open') {
+            if (!store.classes[id]) return;
+            store.activeClassId = id; state = store.classes[id]; saveQuiet();
+            if ($('app').classList.contains('hidden')) showApp();
+            render(); closeModal('syncModal'); return;
+        }
         if (act === 'share') {
-            syncShareGroup = id; syncShareData = null; renderSyncBody();
+            syncShareGroup = id; syncShareData = null; syncInviteeFilter = ''; renderSyncBody();
             await staffList(true);
             syncShareData = await kkGet('kk_members', { group: id });
             renderSyncBody(); return;
         }
         if (act === 'shareBack') { syncShareGroup = null; syncShareData = null; renderSyncBody(); return; }
-        if (act === 'invite') {
-            const who = $('syncInvitee').value;
-            const r = await inviteTeacher(syncShareGroup, who);
+        if (act === 'inviteOne') {
+            const r = await inviteTeacher(syncShareGroup, id);
             if (r.error) { toast(r.error, 'err'); return; }
-            toast(r.pending ? `${r.name} får tilgang når en av oss åpner gruppa neste gang`
+            toast(r.pending ? `${r.name} får tilgang så snart hen har startet – det skjer av seg selv`
                             : `${r.name} har nå tilgang`, 'ok');
             syncShareData = await kkGet('kk_members', { group: syncShareGroup });
-            renderSyncBody(); return;
+            renderSyncBody();
+            const s = $('syncInviteeSearch'); if (s) s.focus();   // keep adding without re-clicking the box
+            return;
         }
         if (act === 'revoke') {
             const who = (syncShareData.members.find(m => m.id === id) || {}).name || 'læreren';
@@ -2194,6 +2251,7 @@ function showApp() {
     clearSmartResult();
     setTab('kart');
     requestAnimationFrame(fitBoard);
+    maybeMemberPoll();   // start completing others' parked invites while I'm in the app
 }
 function showSetup() {
     if (editMode) exitEditMode();
@@ -3863,6 +3921,9 @@ function wireSetup() {
             pollInviteTick();
         }
         maybePollForInvites();
+        // Returning to the tab: complete any invites that became wrappable while away.
+        if (document.visibilityState === 'visible' && syncUnlocked() && kkPriv) memberPollTick();
+        else maybeMemberPoll();
     });
 
     $('setupGoBtn').addEventListener('click', () => {
