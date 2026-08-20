@@ -570,14 +570,16 @@ async function loadTimebank(opts = {}) {
   } catch { /* keep cached */ }
 }
 
-// "1 t 30 min" / "45 min" – mirrors timebank.js fmtHuman (seconds → t/min).
+// "1 t 30 min 15 s" / "45 min 10 s" / "30 s" – hours (when any), minutes and
+// seconds. The bank accrues from timer leftovers, so seconds are shown too.
 function formatTbTime(s) {
   s = Math.max(0, Math.round(s));
-  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
   const parts = [];
   if (h) parts.push(h + ' t');
   if (m) parts.push(m + ' min');
-  return parts.length ? parts.join(' ') : (s ? '<1 min' : '0 min');
+  if (sec) parts.push(sec + ' s');
+  return parts.length ? parts.join(' ') : '0 s';
 }
 
 // The Tidsbank tab: a read-only balance, using the SAME balance-card presentation
