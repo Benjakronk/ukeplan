@@ -1079,7 +1079,7 @@ function confirmNoSubject() {
     title: 'Mangler fag',
     render: ctx => {
       const p = document.createElement('p'); p.className = 'ui-dialog-message';
-      p.textContent = 'Du har ikke valgt fag for denne oppføringen. Uten fag vises den for alle elevene i klassen. Vil du legge til et fag?';
+      p.textContent = 'Du har ikke valgt fag for denne oppføringen. Vil du legge til et fag?';
       ctx.body.appendChild(p);
       const lab = document.createElement('label'); lab.className = 'ui-dialog-check';
       const cb = document.createElement('input'); cb.type = 'checkbox';
