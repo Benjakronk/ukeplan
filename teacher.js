@@ -268,7 +268,7 @@ let modalPendingDesc = null;   // description to seed into the editor on the nex
 const SETTINGS_KEY = 'up_settings';
 let settings = loadSettings();
 function loadSettings() {
-  const defaults = { confirmDelete: true, mySubjects: [], subjectOrder: [],
+  const defaults = { confirmDelete: true, warnNoSubject: true, mySubjects: [], subjectOrder: [],
                      viewMode: 'mine', viewSubjects: [], lekseDays: { bySubjectClass: {}, bySubject: {} },
                      pinnedClasses: [], pinnedSubjects: [],
                      onboardedAt: '' };
@@ -561,6 +561,7 @@ function applyProfile(profile) {
   settings = migrateSettings({
     landing:         p.landing,               // startside: 'hjem' | 'ukeplan' | 'last'
     confirmDelete:   p.confirmDelete !== false,                                  // default true
+    warnNoSubject:   p.warnNoSubject !== false,                                  // default true
     mySubjects:      Array.isArray(p.mySubjects) ? p.mySubjects : [],
     subjectOrder:    Array.isArray(p.subjectOrder) ? p.subjectOrder : [],
     viewMode:        p.viewMode,
@@ -619,6 +620,7 @@ let profileSaveTimer = null;
 function profilePreferences() {
   return {
     confirmDelete:   settings.confirmDelete !== false,
+    warnNoSubject:   settings.warnNoSubject !== false,
     mySubjects:      Array.isArray(settings.mySubjects) ? settings.mySubjects : [],
     subjectOrder:    Array.isArray(settings.subjectOrder) ? settings.subjectOrder : [],
     viewMode:        settings.viewMode || 'mine',
@@ -1067,6 +1069,32 @@ function confirmDeletion(message) {
     ],
   }).then(v => v === true);
 }
+// Nudge when a student-facing general element (beskjed etc.) is saved with no
+// fag: without one it shows for EVERY pupil in the class. Returns 'add' (go back
+// and pick a fag) or 'save' (keep it fag-less). Off via "ikke spør igjen" + the
+// profile («Innstillinger» → warnNoSubject). Closing the dialog = 'add' (safe).
+function confirmNoSubject() {
+  if (settings.warnNoSubject === false) return Promise.resolve('save');
+  return buildUiDialog({
+    title: 'Mangler fag',
+    render: ctx => {
+      const p = document.createElement('p'); p.className = 'ui-dialog-message';
+      p.textContent = 'Du har ikke valgt fag for denne oppføringen. Uten fag vises den for alle elevene i klassen. Vil du legge til et fag?';
+      ctx.body.appendChild(p);
+      const lab = document.createElement('label'); lab.className = 'ui-dialog-check';
+      const cb = document.createElement('input'); cb.type = 'checkbox';
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(' Ikke spør om dette igjen'));
+      ctx.body.appendChild(lab);
+      return { cb };
+    },
+    buttons: [
+      { label: 'Lagre uten fag', className: 'btn-ghost', onClick: (ctx, f) => { if (f.cb.checked) { settings.warnNoSubject = false; saveSettings(); } return 'save'; } },
+      { label: 'Legg til fag', className: 'btn-primary', primary: true, onClick: (ctx, f) => { if (f.cb.checked) { settings.warnNoSubject = false; saveSettings(); } return 'add'; } },
+    ],
+  }).then(v => v === 'save' ? 'save' : 'add');
+}
+
 // Put the previous text back into a cleared cell when a deletion is cancelled.
 function restoreRichCell(ed, ids) {
   const html = ids.map(id => { const el = findLoadedElement(id); return el && el.description; }).filter(Boolean).join('<br>');
@@ -1930,6 +1958,7 @@ function openProfileModal() {
   document.getElementById('teacherName').value = teacherName;
   document.getElementById('profileUsername').textContent = teacherUsername ? '@' + teacherUsername : '–';
   document.getElementById('setConfirmDelete').checked = settings.confirmDelete !== false;
+  document.getElementById('setWarnNoSubject').checked = settings.warnNoSubject !== false;
   syncLandingSeg();
   profileOpen = true;   // transactional: nothing is committed until "Lagre"
   profileDirty = false; dirtyPrefs = dirtyClasses = dirtyMatrix = false;
@@ -3136,6 +3165,10 @@ function setupDashboardListeners() {
   document.getElementById('pwChangeBtn').addEventListener('click', changeOwnPassword);
   document.getElementById('setConfirmDelete').addEventListener('change', e => {
     settings.confirmDelete = e.target.checked;
+    saveSettings();
+  });
+  document.getElementById('setWarnNoSubject').addEventListener('change', e => {
+    settings.warnNoSubject = e.target.checked;
     saveSettings();
   });
   document.getElementById('teacherLandingSeg').addEventListener('click', e => {
@@ -5018,6 +5051,18 @@ async function saveFromModal() {
   // without a fag can't be placed in the right subject row / progression).
   if (!subject && (modalType === 'vurdering' || SUBJECT_TYPES.includes(modalType))) {
     showToast('Velg fag.'); return;
+  }
+  // For student-facing general types (beskjed, timeendring, …) fag is optional, but
+  // a missing one shows the item to the WHOLE class – so nudge on CREATE before
+  // saving. (intern is teacher-only → no nudge; edits of a deliberately class-wide
+  // beskjed shouldn't nag, so creation only.)
+  if (!subject && !editingElement && GENERAL_TYPES.includes(modalType) && modalType !== 'intern') {
+    const choice = await confirmNoSubject();
+    if (choice === 'add') {
+      const sr = document.getElementById('subjectRow'); if (sr) sr.style.display = '';
+      const ss = document.getElementById('subjectSelect'); if (ss) ss.focus();
+      return;   // keep the modal open so they can pick a fag
+    }
   }
 
   beginModalSaving();
