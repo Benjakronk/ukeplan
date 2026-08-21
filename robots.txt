@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+# The teacher/app pages are login-gated app shells, not search content – they
+# also carry <meta name="robots" content="noindex">. Left crawlable so Google can
+# see the noindex; nothing public links to them.
+
+Sitemap: https://ukeportalen.no/sitemap.xml
