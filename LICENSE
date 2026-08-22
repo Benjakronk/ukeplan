@@ -1,3 +1,31 @@
+Ukeportalen — Proprietær programvarelisens
+
+Opphavsrett © 2026 Benjamin Ensrud. Alle rettigheter forbeholdt.
+
+Dette repositoriet og alt innhold i det (kildekode, ressurser, dokumentasjon og
+design) er proprietært og konfidensielt.
+
+Ingen gis tillatelse til å bruke, kopiere, endre, slå sammen, publisere,
+distribuere, viderelisensiere, selge eller lage avledede verk av denne
+programvaren eller deler av den, verken i kildeform eller kompilert form, uten
+skriftlig forhåndssamtykke fra rettighetshaver.
+
+Tilgang til dette repositoriet, eller muligheten til å lese koden som leveres til
+en nettleser ved bruk av tjenesten, gir ingen lisens eller rett til å bruke,
+gjengi eller gjenbruke den.
+
+PROGRAMVAREN LEVERES «SOM DEN ER», UTEN NOEN FORM FOR GARANTI, VERKEN UTTRYKT
+ELLER UNDERFORSTÅTT. SÅ LANGT GJELDENDE RETT TILLATER, SKAL RETTIGHETSHAVER IKKE
+UNDER NOEN OMSTENDIGHET HOLDES ANSVARLIG FOR KRAV, TAP ELLER ANNET ANSVAR SOM
+OPPSTÅR AV ELLER I FORBINDELSE MED PROGRAMVAREN ELLER BRUKEN AV DEN. INGENTING I
+DENNE LISENSEN BEGRENSER ANSVAR SOM IKKE KAN BEGRENSES ETTER GJELDENDE RETT.
+
+For lisensforespørsler, kontakt rettighetshaver.
+
+Ved motstrid mellom den norske og den engelske teksten går den norske foran.
+
+--------------------------------------------------------------------------------
+
 Ukeportalen — Proprietary Software License
 
 Copyright © 2026 Benjamin Ensrud. All rights reserved.
@@ -15,7 +43,12 @@ web browser when using the hosted service, does not grant any license or right t
 use, reproduce, or reuse it.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES,
-OR OTHER LIABILITY ARISING FROM THE USE OF THE SOFTWARE.
+IMPLIED. TO THE EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM
+OR IN CONNECTION WITH THE SOFTWARE OR ITS USE. NOTHING IN THIS LICENSE LIMITS
+LIABILITY THAT CANNOT BE LIMITED UNDER APPLICABLE LAW.
 
 For licensing enquiries, contact the copyright holder.
+
+In case of conflict between the Norwegian and English text, the Norwegian text
+prevails.
