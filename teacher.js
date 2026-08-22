@@ -1271,6 +1271,16 @@ function signedClassTokens(e) {
   return String(e.classes || '').toUpperCase().split(/[\s,]+/).filter(Boolean);
 }
 
+// A sortable "when registered" value (ms). Plan elements carry a real creation
+// `timestamp` ("YYYY-MM-DD HH:MM"); vurderinger/hendelser have no creation column,
+// so fall back to their date. `createdAt` (if a future backend adds it) wins.
+function signedCreatedMs(e) {
+  if (e.createdAt) { const t = Number(e.createdAt); if (t) return t; }
+  if (e.kind === 'element' && e.timestamp) { const t = Date.parse(String(e.timestamp).replace(' ', 'T')); if (!isNaN(t)) return t; }
+  if (e.date) { const t = Date.parse(e.date); if (!isNaN(t)) return t; }
+  return 0;
+}
+
 // Populate the Type/Fag/Klasse filter dropdowns for a surface from its entries
 // (options reflect what's actually present); a still-valid selection is preserved,
 // otherwise it falls back to «Alle».
@@ -1294,7 +1304,7 @@ function fillSignedFilters(prefix, entries) {
 }
 function signedFiltersOf(prefix) {
   const v = id => (document.getElementById(prefix + id)?.value || '');
-  return { type: v('FilterType'), subject: v('FilterSubject'), cls: v('FilterClass') };
+  return { type: v('FilterType'), subject: v('FilterSubject'), cls: v('FilterClass'), sort: v('Sort') || 'new' };
 }
 
 // Shared filter+render. Matches free text across text/subject/classes/usernames
@@ -1313,6 +1323,9 @@ function renderSignedList(listEl, countEl, entries, query, opts, filters) {
     if (f.cls && !signedClassTokens(e).includes(f.cls)) return false;
     return true;
   });
+  // Sort by registration time; default newest first.
+  const dir = f.sort === 'old' ? 1 : -1;
+  filtered.sort((a, b) => (signedCreatedMs(a) - signedCreatedMs(b)) * dir);
   listEl.innerHTML = '';
   if (!entries.length) { listEl.innerHTML = '<p class="muted">Ingen registreringer ennå.</p>'; if (countEl) countEl.textContent = ''; return; }
   if (!filtered.length) { listEl.innerHTML = '<p class="muted">Ingen treff.</p>'; if (countEl) countEl.textContent = ''; return; }
@@ -1350,7 +1363,7 @@ function reopenAdminContent() {
   const s = document.getElementById('adminContentSearch');
   if (s && q) s.value = q;
   const set = (id, v) => { const el = document.getElementById('adminContent' + id); if (el && v) el.value = v; };
-  set('FilterType', saved.type); set('FilterSubject', saved.subject); set('FilterClass', saved.cls);
+  set('FilterType', saved.type); set('FilterSubject', saved.subject); set('FilterClass', saved.cls); set('Sort', saved.sort);
 }
 
 function openMyEntries() {
@@ -1359,6 +1372,7 @@ function openMyEntries() {
   document.body.classList.add('scroll-locked');
   const s = document.getElementById('myEntriesSearch'); if (s) s.value = '';
   ['FilterType', 'FilterSubject', 'FilterClass'].forEach(id => { const el = document.getElementById('myEntries' + id); if (el) el.value = ''; });
+  const so = document.getElementById('myEntriesSort'); if (so) so.value = 'new';
   loadMyEntries();
 }
 function closeMyEntries() {
@@ -1397,6 +1411,7 @@ function openAdminModal() {
   const csearch = document.getElementById('adminContentSearch');
   if (csearch) csearch.value = '';
   ['FilterType', 'FilterSubject', 'FilterClass'].forEach(id => { const el = document.getElementById('adminContent' + id); if (el) el.value = ''; });
+  const csort = document.getElementById('adminContentSort'); if (csort) csort.value = 'new';
   document.getElementById('adminTabConfig').hidden = !isSuperadmin;    // school config = super-admin only
   document.getElementById('adminTabCleanup').hidden = !isSuperadmin;   // data cleanup = super-admin only
   setAdminTab('teachers');
@@ -3144,13 +3159,13 @@ function setupDashboardListeners() {
   document.getElementById('adminTabConfig').addEventListener('click', () => setAdminTab('config'));
   document.getElementById('adminTabCleanup').addEventListener('click', () => setAdminTab('cleanup'));
   document.getElementById('adminContentSearch').addEventListener('input', renderAdminContent);
-  ['FilterType', 'FilterSubject', 'FilterClass'].forEach(id =>
+  ['FilterType', 'FilterSubject', 'FilterClass', 'Sort'].forEach(id =>
     document.getElementById('adminContent' + id).addEventListener('change', renderAdminContent));
   document.getElementById('myEntriesBtn').addEventListener('click', openMyEntries);
   document.getElementById('myEntriesClose').addEventListener('click', closeMyEntries);
   document.getElementById('myEntriesOverlay').addEventListener('click', closeMyEntries);
   document.getElementById('myEntriesSearch').addEventListener('input', renderMyEntries);
-  ['FilterType', 'FilterSubject', 'FilterClass'].forEach(id =>
+  ['FilterType', 'FilterSubject', 'FilterClass', 'Sort'].forEach(id =>
     document.getElementById('myEntries' + id).addEventListener('change', renderMyEntries));
   document.getElementById('adminVariantSearch').addEventListener('input', renderAdminVariants);
   document.getElementById('adminConfigSave').addEventListener('click', saveAdminConfig);
