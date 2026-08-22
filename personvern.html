@@ -21,7 +21,7 @@
 </head>
 <body>
   <main class="legal-page">
-    <p><a href="index.html">&lsaquo; Tilbake til Ukeportalen</a></p>
+    <p><a href="index.html" id="backLink">&lsaquo; Tilbake</a></p>
     <h1>Personvernerklæring</h1>
     <p class="legal-meta">Ukeportalen · Runni ungdomsskole · sist oppdatert 23. august 2026</p>
 
@@ -96,5 +96,19 @@
 
     <p class="legal-meta"><a href="terms.html">Vilkår for bruk</a></p>
   </main>
+  <script>
+    // Return to the page you came from (teacher or student page). Falls back to
+    // the href (index.html) on a direct visit / external referrer / JS off.
+    (function () {
+      var back = document.getElementById('backLink');
+      if (!back) return;
+      try {
+        var ref = document.referrer;
+        if (ref && new URL(ref).origin === location.origin) {
+          back.addEventListener('click', function (e) { e.preventDefault(); history.back(); });
+        }
+      } catch (e) {}
+    })();
+  </script>
 </body>
 </html>
