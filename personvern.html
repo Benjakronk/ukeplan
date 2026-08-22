@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Personvernerklæring | Ukeportalen</title>
+  <meta name="robots" content="noindex">
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('up_theme');
+        if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <meta name="theme-color" content="#eef2f0" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f1514" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+  <main class="legal-page">
+    <p><a href="index.html">&lsaquo; Tilbake til Ukeportalen</a></p>
+    <h1>Personvernerklæring</h1>
+    <p class="legal-meta">Ukeportalen · Runni ungdomsskole · sist oppdatert 23. august 2026</p>
+
+    <p>Denne erklæringen forklarer hvilke opplysninger Ukeportalen behandler, hvorfor,
+    og hvordan de er beskyttet. Vi har lagt vekt på å samle inn <strong>minst
+    mulig</strong>.</p>
+
+    <h2>1. Behandlingsansvar</h2>
+    <p>Skolen / Nes kommune er behandlingsansvarlig for personopplysninger om elever
+    og ansatte i tjenesten. Ukeportalen driftes av Benjamin Ensrud på vegne av skolen.
+    Spørsmål om dine opplysninger rettes til skolen (se punkt 8).</p>
+
+    <h2>2. Hva vi behandler</h2>
+    <p><strong>Elever:</strong> Elevsiden krever ingen innlogging. Valgene dine – navn
+    (valgfritt), klasse, valgfag og hvilke lekser du har huket av – lagres <strong>kun
+    lokalt i nettleseren din</strong> og sendes ikke til serveren. Serveren mottar
+    hvilken klasse det hentes ukeplan for, men lagrer ingen elevidentitet.</p>
+    <p><strong>Lærere:</strong> En lærerkonto lagrer brukernavn, navn, et kryptert
+    (hashet) passord, dine innstillinger, samt hvilke klasser/fag du er knyttet til.
+    Innhold du lager (ukeplaner, beskjeder, vurderinger, hendelser) lagres med
+    brukernavnet ditt som forfatter. Innlogging holdes ved en sikker
+    øktinformasjonskapsel (se punkt 3).</p>
+    <p><strong>Klassekart:</strong> Seteplasser lagres <strong>ende-til-ende-kryptert</strong>.
+    Serveren lagrer kun kryptert innhold og kan ikke lese elevnavn i kartene.</p>
+    <p><strong>Besøksstatistikk:</strong> For å telle hvor mange enheter som bruker
+    tjenesten, lages en <strong>tilfeldig, anonym id</strong> som lagres lokalt i
+    nettleseren. Det lagres ingen IP-adresse eller andre personopplysninger, og
+    grunnlagsdataene slettes automatisk etter 90 dager – bare anonyme totaltall står
+    igjen.</p>
+
+    <h2>3. Informasjonskapsler (cookies)</h2>
+    <p>Tjenesten bruker <strong>én</strong> informasjonskapsel: <code>up_session</code>,
+    som holder lærere innlogget. Den er nødvendig for innlogging og brukes ikke til
+    sporing. Elevsiden setter ingen informasjonskapsler. Øvrige valg lagres i
+    nettleserens lokale lagring (localStorage), ikke som cookies.</p>
+
+    <h2>4. Hvor data lagres og hvem som er involvert</h2>
+    <p>Serveren og databasen driftes hos <strong>Netcup i Tyskland (EU/EØS)</strong>,
+    med kryptert forbindelse (HTTPS). Selve nettsidene leveres via
+    <strong>GitHub Pages</strong>; når nettleseren din laster sidene, kan teknisk
+    informasjon (som IP-adresse) bli synlig for den leverandøren som en del av
+    leveransen. Skoleruta (ferier/planleggingsdager) hentes direkte fra
+    <strong>Nes kommunes kalendertjeneste</strong>. Vi bruker <strong>ingen</strong>
+    reklame- eller tredjeparts sporingsverktøy.</p>
+
+    <h2>5. Lagringstid</h2>
+    <p>Innlogging (økt) varer i inntil ca. 30 dager og fornyes ved bruk.
+    Besøksstatistikkens grunnlagsdata slettes etter 90 dager (kun anonyme totaltall
+    beholdes). Innhold beholdes til det slettes av skolen; gammelt innhold fra
+    tidligere skoleår kan slettes permanent av skoleadministrator. Sikkerhetskopier
+    oppbevares i inntil ca. 30 dager.</p>
+
+    <h2>6. Sikkerhet</h2>
+    <p>All trafikk går kryptert (HTTPS). Passord lagres kun som kryptografisk hash
+    (scrypt), aldri i klartekst. Klassekart er ende-til-ende-kryptert. Tilgang styres
+    med roller (lærer / administrator / skoleadministrator), og vi følger prinsippet
+    om dataminimering.</p>
+
+    <h2>7. Dine rettigheter</h2>
+    <p>Du har rett til innsyn i, retting av og – der loven gir grunnlag – sletting av
+    personopplysninger om deg. Fordi skolen er behandlingsansvarlig, retter du slike
+    henvendelser til skolen (se punkt 8). Du kan også klage til Datatilsynet.</p>
+
+    <h2>8. Kontakt</h2>
+    <p>Henvendelser om personvern i Ukeportalen rettes til skolen / Nes kommune som
+    behandlingsansvarlig. Spørsmål om selve tjenesten kan rettes til tjenesteeier via
+    skolen.</p>
+
+    <h2>9. Endringer</h2>
+    <p>Erklæringen kan oppdateres. Vesentlige endringer varsles i tjenesten. Datoen
+    øverst viser når den sist ble endret.</p>
+
+    <p class="legal-meta"><a href="terms.html">Vilkår for bruk</a></p>
+  </main>
+</body>
+</html>
