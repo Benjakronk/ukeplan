@@ -956,3 +956,10 @@
 .stat-cov { display: flex; gap: 3px; justify-content: center; padding: 5px 6px; background: var(--surface-2); border-radius: 6px; }
 .stat-dot { width: 8px; height: 8px; border-radius: 50%; background: transparent; border: 1px solid var(--border); }
 .stat-dot.on { background: var(--success); border-color: var(--success); }
+/* Besøk (admin) card */
+.stat-visit-nums { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 6px; }
+.stat-visit-row { display: flex; flex-direction: column; gap: 2px; padding: 10px 14px; background: var(--surface-2); border-radius: var(--radius-card); min-width: 150px; }
+.stat-visit-lab { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.stat-visit-val { font-size: 14px; color: var(--text); }
+.stat-visit-val strong { font-size: 18px; }
+.stat-subhead { font-size: 13px; font-weight: 700; color: var(--text-muted); margin: 14px 0 8px; }

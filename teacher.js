@@ -506,9 +506,35 @@ async function handleAuthSubmit(e) {
 }
 
 // Hydrate the profile from the server response and open the dashboard.
+// A random, non-identifying device id in localStorage (shared with the student
+// page, same origin) so the server can count unique DEVICES without personal data.
+function deviceId() {
+  let id = '';
+  try {
+    id = localStorage.getItem('up_device') || '';
+    if (!id) {
+      id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+         : (Date.now().toString(36) + Math.random().toString(36).slice(2, 12));
+      localStorage.setItem('up_device', id);
+    }
+  } catch (e) {}
+  return id;
+}
+function pingVisit(role) {
+  try {
+    const key = 'up_visit_ping_' + role;
+    const today = new Date().toISOString().slice(0, 10);
+    if (localStorage.getItem(key) === today) return;
+    localStorage.setItem(key, today);
+    const id = deviceId();
+    if (id) fetch(`${SCRIPT_URL}?action=visit_ping&device=${encodeURIComponent(id)}&role=${role}`, { credentials: 'omit' }).catch(() => {});
+  } catch (e) {}
+}
+
 function enterDashboard(profile) {
   applyProfile(profile);
   loggedIn = true;
+  pingVisit('teacher');   // authenticated teacher device (once/day)
   hideOverlay();
   showDashboard();
   updateClassLabel();
@@ -7185,6 +7211,7 @@ let statsScope   = 'all';   // 'all' | a trinn label ('9.') | a class ('9B')
 let statsSubject = '';       // '' = all subjects
 let statsFrom    = null;     // ISO Monday of the first week shown
 let statsTo      = null;     // ISO Monday of the last week shown
+let visitStats   = null;     // { today, last7, last30, series } – admin-only
 
 async function loadStats() {
   if (!(allPlanData.length && Date.now() - allPlanTs < 60 * 60 * 1000)) {
@@ -7195,6 +7222,16 @@ async function loadStats() {
   }
   await loadAssessments();
   renderStats();
+  if (isAdmin) loadVisitStats();   // unique-device counts (separate fetch, admin only)
+}
+
+// Admin-only visitor readout. Re-renders the Stats tab when it arrives.
+async function loadVisitStats() {
+  if (!isAdmin) return;
+  try {
+    const d = await (await fetch(`${SCRIPT_URL}?action=admin_visits`, { credentials: 'include' })).json();
+    if (d && !d.error) { visitStats = d; if (teacherTab === 'stats') renderStats(); }
+  } catch (e) { /* leave the card in its loading state */ }
 }
 
 function statsScopeClasses() {
@@ -7243,12 +7280,37 @@ function renderStats() {
       <h2 class="stat-title">Statistikk</h2>
       <p class="stat-note">Tallene er så komplette som det lærerne har registrert.</p>
     </div>
+    ${isAdmin ? statsVisitCard() : ''}
     ${statsFilterBarHtml()}
     ${statsBelastningCard(classes, cols)}
     ${statsLekseCard(classes, cols)}
     ${statsDekningCard(classes, cols)}
     ${statsFordelingCard(classes, cols)}`;
   statsWireControls();
+}
+
+// Admin-only unique-device readout: today / rolling 7d / 30d, split student vs
+// teacher, + a per-day bar series. Counts DEVICES (random local id), not people.
+function statsVisitCard() {
+  const v = visitStats;
+  if (!v) return statsCard('Besøk (kun admin)', '<p class="stat-empty">Laster …</p>');
+  const line = (lab, o) => `<div class="stat-visit-row"><span class="stat-visit-lab">${lab}</span>
+    <span class="stat-visit-val"><strong>${o.student || 0}</strong> elev · <strong>${o.teacher || 0}</strong> lærer</span></div>`;
+  const nums = `<div class="stat-visit-nums">${line('I dag', v.today)}${line('Siste 7 dager', v.last7)}${line('Siste 30 dager', v.last30)}</div>`;
+  const series = v.series || [];
+  let chart = '';
+  if (series.length) {
+    const max = Math.max(1, ...series.map(d => (d.student || 0) + (d.teacher || 0)));
+    const bars = series.map(d => {
+      const tot = (d.student || 0) + (d.teacher || 0);
+      return `<div class="stat-bar-row"><span class="stat-bar-lab">${d.day.slice(5)}</span>
+        <div class="stat-bar"><div class="stat-bar-fill" style="width:${Math.round(tot / max * 100)}%"></div></div>
+        <span class="stat-bar-val">${tot}</span></div>`;
+    }).join('');
+    chart = `<h4 class="stat-subhead">Unike enheter per dag (siste 30)</h4><div class="stat-bars">${bars}</div>`;
+  }
+  const note = '<p class="stat-legend">Teller unike <strong>enheter</strong> (tilfeldig id lagret lokalt), ikke personer – og ikke IP, så elever bak samme skole-nett telles hver for seg. Ingen personopplysninger lagres.</p>';
+  return statsCard('Besøk (kun admin)', nums + chart + note);
 }
 
 function statsFilterBarHtml() {

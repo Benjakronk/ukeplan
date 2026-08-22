@@ -201,8 +201,35 @@ let calEnd           = null;
 
 window.addEventListener('DOMContentLoaded', init);
 
+// A random, non-identifying device id kept in localStorage – lets the server count
+// unique DEVICES (survives school NAT, unlike IPs) without any personal data.
+function deviceId() {
+  let id = '';
+  try {
+    id = localStorage.getItem('up_device') || '';
+    if (!id) {
+      id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+         : (Date.now().toString(36) + Math.random().toString(36).slice(2, 12));
+      localStorage.setItem('up_device', id);
+    }
+  } catch (e) {}
+  return id;
+}
+// Fire-and-forget once/day per role; the server dedupes by (day, device, role).
+function pingVisit(role) {
+  try {
+    const key = 'up_visit_ping_' + role;
+    const today = new Date().toISOString().slice(0, 10);
+    if (localStorage.getItem(key) === today) return;
+    localStorage.setItem(key, today);
+    const id = deviceId();
+    if (id) fetch(`${SCRIPT_URL}?action=visit_ping&device=${encodeURIComponent(id)}&role=${role}`).catch(() => {});
+  } catch (e) {}
+}
+
 async function init() {
   setupListeners();
+  pingVisit('student');
   loadSchoolCalendar();
   // Service worker is registered (+ auto-reload on update) from rich.js, shared
   // by both pages.
