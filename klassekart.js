@@ -1660,7 +1660,13 @@ function smartArrange(silent) {
     const freeStudents = state.students.map(s => s.id).filter(id => !fixedStudents.has(id));
 
     const RESTARTS = 9, ITERS = 1400;
-    let best = null, bestScore = Infinity;
+    // Collect every restart tied at the best score, then pick one at random (below).
+    // This is the "predictable randomness": the result is always among the optimal
+    // arrangements (rules hold), but which of several equally-good ones wins varies
+    // between runs — so equal-weight ties (e.g. «bør sitte med» A, B or C) don't
+    // always resolve to the same option.
+    const TIE_EPS = 1e-6;
+    let bestScore = Infinity, bestPool = [];
 
     for (let r = 0; r < RESTARTS; r++) {
         const assign = Object.assign({}, fixed);
@@ -1684,8 +1690,10 @@ function smartArrange(silent) {
             }
             T *= 0.997;
         }
-        if (curScore < bestScore) { bestScore = curScore; best = Object.assign({}, assign); }
+        if (curScore < bestScore - TIE_EPS) { bestScore = curScore; bestPool = [Object.assign({}, assign)]; }
+        else if (curScore <= bestScore + TIE_EPS) { bestPool.push(Object.assign({}, assign)); }
     }
+    const best = bestPool.length ? bestPool[Math.floor(Math.random() * bestPool.length)] : Object.assign({}, fixed);
     state.assign = best;
     // invariant: annealing must place as many students as a plain fill would.
     // If a future swap regression drops students, fail loud and degrade to shuffle.
