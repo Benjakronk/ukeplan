@@ -1088,7 +1088,8 @@ const UNDO_LIMIT = 60;
 function snapshot() {
     return JSON.stringify({
         seats: state.seats, assign: state.assign, locked: state.locked,
-        room: state.room, roomMode: state.roomMode, roomParams: state.roomParams
+        room: state.room, roomMode: state.roomMode, roomParams: state.roomParams,
+        groupAssign: state.groupAssign, groupLocked: state.groupLocked, groupConfig: state.groupConfig
     });
 }
 function pushUndo(snap) {
@@ -1104,26 +1105,302 @@ function restoreSnapshot(snap) {
     const s = JSON.parse(snap);
     state.seats = s.seats; state.assign = s.assign; state.locked = s.locked;
     state.room = s.room; state.roomMode = s.roomMode; state.roomParams = s.roomParams;
+    if (s.groupAssign) state.groupAssign = s.groupAssign;
+    if (s.groupLocked) state.groupLocked = s.groupLocked;
+    if (s.groupConfig) state.groupConfig = s.groupConfig;
     pruneInvalid();
 }
+function afterUndoRender() { render(); if (activeTab === 'grupper') renderGroups(); }
 function undo() {
     if (!undoStack.length) { toast('Ingenting å angre', 'err'); return; }
     redoStack.push(snapshot());
     restoreSnapshot(undoStack.pop());
-    save(); render(); updateUndoButtons();
+    save(); afterUndoRender(); updateUndoButtons();
     toast('Angret ↩', 'ok');
 }
 function redo() {
     if (!redoStack.length) { toast('Ingenting å gjenta', 'err'); return; }
     undoStack.push(snapshot());
     restoreSnapshot(redoStack.pop());
-    save(); render(); updateUndoButtons();
+    save(); afterUndoRender(); updateUndoButtons();
     toast('Gjentok ↪', 'ok');
 }
 function updateUndoButtons() {
     const u = $('undoBtn'), r = $('redoBtn');
     if (u) u.disabled = !undoStack.length;
     if (r) r.disabled = !redoStack.length;
+}
+
+/* =========================================================================
+ * ARBEIDSGRUPPER (working groups) — a partition of the roster, no seats/room.
+ * Sibling to the seating "Kart". Mirrors the smart-placement machinery:
+ * a scored partition + simulated annealing with the same random tie-break,
+ * and the same lock-and-reroll loop (groupLocked kept fixed).
+ * ========================================================================= */
+let groupSel = null;   // studentId selected in the group view (click-to-move)
+
+// How many groups the current config asks for.
+function groupCount() {
+    const cfg = state.groupConfig || {}, n = state.students.length;
+    const v = Math.max(1, parseInt(cfg.value, 10) || 4);
+    if (cfg.mode === 'pairs') return Math.max(1, Math.ceil(n / 2));
+    if (cfg.mode === 'size')  return Math.max(1, Math.ceil(n / v));
+    return Math.max(1, Math.min(v, n || 1));   // 'count'
+}
+
+// Co-membership pairs from one saved grouping snapshot (for avoid-repeat).
+function groupPairsOf(h) {
+    const out = [], byG = {}, a = (h && h.assign) || {};
+    for (const sid in a) { const g = a[sid]; if (g < 0) continue; (byG[g] = byG[g] || []).push(sid); }
+    for (const g in byG) { const m = byG[g]; for (let i = 0; i < m.length; i++) for (let j = i + 1; j < m.length; j++) out.push(pairKey(m[i], m[j])); }
+    return out;
+}
+
+function buildGroupContext() {
+    const apartPairs = [], together = [];
+    (state.groupRules || []).forEach(r => {
+        const st = normStrength(r.strength) || 'must';
+        const members = (r.members || []).filter(id => id !== r.a);
+        if (!members.length) return;
+        if (r.type === 'apart') members.forEach(m => apartPairs.push({ a: r.a, b: m, strength: st }));
+        else together.push({ a: r.a, members: new Set(members), strength: st });
+    });
+    const genderOf = {}, tagsOf = {}, wishWith = [], wishAvoid = [];
+    let cg = 0, cj = 0;
+    state.students.forEach(s => {
+        genderOf[s.id] = s.gender; tagsOf[s.id] = s.tags || [];
+        if (s.gender === 'G') cg++; else if (s.gender === 'J') cj++;
+        (s.wishWith || []).forEach(w => wishWith.push({ a: s.id, b: w }));
+        (s.wishAvoid || []).forEach(w => wishAvoid.push({ a: s.id, b: w }));
+    });
+    const prefs = Object.assign({ balanceGender: false, avoidRepeat: false, avoidAllRepeat: false, balanceTags: false }, state.groupPrefs || {});
+    const hist = state.groupHistory || [];
+    let prevGroupPairs = null, pastGroupPairs = null;
+    if (prefs.avoidRepeat && hist.length) { prevGroupPairs = new Set(groupPairsOf(hist[0])); }
+    if (prefs.avoidAllRepeat && hist.length) { pastGroupPairs = new Map(); hist.forEach(h => groupPairsOf(h).forEach(k => pastGroupPairs.set(k, (pastGroupPairs.get(k) || 0) + 1))); }
+    const known = cg + cj;
+    return { apartPairs, together, genderOf, tagsOf, wishWith, wishAvoid, prefs, ratioG: known ? cg / known : 0.5, prevGroupPairs, pastGroupPairs };
+}
+
+// Penalty score for a partition (lower = better). ga: studentId -> group index.
+function scoreGroups(ga, ctx, K) {
+    const groups = []; for (let i = 0; i < K; i++) groups.push([]);
+    for (const sid in ga) { const g = ga[sid]; if (g >= 0 && g < K) groups[g].push(sid); }
+    let score = 0;
+    for (const p of ctx.apartPairs) { const g = ga[p.a]; if (g != null && g >= 0 && g === ga[p.b]) score += p.strength === 'must' ? 1000 : 30; }
+    for (const t of ctx.together) {
+        const g = ga[t.a];
+        if (g == null || g < 0) { score += t.strength === 'must' ? 200 : 30; continue; }
+        if (!groups[g].some(m => t.members.has(m))) score += t.strength === 'must' ? 200 : 30;
+    }
+    for (const w of ctx.wishWith) { const a = ga[w.a], b = ga[w.b]; if (!(a != null && a >= 0 && a === b)) score += 15; }
+    for (const w of ctx.wishAvoid) { const a = ga[w.a], b = ga[w.b]; if (a != null && a >= 0 && a === b) score += 15; }
+    if (ctx.prefs.balanceGender) for (const grp of groups) {
+        if (!grp.length) continue;
+        let cg = 0, cj = 0; grp.forEach(s => { const gd = ctx.genderOf[s]; if (gd === 'G') cg++; else if (gd === 'J') cj++; });
+        if (cg + cj) score += Math.abs(cg - grp.length * ctx.ratioG) * 2;
+    }
+    if (ctx.prefs.balanceTags) for (const grp of groups) {
+        const counts = {}; grp.forEach(s => (ctx.tagsOf[s] || []).forEach(t => counts[t] = (counts[t] || 0) + 1));
+        for (const t in counts) if (counts[t] > 1) score += (counts[t] - 1) * 4;
+    }
+    if (ctx.prevGroupPairs) for (const grp of groups) for (let i = 0; i < grp.length; i++) for (let j = i + 1; j < grp.length; j++) if (ctx.prevGroupPairs.has(pairKey(grp[i], grp[j]))) score += 10;
+    if (ctx.pastGroupPairs) for (const grp of groups) for (let i = 0; i < grp.length; i++) for (let j = i + 1; j < grp.length; j++) { const c = ctx.pastGroupPairs.get(pairKey(grp[i], grp[j])); if (c) score += c * 10; }
+    return score;
+}
+
+// Smart gruppering / trill på nytt. Locked students stay put; the rest are
+// re-optimised. Swap-only moves keep group sizes balanced.
+function smartGroup(silent) {
+    if (!state.students.length) { toast('Ingen elever å gruppere', 'err'); return; }
+    pushUndo();
+    const K = groupCount();
+    const ctx = buildGroupContext();
+    const gLocked = new Set(state.groupLocked || []);
+    const ga0 = state.groupAssign || {};
+    const lockedAssign = {}, lockedSizes = new Array(K).fill(0);
+    state.students.forEach(s => { if (gLocked.has(s.id)) { let g = ga0[s.id]; if (g == null) g = -1; if (g >= K) g = -1; lockedAssign[s.id] = g; if (g >= 0) lockedSizes[g]++; } });
+    const free = state.students.map(s => s.id).filter(id => !gLocked.has(id));
+
+    const RESTARTS = 9, ITERS = 1200, TIE_EPS = 1e-6;
+    let bestScore = Infinity, bestPool = [];
+    for (let r = 0; r < RESTARTS; r++) {
+        const assign = Object.assign({}, lockedAssign);
+        const sizes = lockedSizes.slice();
+        const pool = free.slice();
+        for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+        pool.forEach(sid => { let mi = 0; for (let g = 1; g < K; g++) if (sizes[g] < sizes[mi]) mi = g; assign[sid] = mi; sizes[mi]++; });
+        let cur = scoreGroups(assign, ctx, K);
+        let T = 6;
+        for (let it = 0; it < ITERS; it++) {
+            if (free.length < 2) break;
+            const p = free[Math.floor(Math.random() * free.length)];
+            const q = free[Math.floor(Math.random() * free.length)];
+            if (p === q || assign[p] === assign[q]) continue;
+            const tmp = assign[p]; assign[p] = assign[q]; assign[q] = tmp;   // swap groups (sizes preserved)
+            const sc = scoreGroups(assign, ctx, K);
+            if (sc <= cur || Math.random() < Math.exp((cur - sc) / T)) { cur = sc; }
+            else { const t2 = assign[p]; assign[p] = assign[q]; assign[q] = t2; }
+            T *= 0.997;
+        }
+        if (cur < bestScore - TIE_EPS) { bestScore = cur; bestPool = [Object.assign({}, assign)]; }
+        else if (cur <= bestScore + TIE_EPS) { bestPool.push(Object.assign({}, assign)); }
+    }
+    state.groupAssign = bestPool.length ? bestPool[Math.floor(Math.random() * bestPool.length)] : Object.assign({}, lockedAssign);
+    save(); renderGroups();
+    if (!silent) explainGroupResult(ctx, K);
+}
+
+function explainGroupResult(ctx, K) {
+    const ga = state.groupAssign || {};
+    const membersOf = {}; for (const sid in ga) { const g = ga[sid]; if (g >= 0) (membersOf[g] = membersOf[g] || []).push(sid); }
+    let problems = 0;
+    ctx.apartPairs.forEach(p => { if (p.strength === 'must' && ga[p.a] != null && ga[p.a] >= 0 && ga[p.a] === ga[p.b]) problems++; });
+    ctx.together.forEach(t => { if (t.strength !== 'must') return; const g = ga[t.a]; if (g == null || g < 0) { problems++; return; } if (!(membersOf[g] || []).some(m => t.members.has(m))) problems++; });
+    const el = $('groupResult'); if (!el) return;
+    el.className = 'kk-result ' + (problems === 0 ? 'is-ok' : 'is-warn');
+    el.textContent = problems === 0 ? 'Alt gikk opp 🎯' : (problems + ' «må»-regel' + (problems > 1 ? 'er' : '') + ' kolliderte');
+    el.hidden = false;
+}
+
+/* ---- group view rendering + click-to-move + lock ------------------------- */
+function isGroupLocked(sid) { return (state.groupLocked || []).indexOf(sid) !== -1; }
+
+function groupChip(s) {
+    const chip = document.createElement('div');
+    chip.className = 'group-chip' + (groupSel === s.id ? ' is-sel' : '') + (isGroupLocked(s.id) ? ' is-locked' : '') + (s.gender ? ' g-' + s.gender : '');
+    chip.dataset.studentId = s.id;
+    const nm = document.createElement('span'); nm.className = 'gchip-name'; nm.textContent = s.name; chip.appendChild(nm);
+    const lock = document.createElement('button');
+    lock.type = 'button'; lock.className = 'gchip-lock'; lock.dataset.studentId = s.id;
+    lock.textContent = isGroupLocked(s.id) ? '🔒' : '🔓';
+    lock.title = isGroupLocked(s.id) ? 'Lås opp' : 'Lås til gruppa';
+    chip.appendChild(lock);
+    return chip;
+}
+
+function renderGroups() {
+    const board = $('groupBoard'); if (!board) return;
+    const K = groupCount();
+    const ga = state.groupAssign || {};
+    const groups = []; for (let i = 0; i < K; i++) groups.push([]);
+    const utenfor = [];
+    state.students.slice().sort(byName).forEach(s => {
+        const g = ga[s.id];
+        if (g != null && g >= 0 && g < K) groups[g].push(s); else utenfor.push(s);
+    });
+    board.innerHTML = '';
+    groups.forEach((mem, i) => {
+        const card = document.createElement('div'); card.className = 'group-card';
+        const allLocked = mem.length && mem.every(s => isGroupLocked(s.id));
+        const head = document.createElement('div'); head.className = 'group-head';
+        head.innerHTML = '<span class="group-title">Gruppe ' + (i + 1) + '</span><span class="group-count">' + mem.length + '</span>';
+        const gl = document.createElement('button'); gl.type = 'button'; gl.className = 'group-lock' + (allLocked ? ' is-on' : '');
+        gl.dataset.group = i; gl.textContent = allLocked ? '🔒' : '🔓'; gl.title = allLocked ? 'Lås opp gruppa' : 'Lås hele gruppa';
+        head.appendChild(gl);
+        card.appendChild(head);
+        const list = document.createElement('div'); list.className = 'group-list'; list.dataset.groupdrop = i;
+        mem.forEach(s => list.appendChild(groupChip(s)));
+        if (!mem.length) { const e = document.createElement('div'); e.className = 'group-empty'; e.textContent = 'Tom'; list.appendChild(e); }
+        card.appendChild(list);
+        board.appendChild(card);
+    });
+    // "Utenfor gruppene" pool
+    const pool = document.createElement('div'); pool.className = 'group-card group-outside';
+    const ph = document.createElement('div'); ph.className = 'group-head'; ph.innerHTML = '<span class="group-title">Utenfor</span><span class="group-count">' + utenfor.length + '</span>';
+    pool.appendChild(ph);
+    const plist = document.createElement('div'); plist.className = 'group-list'; plist.dataset.groupdrop = -1;
+    utenfor.forEach(s => plist.appendChild(groupChip(s)));
+    if (!utenfor.length) { const e = document.createElement('div'); e.className = 'group-empty'; e.textContent = 'Alle er i en gruppe'; plist.appendChild(e); }
+    pool.appendChild(plist);
+    board.appendChild(pool);
+    updateGroupConfigUI();
+}
+
+function setGroupSel(sid) { groupSel = sid; document.querySelectorAll('#groupBoard .group-chip').forEach(c => c.classList.toggle('is-sel', c.dataset.studentId === sid)); }
+
+function moveToGroup(sid, g) {
+    if (!state.groupAssign) state.groupAssign = {};
+    state.groupAssign[sid] = g;
+    save(); renderGroups();
+}
+function toggleGroupLock(sid) {
+    const arr = state.groupLocked || (state.groupLocked = []);
+    const i = arr.indexOf(sid);
+    if (i === -1) arr.push(sid); else arr.splice(i, 1);
+    save(); renderGroups();
+}
+function toggleWholeGroupLock(g) {
+    const ga = state.groupAssign || {};
+    const members = state.students.map(s => s.id).filter(id => ga[id] === g);
+    if (!members.length) return;
+    const arr = state.groupLocked || (state.groupLocked = []);
+    const allLocked = members.every(id => arr.indexOf(id) !== -1);
+    members.forEach(id => { const i = arr.indexOf(id); if (allLocked) { if (i !== -1) arr.splice(i, 1); } else if (i === -1) arr.push(id); });
+    save(); renderGroups();
+}
+function copyRulesFromSeating() {
+    state.groupRules = (state.rules || []).map(r => Object.assign({}, r, { id: uid(), members: (r.members || []).slice() }));
+    save(); renderGroups();
+    toast(state.groupRules.length ? 'Kopierte ' + state.groupRules.length + ' regler' : 'Ingen regler å kopiere', state.groupRules.length ? 'ok' : 'err');
+}
+
+/* ---- group config bar ---------------------------------------------------- */
+function updateGroupConfigUI() {
+    const m = $('groupMode'), v = $('groupValue');
+    if (m) m.value = (state.groupConfig || {}).mode || 'count';
+    if (v) { v.value = (state.groupConfig || {}).value || 4; v.disabled = (state.groupConfig || {}).mode === 'pairs'; }
+    const bg = $('groupBalanceGender'), bt = $('groupBalanceTags'), ar = $('groupAvoidRepeat');
+    const p = state.groupPrefs || {};
+    if (bg) bg.checked = !!p.balanceGender;
+    if (bt) bt.checked = !!p.balanceTags;
+    if (ar) ar.checked = !!p.avoidAllRepeat;
+}
+function onGroupConfigChange() {
+    const m = $('groupMode'), v = $('groupValue');
+    state.groupConfig = { mode: m ? m.value : 'count', value: v ? (parseInt(v.value, 10) || 4) : 4 };
+    // Config change can invalidate group indices/locks — drop locks pointing past K.
+    const K = groupCount();
+    state.groupLocked = (state.groupLocked || []).filter(id => { const g = (state.groupAssign || {})[id]; return g == null || g < K; });
+    save(); smartGroup(true); renderGroups();
+}
+
+/* ---- group history (parallel to seating history) ------------------------- */
+function saveGroupHistory() {
+    if (!state.groupAssign || !Object.keys(state.groupAssign).length) { toast('Lag en gruppering først', 'err'); return; }
+    state.groupHistory = state.groupHistory || [];
+    state.groupHistory.unshift({
+        id: uid(), ts: Date.now(),
+        label: 'Lagret ' + new Date().toLocaleDateString('no-NO', { day: 'numeric', month: 'short' }),
+        config: Object.assign({}, state.groupConfig), assign: Object.assign({}, state.groupAssign)
+    });
+    if (state.groupHistory.length > 30) state.groupHistory.length = 30;
+    save(); renderGroupHistory();
+    toast('Gruppering lagret 💾', 'ok');
+}
+function renderGroupHistory() {
+    const list = $('groupHistoryList'); if (!list) return;
+    const hist = state.groupHistory || [];
+    if (!hist.length) { list.innerHTML = '<p class="group-hist-empty">Ingen lagrede grupperinger ennå.</p>'; return; }
+    list.innerHTML = '';
+    hist.forEach((h, i) => {
+        const n = Object.values(h.assign || {}).filter(g => g >= 0).length;
+        const row = document.createElement('div'); row.className = 'group-hist-row';
+        row.innerHTML = '<span class="group-hist-label">' + escapeHtml(h.label || 'Gruppering') + ' · ' + n + ' elever</span>';
+        const open = document.createElement('button'); open.type = 'button'; open.className = 'btn btn-sm'; open.textContent = 'Gjenopprett';
+        open.addEventListener('click', () => restoreGroupHistory(i));
+        const del = document.createElement('button'); del.type = 'button'; del.className = 'btn btn-sm'; del.textContent = '✕';
+        del.addEventListener('click', () => { state.groupHistory.splice(i, 1); save(); renderGroupHistory(); });
+        row.appendChild(open); row.appendChild(del); list.appendChild(row);
+    });
+}
+function restoreGroupHistory(i) {
+    const h = (state.groupHistory || [])[i]; if (!h) return;
+    pushUndo();
+    if (h.config) state.groupConfig = Object.assign({}, h.config);
+    state.groupAssign = Object.assign({}, h.assign);
+    save(); renderGroups();
+    toast('Gruppering gjenopprettet', 'ok');
 }
 
 function normStrength(v) { return v === 'must' || v === 'should' ? v : null; }
@@ -1214,6 +1491,14 @@ function normClass(c) {
         rules: (c.rules || []).map(normRule),
         prefs: Object.assign({ balanceGender: false, avoidRepeat: false, avoidAllRepeat: false, balanceTags: false }, c.prefs || {}),
         history: c.history || [],
+        // Arbeidsgrupper (working groups) — a separate arrangement of the same
+        // roster, no seats/room. All auto-synced via chartPayload.
+        groupConfig: Object.assign({ mode: 'count', value: 4 }, c.groupConfig || {}),
+        groupAssign: c.groupAssign || {},           // studentId -> group index (0..K-1), or -1 = utenfor
+        groupLocked: c.groupLocked || [],           // studentIds pinned to their current group
+        groupRules: (c.groupRules || []).map(normRule),
+        groupPrefs: Object.assign({ balanceGender: false, avoidRepeat: false, avoidAllRepeat: false, balanceTags: false }, c.groupPrefs || {}),
+        groupHistory: c.groupHistory || [],
         // sync bookkeeping: server version this copy matches, and whether we hold
         // edits it has not seen. Local-only — stripped from the payload.
         sv: Number(c.sv) || 0,
@@ -2479,6 +2764,7 @@ function setTab(name, sub) {
         t.setAttribute('aria-selected', on ? 'true' : 'false');
     });
     $('view-kart').classList.toggle('hidden', name !== 'kart');
+    $('view-grupper').classList.toggle('hidden', name !== 'grupper');
     $('view-innsikt').classList.toggle('hidden', name !== 'innsikt');
     $('view-raad').classList.toggle('hidden', name !== 'raad');
     ['studentsModal', 'rulesModal', 'roomModal'].forEach(id =>
@@ -2489,6 +2775,11 @@ function setTab(name, sub) {
     if (name === 'elever') openStudentsModal();
     else if (name === 'regler') openRulesModal();
     else if (name === 'rom') openRoomModal();
+    else if (name === 'grupper') {
+        if (state.students.length && (!state.groupAssign || !Object.keys(state.groupAssign).length)) smartGroup(true);
+        else renderGroups();
+        renderGroupHistory();
+    }
     else if (name === 'innsikt') setInnsiktSub(sub || innsiktSub);
     else if (name === 'raad') openAimsView();
     else if (name === 'kart') requestAnimationFrame(fitBoard);
@@ -3955,6 +4246,31 @@ function wireSetup() {
 function wireApp() {
     $('smartBtn').addEventListener('click', () => smartArrange(false));
     $('shuffleBtn').addEventListener('click', () => shuffleSeating(false));
+
+    // Arbeidsgrupper (working groups)
+    $('groupSmartBtn').addEventListener('click', () => smartGroup(false));
+    $('groupSaveBtn').addEventListener('click', saveGroupHistory);
+    $('groupCopyRulesBtn').addEventListener('click', copyRulesFromSeating);
+    $('groupMode').addEventListener('change', onGroupConfigChange);
+    $('groupValue').addEventListener('change', onGroupConfigChange);
+    const gpref = (id, key) => $(id).addEventListener('change', e => {
+        (state.groupPrefs || (state.groupPrefs = {}))[key] = e.target.checked;
+        save(); smartGroup(true); renderGroups();
+    });
+    gpref('groupBalanceGender', 'balanceGender');
+    gpref('groupBalanceTags', 'balanceTags');
+    gpref('groupAvoidRepeat', 'avoidAllRepeat');
+    // Click-to-move + lock inside the group view (no drag in MVP; reroll+lock is the loop).
+    $('view-grupper').addEventListener('click', e => {
+        const lockBtn = e.target.closest('.gchip-lock');
+        if (lockBtn) { toggleGroupLock(lockBtn.dataset.studentId); return; }
+        const groupLock = e.target.closest('.group-lock');
+        if (groupLock) { toggleWholeGroupLock(parseInt(groupLock.dataset.group, 10)); return; }
+        const chip = e.target.closest('.group-chip');
+        if (chip) { setGroupSel(groupSel === chip.dataset.studentId ? null : chip.dataset.studentId); return; }
+        const list = e.target.closest('[data-groupdrop]');
+        if (list && groupSel) { moveToGroup(groupSel, parseInt(list.dataset.groupdrop, 10)); setGroupSel(null); return; }
+    });
     $('presentBtn').addEventListener('click', enterPresent);
     $('printBtn').addEventListener('click', printChart);
     $('exportBtn').addEventListener('click', e => {

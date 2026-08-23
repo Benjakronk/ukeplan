@@ -47,7 +47,7 @@
         <div class="setup-brand">
             <div class="setup-logo">🗺️</div>
             <h1>Klassekartografen</h1>
-            <p class="setup-tagline">Lim inn navn, velg et oppsett, og få et ferdig kart på sekunder.</p>
+            <p class="setup-tagline">Lim inn navn – så lager du sittekart og arbeidsgrupper på sekunder.</p>
         </div>
 
         <!-- A colleague has shared a group with this teacher. Shown even before
@@ -65,19 +65,19 @@
              charts waiting. Then this is what they came for, not group creation. -->
         <div class="setup-fetch hidden" id="setupFetch">
             <div class="setup-fetch-main">
-                <strong>Du har kart lagret</strong>
+                <strong>Du har lagrede klasser</strong>
                 <span>Skriv inn gjenopprettingskoden din for å hente dem hit.</span>
             </div>
-            <button class="btn btn-primary" id="setupFetchBtn" type="button">Hent kartene mine</button>
+            <button class="btn btn-primary" id="setupFetchBtn" type="button">Hent klassene mine</button>
         </div>
 
-        <div class="setup-or hidden" id="setupOr"><span>eller lag et nytt kart</span></div>
+        <div class="setup-or hidden" id="setupOr"><span>eller lag en ny klasse</span></div>
 
         <!-- What the chart is for. A klasse picks a code from the school config;
              a faggruppe (valgfag, K&H) is free text - Ukeportalen has no
              faggruppe register, and by design holds no pupil rosters at all. -->
         <div class="setup-group">
-            <label>Hva lager du kart for?</label>
+            <label>Hvem lager du en liste for?</label>
             <div class="kind-list" id="setupKindList">
                 <button class="kind is-active" data-kind="klasse" type="button">🏫 Klasse</button>
                 <button class="kind" data-kind="fag" type="button">🎨 Fag / valgfag</button>
@@ -130,7 +130,7 @@
         </div>
 
         <div class="setup-actions">
-            <button id="setupGoBtn" class="btn btn-primary btn-lg" type="button">Lag klassekart →</button>
+            <button id="setupGoBtn" class="btn btn-primary btn-lg" type="button">Lag liste →</button>
         </div>
 
         <!-- Both routes for "my charts already exist somewhere else". Sync has to be
@@ -182,6 +182,7 @@
          rhythms; the tabs say so, and nothing is buried behind an unlabelled ⋯. -->
     <nav class="kk-tabs" id="kkTabs" role="tablist" aria-label="Visning">
         <button class="kk-tab is-active" data-tab="kart" role="tab" aria-selected="true" type="button">Kart</button>
+        <button class="kk-tab" data-tab="grupper" role="tab" aria-selected="false" type="button">Arbeidsgrupper</button>
         <button class="kk-tab" data-tab="elever" role="tab" aria-selected="false" type="button">Elever</button>
         <button class="kk-tab" data-tab="regler" role="tab" aria-selected="false" type="button">Regler</button>
         <button class="kk-tab" data-tab="rom" role="tab" aria-selected="false" type="button">Rom</button>
@@ -347,6 +348,34 @@
                 <button class="btn" data-close="roomModal" type="button">Avbryt</button>
                 <button class="btn btn-primary" id="roomApplyBtn" type="button">Bruk oppsett</button>
             </div>
+        </div>
+    </div>
+
+    <!-- ---------- ARBEIDSGRUPPER ---------- -->
+    <div class="kk-view hidden" id="view-grupper">
+        <div class="kk-actions group-actions">
+            <button class="btn btn-primary" id="groupSmartBtn" type="button"><span class="btn-ico">✨</span><span class="btn-txt"> Smart gruppering</span></button>
+            <label class="group-cfg">Del i
+                <select id="groupMode" class="input">
+                    <option value="count">antall grupper</option>
+                    <option value="size">gruppestørrelse</option>
+                    <option value="pairs">par</option>
+                </select>
+                <input type="number" id="groupValue" class="input group-num" min="1" max="30" value="4">
+            </label>
+            <label class="group-toggle"><input type="checkbox" id="groupBalanceGender"> Bland kjønn</label>
+            <label class="group-toggle"><input type="checkbox" id="groupBalanceTags"> Spre merkelapper</label>
+            <label class="group-toggle"><input type="checkbox" id="groupAvoidRepeat"> Unngå tidligere partnere</label>
+            <div class="kk-actions-spacer"></div>
+            <button class="btn" id="groupCopyRulesBtn" type="button" title="Kopier reglene fra plasseringen">⧉ Kopier regler fra plassering</button>
+            <button class="btn" id="groupSaveBtn" type="button"><span class="btn-ico">💾</span><span class="btn-txt"> Lagre gruppering</span></button>
+        </div>
+        <p class="kk-result" id="groupResult" hidden></p>
+        <p class="group-hint">Trykk <strong>Smart gruppering</strong>, lås gruppene du er fornøyd med (🔓/🔒), og trykk igjen for å trille resten på nytt. Klikk en elev og så en gruppe for å flytte manuelt.</p>
+        <div class="group-board" id="groupBoard"></div>
+        <div class="group-hist">
+            <h3 class="group-hist-title">Lagrede grupperinger</h3>
+            <div id="groupHistoryList"></div>
         </div>
     </div>
 
