@@ -1269,6 +1269,20 @@ function explainGroupResult(ctx, K) {
 /* ---- group view rendering + click-to-move + lock ------------------------- */
 function isGroupLocked(sid) { return (state.groupLocked || []).indexOf(sid) !== -1; }
 
+// A group slot keeps its name across rerolls (members change, the slot persists),
+// so "Rødt lag" stays put even as the optimizer reshuffles who is in it.
+function groupName(i) { const n = (state.groupNames || {})[i]; return (n && n.trim()) ? n : 'Gruppe ' + (i + 1); }
+function renameGroup(i) {
+    const fallback = 'Gruppe ' + (i + 1);
+    const cur = (state.groupNames || {})[i] || '';
+    const v = prompt('Navn på ' + fallback.toLowerCase() + ':', cur || fallback);
+    if (v === null) return;
+    state.groupNames = state.groupNames || {};
+    const t = v.trim();
+    if (!t || t === fallback) delete state.groupNames[i]; else state.groupNames[i] = t;
+    save(); renderGroups();
+}
+
 function groupChip(s) {
     const chip = document.createElement('div');
     chip.className = 'group-chip' + (groupSel === s.id ? ' is-sel' : '') + (isGroupLocked(s.id) ? ' is-locked' : '') + (s.gender ? ' g-' + s.gender : '');
@@ -1297,7 +1311,11 @@ function renderGroups() {
         const card = document.createElement('div'); card.className = 'group-card';
         const allLocked = mem.length && mem.every(s => isGroupLocked(s.id));
         const head = document.createElement('div'); head.className = 'group-head';
-        head.innerHTML = '<span class="group-title">Gruppe ' + (i + 1) + '</span><span class="group-count">' + mem.length + '</span>';
+        const title = document.createElement('button');
+        title.type = 'button'; title.className = 'group-title'; title.dataset.rename = i;
+        title.textContent = groupName(i); title.title = 'Gi gruppa et navn';
+        const cnt = document.createElement('span'); cnt.className = 'group-count'; cnt.textContent = mem.length;
+        head.appendChild(title); head.appendChild(cnt);
         const gl = document.createElement('button'); gl.type = 'button'; gl.className = 'group-lock' + (allLocked ? ' is-on' : '');
         gl.dataset.group = i; gl.textContent = allLocked ? '🔒' : '🔓'; gl.title = allLocked ? 'Lås opp gruppa' : 'Lås hele gruppa';
         head.appendChild(gl);
@@ -1347,6 +1365,40 @@ function copyRulesFromSeating() {
     state.groupRules = (state.rules || []).map(r => Object.assign({}, r, { id: uid(), members: (r.members || []).slice() }));
     save(); renderGroups();
     toast(state.groupRules.length ? 'Kopierte ' + state.groupRules.length + ' regler' : 'Ingen regler å kopiere', state.groupRules.length ? 'ok' : 'err');
+}
+
+// Print / project the current grouping: one card per group with its members,
+// A–Å within each. A plain popup window (like printChart) so it prints anywhere.
+function printGroups() {
+    const K = groupCount();
+    const ga = state.groupAssign || {};
+    if (!Object.keys(ga).length) { toast('Lag en gruppering først', 'err'); return; }
+    const groups = []; for (let i = 0; i < K; i++) groups.push([]);
+    const utenfor = [];
+    state.students.slice().sort(byName).forEach(s => {
+        const g = ga[s.id];
+        if (g != null && g >= 0 && g < K) groups[g].push(s); else utenfor.push(s);
+    });
+    const w = window.open('', '_blank');
+    if (!w) { toast('Tillat popup for utskrift', 'err'); return; }
+    const card = (name, mem) => '<div class="g"><h2>' + escapeHtml(name) + ' <span>(' + mem.length + ')</span></h2><ol>' +
+        (mem.length ? mem.map(s => '<li>' + escapeHtml(s.name) + '</li>').join('') : '<li class="e">–</li>') + '</ol></div>';
+    let body = groups.map((mem, i) => card(groupName(i), mem)).join('');
+    if (utenfor.length) body += card('Utenfor', utenfor);
+    const stamp = new Date().toLocaleDateString('no-NO', { day: 'numeric', month: 'long', year: 'numeric' });
+    const css = 'body{font-family:system-ui,-apple-system,Arial,sans-serif;margin:28px;color:#1a1a1a}' +
+        'h1{font-size:21px;margin:0 0 3px}.sub{color:#666;margin:0 0 22px;font-size:13px}' +
+        '.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:16px}' +
+        '.g{border:1px solid #ccc;border-radius:9px;padding:12px 15px;break-inside:avoid}' +
+        '.g h2{font-size:15px;margin:0 0 8px;border-bottom:1px solid #eee;padding-bottom:6px}' +
+        '.g h2 span{color:#888;font-weight:400}ol{margin:0;padding-left:22px}' +
+        'li{margin:3px 0;font-size:14px}li.e{list-style:none;color:#999;margin-left:-22px}' +
+        '@media print{.g{border-color:#999}}';
+    w.document.write('<html><head><title>' + escapeHtml(state.name) + ' – grupper</title><style>' + css + '</style></head><body>' +
+        '<h1>' + escapeHtml(state.name) + ' – grupper</h1><p class="sub">' + K + ' grupper · ' + stamp + '</p>' +
+        '<div class="grid">' + body + '</div>' +
+        '<scr' + 'ipt>window.onload=function(){window.print()}</scr' + 'ipt></body></html>');
+    w.document.close();
 }
 
 /* ---- rules-by-example: tap two students to create a group rule ------------ */
@@ -1414,7 +1466,8 @@ function saveGroupHistory() {
     state.groupHistory.unshift({
         id: uid(), ts: Date.now(),
         label: 'Lagret ' + new Date().toLocaleDateString('no-NO', { day: 'numeric', month: 'short' }),
-        config: Object.assign({}, state.groupConfig), assign: Object.assign({}, state.groupAssign)
+        config: Object.assign({}, state.groupConfig), assign: Object.assign({}, state.groupAssign),
+        names: Object.assign({}, state.groupNames || {})
     });
     if (state.groupHistory.length > 30) state.groupHistory.length = 30;
     save(); renderGroupHistory();
@@ -1442,6 +1495,7 @@ function restoreGroupHistory(i) {
     pushUndo();
     if (h.config) state.groupConfig = Object.assign({}, h.config);
     state.groupAssign = Object.assign({}, h.assign);
+    state.groupNames = Object.assign({}, h.names || {});
     save(); renderGroups();
     toast('Gruppering gjenopprettet', 'ok');
 }
@@ -1586,6 +1640,7 @@ function normClass(c) {
         groupRules: (c.groupRules || []).map(normRule),
         groupPrefs: Object.assign({ balanceGender: false, avoidRepeat: false, avoidAllRepeat: false, balanceTags: false }, c.groupPrefs || {}),
         groupHistory: c.groupHistory || [],
+        groupNames: c.groupNames || {},             // group index -> custom name (else "Gruppe N")
         // sync bookkeeping: server version this copy matches, and whether we hold
         // edits it has not seen. Local-only — stripped from the payload.
         sv: Number(c.sv) || 0,
@@ -4350,8 +4405,11 @@ function wireApp() {
     gpref('groupBalanceTags', 'balanceTags');
     gpref('groupAvoidRepeat', 'avoidAllRepeat');
     // Click-to-move + lock + rules-by-example inside the group view (no drag in MVP).
+    $('groupPrintBtn').addEventListener('click', printGroups);
     $('groupModeSeg').addEventListener('click', e => { const b = e.target.closest('[data-gmode]'); if (b) setGroupMode(b.dataset.gmode); });
     $('view-grupper').addEventListener('click', e => {
+        const renameBtn = e.target.closest('.group-title[data-rename]');
+        if (renameBtn) { renameGroup(parseInt(renameBtn.dataset.rename, 10)); return; }
         const lockBtn = e.target.closest('.gchip-lock');
         if (lockBtn) { toggleGroupLock(lockBtn.dataset.studentId); return; }
         const groupLock = e.target.closest('.group-lock');
