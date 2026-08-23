@@ -1141,6 +1141,8 @@ let groupSel = null;       // studentId selected in the group view (click-to-mov
 let groupRuleMode = 'move';// 'move' | 'together' | 'apart' — rules-by-example mode
 let groupRuleA = null;     // first student tapped while building a rule
 let groupCollabSel = null; // student whose collaboration history is shown
+let groupSideTab = 'regler';// left-column tab: 'regler' | 'lagret' | 'samarbeid'
+let groupDragId = null;    // studentId being dragged (drag-and-drop between groups)
 
 // How many groups the current config asks for.
 function groupCount() {
@@ -1287,6 +1289,7 @@ function groupChip(s) {
     const chip = document.createElement('div');
     chip.className = 'group-chip' + (groupSel === s.id ? ' is-sel' : '') + (isGroupLocked(s.id) ? ' is-locked' : '') + (s.gender ? ' g-' + s.gender : '');
     chip.dataset.studentId = s.id;
+    chip.draggable = true;
     const nm = document.createElement('span'); nm.className = 'gchip-name'; nm.textContent = s.name; chip.appendChild(nm);
     const lock = document.createElement('button');
     lock.type = 'button'; lock.className = 'gchip-lock'; lock.dataset.studentId = s.id;
@@ -1340,6 +1343,20 @@ function renderGroups() {
 }
 
 function setGroupSel(sid) { groupSel = sid; document.querySelectorAll('#groupBoard .group-chip').forEach(c => c.classList.toggle('is-sel', c.dataset.studentId === sid)); }
+
+// Left-column tabs (Gruppe-regler / Lagrede / Samarbeid). View-only toggle.
+function setGroupSideTab(name) {
+    groupSideTab = name;
+    document.querySelectorAll('#groupSideTabs [data-gtab]').forEach(b => b.classList.toggle('on', b.dataset.gtab === name));
+    document.querySelectorAll('#view-grupper .group-pane').forEach(p => p.classList.toggle('hidden', p.dataset.gpane !== name));
+}
+
+// Par-preset: one click to split the class into pairs (group size 2).
+function setGroupPairsPreset() {
+    state.groupConfig = { mode: 'pairs', value: 2 };
+    updateGroupConfigUI();
+    smartGroup(false);
+}
 
 function moveToGroup(sid, g) {
     if (!state.groupAssign) state.groupAssign = {};
@@ -1408,7 +1425,7 @@ function setGroupMode(m) {
     const hint = $('groupModeHint');
     if (hint) hint.textContent = m === 'together' ? 'Klikk to elever som skal være i samme gruppe.'
         : m === 'apart' ? 'Klikk to elever som ikke skal være i samme gruppe.'
-        : 'Klikk en elev og så en gruppe for å flytte manuelt.';
+        : 'Dra en elev til en gruppe – eller klikk en elev og så en gruppe.';
     renderGroups();
 }
 // Add a soft (bør) group rule; merges into an existing rule for the same student.
@@ -1462,15 +1479,19 @@ function onGroupConfigChange() {
 /* ---- group history (parallel to seating history) ------------------------- */
 function saveGroupHistory() {
     if (!state.groupAssign || !Object.keys(state.groupAssign).length) { toast('Lag en gruppering først', 'err'); return; }
+    const K = groupCount();
+    const def = new Date().toLocaleDateString('no-NO', { day: 'numeric', month: 'short' }) + ' · ' + K + ' grupper';
+    const name = prompt('Navn på grupperingen:', def);
+    if (name === null) return;
     state.groupHistory = state.groupHistory || [];
     state.groupHistory.unshift({
         id: uid(), ts: Date.now(),
-        label: 'Lagret ' + new Date().toLocaleDateString('no-NO', { day: 'numeric', month: 'short' }),
+        label: name.trim() || def,
         config: Object.assign({}, state.groupConfig), assign: Object.assign({}, state.groupAssign),
         names: Object.assign({}, state.groupNames || {})
     });
     if (state.groupHistory.length > 30) state.groupHistory.length = 30;
-    save(); renderGroupHistory();
+    save(); renderGroupHistory(); setGroupSideTab('lagret');
     toast('Gruppering lagret 💾', 'ok');
 }
 function renderGroupHistory() {
@@ -1482,12 +1503,19 @@ function renderGroupHistory() {
     hist.forEach((h, i) => {
         const n = Object.values(h.assign || {}).filter(g => g >= 0).length;
         const row = document.createElement('div'); row.className = 'group-hist-row';
-        row.innerHTML = '<span class="group-hist-label">' + escapeHtml(h.label || 'Gruppering') + ' · ' + n + ' elever</span>';
+        const label = document.createElement('button');
+        label.type = 'button'; label.className = 'group-hist-label'; label.title = 'Gi et nytt navn';
+        label.textContent = (h.label || 'Gruppering') + ' · ' + n + ' elever';
+        label.addEventListener('click', () => {
+            const v = prompt('Navn på grupperingen:', h.label || '');
+            if (v === null) return;
+            h.label = v.trim() || h.label; save(); renderGroupHistory();
+        });
         const open = document.createElement('button'); open.type = 'button'; open.className = 'btn btn-sm'; open.textContent = 'Gjenopprett';
         open.addEventListener('click', () => restoreGroupHistory(i));
         const del = document.createElement('button'); del.type = 'button'; del.className = 'btn btn-sm'; del.textContent = '✕';
         del.addEventListener('click', () => { state.groupHistory.splice(i, 1); save(); renderGroupHistory(); });
-        row.appendChild(open); row.appendChild(del); list.appendChild(row);
+        row.appendChild(label); row.appendChild(open); row.appendChild(del); list.appendChild(row);
     });
 }
 function restoreGroupHistory(i) {
@@ -2918,6 +2946,7 @@ function setTab(name, sub) {
     else if (name === 'regler') openRulesModal();
     else if (name === 'rom') openRoomModal();
     else if (name === 'grupper') {
+        setGroupSideTab(groupSideTab);
         if (state.students.length && (!state.groupAssign || !Object.keys(state.groupAssign).length)) smartGroup(true);
         else renderGroups();
         renderGroupHistory();
@@ -4404,9 +4433,36 @@ function wireApp() {
     gpref('groupBalanceGender', 'balanceGender');
     gpref('groupBalanceTags', 'balanceTags');
     gpref('groupAvoidRepeat', 'avoidAllRepeat');
-    // Click-to-move + lock + rules-by-example inside the group view (no drag in MVP).
+    $('groupParBtn').addEventListener('click', setGroupPairsPreset);
+    $('groupSideTabs').addEventListener('click', e => { const b = e.target.closest('[data-gtab]'); if (b) setGroupSideTab(b.dataset.gtab); });
     $('groupPrintBtn').addEventListener('click', printGroups);
     $('groupModeSeg').addEventListener('click', e => { const b = e.target.closest('[data-gmode]'); if (b) setGroupMode(b.dataset.gmode); });
+    // Drag-and-drop between groups (delegated on the board so it survives rerenders).
+    const board = $('groupBoard');
+    board.addEventListener('dragstart', e => {
+        const chip = e.target.closest('.group-chip'); if (!chip) return;
+        groupDragId = chip.dataset.studentId;
+        chip.classList.add('is-drag');
+        if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', groupDragId); } catch (_) {} }
+    });
+    board.addEventListener('dragend', () => {
+        groupDragId = null;
+        board.querySelectorAll('.is-drag').forEach(c => c.classList.remove('is-drag'));
+        board.querySelectorAll('.drop-hot').forEach(l => l.classList.remove('drop-hot'));
+    });
+    board.addEventListener('dragover', e => {
+        const list = e.target.closest('[data-groupdrop]'); if (!list || groupDragId == null) return;
+        e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        if (!list.classList.contains('drop-hot')) { board.querySelectorAll('.drop-hot').forEach(l => l.classList.remove('drop-hot')); list.classList.add('drop-hot'); }
+    });
+    board.addEventListener('drop', e => {
+        const list = e.target.closest('[data-groupdrop]'); if (!list || groupDragId == null) return;
+        e.preventDefault();
+        const g = parseInt(list.dataset.groupdrop, 10);
+        const sid = groupDragId; groupDragId = null;
+        list.classList.remove('drop-hot');
+        if ((state.groupAssign || {})[sid] !== g) moveToGroup(sid, g);
+    });
     $('view-grupper').addEventListener('click', e => {
         const renameBtn = e.target.closest('.group-title[data-rename]');
         if (renameBtn) { renameGroup(parseInt(renameBtn.dataset.rename, 10)); return; }

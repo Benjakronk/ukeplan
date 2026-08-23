@@ -364,36 +364,50 @@
                 </select>
                 <input type="number" id="groupValue" class="input group-num" min="1" max="30" value="4">
             </label>
-            <label class="group-toggle"><input type="checkbox" id="groupBalanceGender"> Bland kjønn</label>
-            <label class="group-toggle"><input type="checkbox" id="groupBalanceTags"> Spre merkelapper</label>
-            <label class="group-toggle"><input type="checkbox" id="groupAvoidRepeat"> Unngå tidligere partnere</label>
+            <button class="btn btn-sm" id="groupParBtn" type="button" title="Del klassen i par (grupper på to)">👥 Par</button>
             <div class="kk-actions-spacer"></div>
-            <button class="btn" id="groupCopyRulesBtn" type="button" title="Kopier reglene fra plasseringen">⧉ Kopier regler fra plassering</button>
             <button class="btn" id="groupPrintBtn" type="button"><span class="btn-ico">🖨️</span><span class="btn-txt"> Skriv ut</span></button>
             <button class="btn" id="groupSaveBtn" type="button"><span class="btn-ico">💾</span><span class="btn-txt"> Lagre gruppering</span></button>
         </div>
-        <p class="kk-result" id="groupResult" hidden></p>
-        <div class="group-modebar">
-            <div class="seg group-mode-seg" id="groupModeSeg">
-                <button type="button" data-gmode="move" class="on">Flytt</button>
-                <button type="button" data-gmode="together">+ Sammen</button>
-                <button type="button" data-gmode="apart">+ Hver for seg</button>
+        <div class="group-split">
+            <aside class="group-side">
+                <div class="seg group-side-tabs" id="groupSideTabs">
+                    <button type="button" data-gtab="regler" class="on">Gruppe-regler</button>
+                    <button type="button" data-gtab="lagret">Lagrede</button>
+                    <button type="button" data-gtab="samarbeid">Samarbeid</button>
+                </div>
+                <div class="group-pane" data-gpane="regler">
+                    <div class="group-prefs">
+                        <label class="group-toggle"><input type="checkbox" id="groupBalanceGender"> Bland kjønn</label>
+                        <label class="group-toggle"><input type="checkbox" id="groupBalanceTags"> Spre merkelapper</label>
+                        <label class="group-toggle"><input type="checkbox" id="groupAvoidRepeat"> Unngå tidligere partnere</label>
+                    </div>
+                    <div class="group-modebar">
+                        <div class="seg group-mode-seg" id="groupModeSeg">
+                            <button type="button" data-gmode="move" class="on">Flytt</button>
+                            <button type="button" data-gmode="together">+ Sammen</button>
+                            <button type="button" data-gmode="apart">+ Hver for seg</button>
+                        </div>
+                    </div>
+                    <p class="group-mode-hint" id="groupModeHint">Dra en elev til en gruppe – eller klikk en elev og så en gruppe.</p>
+                    <div class="group-rules-box" id="groupRulesBox"></div>
+                    <button class="btn btn-sm" id="groupCopyRulesBtn" type="button" title="Kopier reglene fra plasseringen">⧉ Kopier regler fra plassering</button>
+                </div>
+                <div class="group-pane hidden" data-gpane="lagret">
+                    <div id="groupHistoryList"></div>
+                </div>
+                <div class="group-pane hidden" data-gpane="samarbeid">
+                    <label class="group-collab-pick">Vis for
+                        <select id="groupCollabStudent" class="input"></select>
+                    </label>
+                    <div id="groupCollabList"></div>
+                </div>
+            </aside>
+            <div class="group-main">
+                <p class="kk-result" id="groupResult" hidden></p>
+                <p class="group-hint">Trykk <strong>Smart gruppering</strong>, lås gruppene du er fornøyd med (🔓/🔒), og trykk igjen for å trille resten. Dra elever mellom grupper, og klikk et gruppenavn for å døpe det om.</p>
+                <div class="group-board" id="groupBoard"></div>
             </div>
-            <span class="group-mode-hint" id="groupModeHint">Klikk en elev og så en gruppe for å flytte manuelt.</span>
-        </div>
-        <div class="group-rules-box" id="groupRulesBox"></div>
-        <p class="group-hint">Trykk <strong>Smart gruppering</strong>, lås gruppene du er fornøyd med (🔓/🔒), og trykk igjen for å trille resten. Klikk et gruppenavn for å døpe det om.</p>
-        <div class="group-board" id="groupBoard"></div>
-        <div class="group-hist">
-            <h3 class="group-hist-title">Lagrede grupperinger</h3>
-            <div id="groupHistoryList"></div>
-        </div>
-        <div class="group-collab">
-            <h3 class="group-hist-title">Samarbeid over tid</h3>
-            <label class="group-collab-pick">Vis for
-                <select id="groupCollabStudent" class="input"></select>
-            </label>
-            <div id="groupCollabList"></div>
         </div>
     </div>
 

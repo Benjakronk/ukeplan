@@ -1456,7 +1456,7 @@ button.group-title:hover::after { opacity: .55; }
 .group-hist-label { flex: 1; font-size: .9rem; }
 .group-hist-empty { font-size: .85rem; color: var(--ink-soft); }
 .group-modebar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 8px 0; }
-.group-mode-hint { font-size: .85rem; color: var(--ink-soft); }
+.group-mode-hint { font-size: .82rem; color: var(--ink-soft); margin: 6px 0 8px; }
 .group-rules-box { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 6px 0 10px; }
 .group-rules-box:empty { display: none; }
 .group-rules-lbl { font-size: .82rem; color: var(--ink-soft); }
@@ -1474,3 +1474,26 @@ button.group-title:hover::after { opacity: .55; }
 .group-collab-row .collab-count { color: var(--ink-soft); font-variant-numeric: tabular-nums; }
 .group-collab-row.is-never { color: var(--ink-soft); }
 .group-collab-row.is-never .collab-count { color: var(--success); font-weight: 600; }
+
+/* Two-column split: left tabbed side panel (regler / lagret / samarbeid) + right board. */
+.group-split { display: flex; gap: 16px; align-items: flex-start; }
+.group-side { flex: 0 0 300px; width: 300px; }
+.group-main { flex: 1 1 auto; min-width: 0; }
+.group-side-tabs { margin-bottom: 12px; display: flex; width: 100%; }
+.group-side-tabs button { flex: 1; padding: 6px 4px; font-size: .74rem; white-space: nowrap; }
+.group-prefs { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.group-side .group-modebar { margin: 4px 0 6px; }
+.group-side .group-mode-seg { width: 100%; }
+.group-side .group-mode-seg button { flex: 1; }
+.group-side #groupCopyRulesBtn { margin-top: 8px; }
+button.group-hist-label { appearance: none; background: none; border: none; color: inherit; font: inherit; text-align: left; cursor: pointer; padding: 2px 4px; margin: -2px -4px; border-radius: 5px; }
+button.group-hist-label:hover { background: var(--surface-2); }
+.group-collab-pick { margin-bottom: 10px; }
+/* Drag-and-drop between groups */
+.group-chip:active { cursor: grabbing; }
+.group-chip.is-drag { opacity: .4; }
+.group-list.drop-hot { outline: 2px dashed var(--primary); outline-offset: -2px; border-radius: var(--radius-sm); background: var(--surface-2); }
+@media (max-width: 760px) {
+    .group-split { flex-direction: column; }
+    .group-side { flex-basis: auto; width: 100%; }
+}
