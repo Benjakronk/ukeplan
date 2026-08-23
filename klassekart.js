@@ -1140,6 +1140,7 @@ function updateUndoButtons() {
 let groupSel = null;       // studentId selected in the group view (click-to-move)
 let groupRuleMode = 'move';// 'move' | 'together' | 'apart' — rules-by-example mode
 let groupRuleA = null;     // first student tapped while building a rule
+let groupCollabSel = null; // student whose collaboration history is shown
 
 // How many groups the current config asks for.
 function groupCount() {
@@ -1421,6 +1422,7 @@ function saveGroupHistory() {
 }
 function renderGroupHistory() {
     const list = $('groupHistoryList'); if (!list) return;
+    renderCollab();
     const hist = state.groupHistory || [];
     if (!hist.length) { list.innerHTML = '<p class="group-hist-empty">Ingen lagrede grupperinger ennå.</p>'; return; }
     list.innerHTML = '';
@@ -1442,6 +1444,50 @@ function restoreGroupHistory(i) {
     state.groupAssign = Object.assign({}, h.assign);
     save(); renderGroups();
     toast('Gruppering gjenopprettet', 'ok');
+}
+
+/* ---- collaboration over time (Phase 2) ----------------------------------- */
+// One-tap "avoid last time's partners": a one-shot reroll with avoidRepeat,
+// without persisting the preference.
+function blandFraSist() {
+    if (!(state.groupHistory || []).length) { toast('Ingen tidligere gruppering å unngå', 'err'); return; }
+    state.groupPrefs = state.groupPrefs || {};
+    const saved = state.groupPrefs.avoidRepeat;
+    state.groupPrefs.avoidRepeat = true;
+    smartGroup(false);
+    state.groupPrefs.avoidRepeat = saved;
+    save();
+}
+// How many saved groupings put `sid` in the same group as each other student.
+function groupCollabCounts(sid) {
+    const counts = {};
+    (state.groupHistory || []).forEach(h => {
+        const a = h.assign || {}, g = a[sid];
+        if (g == null || g < 0) return;
+        for (const other in a) { if (other === sid) continue; if (a[other] === g) counts[other] = (counts[other] || 0) + 1; }
+    });
+    return counts;
+}
+function renderCollab() {
+    const sel = $('groupCollabStudent'), list = $('groupCollabList');
+    if (!sel || !list) return;
+    const students = state.students.slice().sort(byName);
+    const cur = (groupCollabSel && students.some(s => s.id === groupCollabSel)) ? groupCollabSel : (students[0] ? students[0].id : '');
+    groupCollabSel = cur;
+    sel.innerHTML = '';
+    students.forEach(s => { const o = document.createElement('option'); o.value = s.id; o.textContent = s.name; if (s.id === cur) o.selected = true; sel.appendChild(o); });
+    const hist = state.groupHistory || [];
+    if (!hist.length) { list.innerHTML = '<p class="group-collab-empty">Lagre noen grupperinger, så viser vi hvem som har jobbet sammen.</p>'; return; }
+    if (!cur) { list.innerHTML = ''; return; }
+    const counts = groupCollabCounts(cur);
+    const rows = students.filter(s => s.id !== cur).map(s => ({ s, n: counts[s.id] || 0 })).sort((a, b) => b.n - a.n || byName(a.s, b.s));
+    list.innerHTML = '';
+    rows.forEach(r => {
+        const row = document.createElement('div'); row.className = 'group-collab-row' + (r.n === 0 ? ' is-never' : '');
+        const nm = document.createElement('span'); nm.className = 'collab-name'; nm.textContent = r.s.name;
+        const c = document.createElement('span'); c.className = 'collab-count'; c.textContent = r.n === 0 ? 'aldri' : (r.n + '×');
+        row.appendChild(nm); row.appendChild(c); list.appendChild(row);
+    });
 }
 
 function normStrength(v) { return v === 'must' || v === 'should' ? v : null; }
@@ -4290,6 +4336,8 @@ function wireApp() {
 
     // Arbeidsgrupper (working groups)
     $('groupSmartBtn').addEventListener('click', () => smartGroup(false));
+    $('groupBlandSistBtn').addEventListener('click', blandFraSist);
+    $('groupCollabStudent').addEventListener('change', e => { groupCollabSel = e.target.value; renderCollab(); });
     $('groupSaveBtn').addEventListener('click', saveGroupHistory);
     $('groupCopyRulesBtn').addEventListener('click', copyRulesFromSeating);
     $('groupMode').addEventListener('change', onGroupConfigChange);

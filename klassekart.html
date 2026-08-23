@@ -355,6 +355,7 @@
     <div class="kk-view hidden" id="view-grupper">
         <div class="kk-actions group-actions">
             <button class="btn btn-primary" id="groupSmartBtn" type="button"><span class="btn-ico">✨</span><span class="btn-txt"> Smart gruppering</span></button>
+            <button class="btn" id="groupBlandSistBtn" type="button" title="Lag grupper der ingen er sammen med samme som sist">🔀 Bland fra sist</button>
             <label class="group-cfg">Del i
                 <select id="groupMode" class="input">
                     <option value="count">antall grupper</option>
@@ -385,6 +386,13 @@
         <div class="group-hist">
             <h3 class="group-hist-title">Lagrede grupperinger</h3>
             <div id="groupHistoryList"></div>
+        </div>
+        <div class="group-collab">
+            <h3 class="group-hist-title">Samarbeid over tid</h3>
+            <label class="group-collab-pick">Vis for
+                <select id="groupCollabStudent" class="input"></select>
+            </label>
+            <div id="groupCollabList"></div>
         </div>
     </div>
 
