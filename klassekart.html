@@ -371,7 +371,16 @@
             <button class="btn" id="groupSaveBtn" type="button"><span class="btn-ico">💾</span><span class="btn-txt"> Lagre gruppering</span></button>
         </div>
         <p class="kk-result" id="groupResult" hidden></p>
-        <p class="group-hint">Trykk <strong>Smart gruppering</strong>, lås gruppene du er fornøyd med (🔓/🔒), og trykk igjen for å trille resten på nytt. Klikk en elev og så en gruppe for å flytte manuelt.</p>
+        <div class="group-modebar">
+            <div class="seg group-mode-seg" id="groupModeSeg">
+                <button type="button" data-gmode="move" class="on">Flytt</button>
+                <button type="button" data-gmode="together">+ Sammen</button>
+                <button type="button" data-gmode="apart">+ Hver for seg</button>
+            </div>
+            <span class="group-mode-hint" id="groupModeHint">Klikk en elev og så en gruppe for å flytte manuelt.</span>
+        </div>
+        <div class="group-rules-box" id="groupRulesBox"></div>
+        <p class="group-hint">Trykk <strong>Smart gruppering</strong>, lås gruppene du er fornøyd med (🔓/🔒), og trykk igjen for å trille resten.</p>
         <div class="group-board" id="groupBoard"></div>
         <div class="group-hist">
             <h3 class="group-hist-title">Lagrede grupperinger</h3>

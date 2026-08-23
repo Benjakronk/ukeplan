@@ -1137,7 +1137,9 @@ function updateUndoButtons() {
  * a scored partition + simulated annealing with the same random tie-break,
  * and the same lock-and-reroll loop (groupLocked kept fixed).
  * ========================================================================= */
-let groupSel = null;   // studentId selected in the group view (click-to-move)
+let groupSel = null;       // studentId selected in the group view (click-to-move)
+let groupRuleMode = 'move';// 'move' | 'together' | 'apart' — rules-by-example mode
+let groupRuleA = null;     // first student tapped while building a rule
 
 // How many groups the current config asks for.
 function groupCount() {
@@ -1315,6 +1317,7 @@ function renderGroups() {
     pool.appendChild(plist);
     board.appendChild(pool);
     updateGroupConfigUI();
+    renderGroupRules();
 }
 
 function setGroupSel(sid) { groupSel = sid; document.querySelectorAll('#groupBoard .group-chip').forEach(c => c.classList.toggle('is-sel', c.dataset.studentId === sid)); }
@@ -1343,6 +1346,44 @@ function copyRulesFromSeating() {
     state.groupRules = (state.rules || []).map(r => Object.assign({}, r, { id: uid(), members: (r.members || []).slice() }));
     save(); renderGroups();
     toast(state.groupRules.length ? 'Kopierte ' + state.groupRules.length + ' regler' : 'Ingen regler å kopiere', state.groupRules.length ? 'ok' : 'err');
+}
+
+/* ---- rules-by-example: tap two students to create a group rule ------------ */
+function setGroupMode(m) {
+    groupRuleMode = m; groupRuleA = null; groupSel = null;
+    document.querySelectorAll('#groupModeSeg [data-gmode]').forEach(b => b.classList.toggle('on', b.dataset.gmode === m));
+    const hint = $('groupModeHint');
+    if (hint) hint.textContent = m === 'together' ? 'Klikk to elever som skal være i samme gruppe.'
+        : m === 'apart' ? 'Klikk to elever som ikke skal være i samme gruppe.'
+        : 'Klikk en elev og så en gruppe for å flytte manuelt.';
+    renderGroups();
+}
+// Add a soft (bør) group rule; merges into an existing rule for the same student.
+function addGroupRule(a, b, type) {
+    if (!a || !b || a === b) return;
+    state.groupRules = state.groupRules || [];
+    const ex = state.groupRules.find(r => r.type === type && r.a === a && (normStrength(r.strength) || 'must') === 'should');
+    if (ex) { if (!ex.members.includes(b)) ex.members.push(b); }
+    else state.groupRules.push({ id: uid(), type, a, members: [b], strength: 'should' });
+    save(); smartGroup(true); renderGroupRules();
+    const s = studentById(a), t = studentById(b);
+    toast((type === 'apart' ? 'Hver for seg: ' : 'Sammen: ') + (s ? s.name : '?') + ' + ' + (t ? t.name : '?'), 'ok');
+}
+function renderGroupRules() {
+    const box = $('groupRulesBox'); if (!box) return;
+    const rules = state.groupRules || [];
+    box.innerHTML = '';
+    if (!rules.length) return;
+    const lbl = document.createElement('span'); lbl.className = 'group-rules-lbl'; lbl.textContent = 'Gruppe-regler:'; box.appendChild(lbl);
+    rules.forEach(r => {
+        const a = studentById(r.a);
+        const names = (r.members || []).map(m => { const s = studentById(m); return s ? s.name : '?'; }).join(', ');
+        const chip = document.createElement('span'); chip.className = 'group-rule-chip ' + (r.type === 'apart' ? 'is-apart' : 'is-together');
+        const txt = document.createElement('span'); txt.textContent = (a ? a.name : '?') + (r.type === 'apart' ? ' ⊘ ' : ' + ') + names; chip.appendChild(txt);
+        const x = document.createElement('button'); x.type = 'button'; x.className = 'group-rule-x'; x.textContent = '✕';
+        x.addEventListener('click', () => { state.groupRules = (state.groupRules || []).filter(rr => rr.id !== r.id); save(); renderGroupRules(); smartGroup(true); });
+        chip.appendChild(x); box.appendChild(chip);
+    });
 }
 
 /* ---- group config bar ---------------------------------------------------- */
@@ -4260,16 +4301,25 @@ function wireApp() {
     gpref('groupBalanceGender', 'balanceGender');
     gpref('groupBalanceTags', 'balanceTags');
     gpref('groupAvoidRepeat', 'avoidAllRepeat');
-    // Click-to-move + lock inside the group view (no drag in MVP; reroll+lock is the loop).
+    // Click-to-move + lock + rules-by-example inside the group view (no drag in MVP).
+    $('groupModeSeg').addEventListener('click', e => { const b = e.target.closest('[data-gmode]'); if (b) setGroupMode(b.dataset.gmode); });
     $('view-grupper').addEventListener('click', e => {
         const lockBtn = e.target.closest('.gchip-lock');
         if (lockBtn) { toggleGroupLock(lockBtn.dataset.studentId); return; }
         const groupLock = e.target.closest('.group-lock');
         if (groupLock) { toggleWholeGroupLock(parseInt(groupLock.dataset.group, 10)); return; }
         const chip = e.target.closest('.group-chip');
-        if (chip) { setGroupSel(groupSel === chip.dataset.studentId ? null : chip.dataset.studentId); return; }
+        if (chip) {
+            const sid = chip.dataset.studentId;
+            if (groupRuleMode === 'move') { setGroupSel(groupSel === sid ? null : sid); return; }
+            if (!groupRuleA) { groupRuleA = sid; setGroupSel(sid); return; }          // first pick
+            if (groupRuleA === sid) { groupRuleA = null; setGroupSel(null); return; } // unpick
+            addGroupRule(groupRuleA, sid, groupRuleMode === 'apart' ? 'apart' : 'together');
+            groupRuleA = null; setGroupSel(null);
+            return;
+        }
         const list = e.target.closest('[data-groupdrop]');
-        if (list && groupSel) { moveToGroup(groupSel, parseInt(list.dataset.groupdrop, 10)); setGroupSel(null); return; }
+        if (list && groupRuleMode === 'move' && groupSel) { moveToGroup(groupSel, parseInt(list.dataset.groupdrop, 10)); setGroupSel(null); return; }
     });
     $('presentBtn').addEventListener('click', enterPresent);
     $('printBtn').addEventListener('click', printChart);

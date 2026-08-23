@@ -1447,3 +1447,13 @@ body.present .zoom-ctrl { display: none; }
 .group-hist-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); margin-bottom: 6px; }
 .group-hist-label { flex: 1; font-size: .9rem; }
 .group-hist-empty { font-size: .85rem; color: var(--ink-soft); }
+.group-modebar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 8px 0; }
+.group-mode-hint { font-size: .85rem; color: var(--ink-soft); }
+.group-rules-box { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 6px 0 10px; }
+.group-rules-box:empty { display: none; }
+.group-rules-lbl { font-size: .82rem; color: var(--ink-soft); }
+.group-rule-chip { display: inline-flex; align-items: center; gap: 4px; font-size: .82rem; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface-2); }
+.group-rule-chip.is-together { border-color: var(--success); }
+.group-rule-chip.is-apart { border-color: var(--danger); }
+.group-rule-x { appearance: none; background: none; border: none; cursor: pointer; color: var(--ink-soft); font-size: .8rem; padding: 0 1px; }
+.group-rule-x:hover { color: var(--danger); }
