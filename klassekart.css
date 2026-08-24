@@ -1497,3 +1497,13 @@ button.group-hist-label:hover { background: var(--surface-2); }
     .group-split { flex-direction: column; }
     .group-side { flex-basis: auto; width: 100%; }
 }
+
+/* Per-tag Merkelapper manager (Kun / Spre / Samle), shared by seating + groups. */
+.pref-tags-block { margin-top: 10px; }
+.pref-tags-head { font-weight: 600; font-size: .9rem; margin: 0 0 2px; }
+.pref-tags-sub { margin: 0 0 8px; }
+.tag-modes-list { display: flex; flex-direction: column; gap: 6px; }
+.tag-mode-row { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+.tag-mode-name { font-size: .9rem; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag-mode-seg { flex: none; }
+.tag-mode-seg button { padding: 4px 10px; font-size: .76rem; }

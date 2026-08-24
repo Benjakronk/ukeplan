@@ -1184,7 +1184,7 @@ function buildGroupContext() {
     if (prefs.avoidRepeat && hist.length) { prevGroupPairs = new Set(groupPairsOf(hist[0])); }
     if (prefs.avoidAllRepeat && hist.length) { pastGroupPairs = new Map(); hist.forEach(h => groupPairsOf(h).forEach(k => pastGroupPairs.set(k, (pastGroupPairs.get(k) || 0) + 1))); }
     const known = cg + cj;
-    return { apartPairs, together, genderOf, tagsOf, wishWith, wishAvoid, prefs, ratioG: known ? cg / known : 0.5, prevGroupPairs, pastGroupPairs };
+    return { apartPairs, together, genderOf, tagsOf, tagModes: state.tagModes || {}, wishWith, wishAvoid, prefs, ratioG: known ? cg / known : 0.5, prevGroupPairs, pastGroupPairs };
 }
 
 // Penalty score for a partition (lower = better). ga: studentId -> group index.
@@ -1205,9 +1205,17 @@ function scoreGroups(ga, ctx, K) {
         let cg = 0, cj = 0; grp.forEach(s => { const gd = ctx.genderOf[s]; if (gd === 'G') cg++; else if (gd === 'J') cj++; });
         if (cg + cj) score += Math.abs(cg - grp.length * ctx.ratioG) * 2;
     }
-    if (ctx.prefs.balanceTags) for (const grp of groups) {
-        const counts = {}; grp.forEach(s => (ctx.tagsOf[s] || []).forEach(t => counts[t] = (counts[t] || 0) + 1));
-        for (const t in counts) if (counts[t] > 1) score += (counts[t] - 1) * 4;
+    // Per-tag placement. 'spread' → penalise a tag appearing >1 in a group;
+    // 'cluster' → penalise a tag's members being split across groups.
+    const tagGroups = {};   // tag -> { groupIndex: count }
+    for (let gi = 0; gi < K; gi++) for (const s of groups[gi]) for (const t of (ctx.tagsOf[s] || [])) {
+        const m = ctx.tagModes[t]; if (m !== 'spread' && m !== 'cluster') continue;
+        (tagGroups[t] = tagGroups[t] || {})[gi] = (tagGroups[t][gi] || 0) + 1;
+    }
+    for (const t in tagGroups) {
+        const gm = tagGroups[t];
+        if (ctx.tagModes[t] === 'spread') { for (const gi in gm) if (gm[gi] > 1) score += (gm[gi] - 1) * 4; }
+        else { const n = Object.keys(gm).length; if (n > 1) score += (n - 1) * 8; }   // cluster: fewer groups = better
     }
     if (ctx.prevGroupPairs) for (const grp of groups) for (let i = 0; i < grp.length; i++) for (let j = i + 1; j < grp.length; j++) if (ctx.prevGroupPairs.has(pairKey(grp[i], grp[j]))) score += 10;
     if (ctx.pastGroupPairs) for (const grp of groups) for (let i = 0; i < grp.length; i++) for (let j = i + 1; j < grp.length; j++) { const c = ctx.pastGroupPairs.get(pairKey(grp[i], grp[j])); if (c) score += c * 10; }
@@ -1456,16 +1464,61 @@ function renderGroupRules() {
     });
 }
 
+/* ---- tag modes (per-tag: Kun merkelapp / Spre / Samle) -------------------- */
+// Class-level, shared by seating + groups. 'off' (default) = informational only.
+const TAG_MODE_LABEL = { off: 'Kun', spread: 'Spre', cluster: 'Samle' };
+function tagModeOf(tag) { const m = (state.tagModes || {})[tag]; return (m === 'spread' || m === 'cluster') ? m : 'off'; }
+function tagsInUse() {
+    const set = new Set();
+    (state.students || []).forEach(s => (s.tags || []).forEach(t => { if (t) set.add(t); }));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'nb', { sensitivity: 'base' }));
+}
+function setTagMode(tag, mode) {
+    state.tagModes = state.tagModes || {};
+    if (mode === 'off') delete state.tagModes[tag]; else state.tagModes[tag] = mode;
+    save();
+    document.querySelectorAll('.tag-modes-list').forEach(renderTagModes);
+}
+// Render the tag manager into a container. opts.seating adds a note when the room
+// has no desk co-groups (Spre/Samle need pulter i par/grupper to bite).
+function renderTagModes(container, opts = {}) {
+    if (!container) return;
+    container.classList.add('tag-modes-list');
+    const tags = tagsInUse();
+    container.innerHTML = '';
+    if (!tags.length) {
+        container.innerHTML = '<p class="modal-hint">Ingen merkelapper ennå – legg dem til under Elever, så kan du velge hva hver merkelapp skal gjøre.</p>';
+        return;
+    }
+    if (opts.seating && !hasClusters()) {
+        const n = document.createElement('p'); n.className = 'modal-hint';
+        n.textContent = '«Spre»/«Samle» trenger pulter i par eller grupper (velg et oppsett i Rom). «Kun merkelapp» virker uansett.';
+        container.appendChild(n);
+    }
+    tags.forEach(tag => {
+        const row = document.createElement('div'); row.className = 'tag-mode-row';
+        const name = document.createElement('span'); name.className = 'tag-mode-name'; name.textContent = tag; row.appendChild(name);
+        const seg = document.createElement('div'); seg.className = 'seg tag-mode-seg'; seg.dataset.tag = tag;
+        const cur = tagModeOf(tag);
+        ['off', 'spread', 'cluster'].forEach(m => {
+            const b = document.createElement('button'); b.type = 'button'; b.dataset.tagmode = m;
+            b.textContent = TAG_MODE_LABEL[m]; if (m === cur) b.classList.add('on');
+            seg.appendChild(b);
+        });
+        row.appendChild(seg); container.appendChild(row);
+    });
+}
+
 /* ---- group config bar ---------------------------------------------------- */
 function updateGroupConfigUI() {
     const m = $('groupMode'), v = $('groupValue');
     if (m) m.value = (state.groupConfig || {}).mode || 'count';
     if (v) { v.value = (state.groupConfig || {}).value || 4; v.disabled = (state.groupConfig || {}).mode === 'pairs'; }
-    const bg = $('groupBalanceGender'), bt = $('groupBalanceTags'), ar = $('groupAvoidRepeat');
+    const bg = $('groupBalanceGender'), ar = $('groupAvoidRepeat');
     const p = state.groupPrefs || {};
     if (bg) bg.checked = !!p.balanceGender;
-    if (bt) bt.checked = !!p.balanceTags;
     if (ar) ar.checked = !!p.avoidAllRepeat;
+    renderTagModes($('groupTagModes'));
 }
 function onGroupConfigChange() {
     const m = $('groupMode'), v = $('groupValue');
@@ -1640,6 +1693,18 @@ function normStudent(s) {
  * classes). Introduced in step 1 so the shape is settled before server sync
  * keys envelopes on it. Older objects migrate silently to kind:'klasse'. */
 function normKind(k) { return k === 'fag' || k === 'annet' ? k : 'klasse'; }
+/* Tag modes are class-level. When absent (old charts), seed from the legacy
+ * global «Spre merkelapper» switch: if it was on for either board, every tag in
+ * use becomes 'spread' so behaviour carries over; otherwise start empty (all
+ * tags informational). Once stored, this never re-derives. */
+function seedTagModes(c) {
+    if (c.tagModes && typeof c.tagModes === 'object') return c.tagModes;
+    const legacy = (c.prefs && c.prefs.balanceTags) || (c.groupPrefs && c.groupPrefs.balanceTags);
+    if (!legacy) return {};
+    const modes = {};
+    (c.students || []).forEach(s => (s.tags || []).forEach(t => { if (t) modes[t] = 'spread'; }));
+    return modes;
+}
 function normClass(c) {
     const name = c.name || 'Klasse';
     const kind = normKind(c.kind);
@@ -1659,6 +1724,10 @@ function normClass(c) {
         locked: c.locked || [],
         rules: (c.rules || []).map(normRule),
         prefs: Object.assign({ balanceGender: false, avoidRepeat: false, avoidAllRepeat: false, balanceTags: false }, c.prefs || {}),
+        // Per-tag behaviour, shared by BOTH boards (class-level): tag -> 'spread'
+        // (same-tag apart) | 'cluster' (same-tag together). A tag absent from the
+        // map is 'off' (informational only). Auto-synced via chartPayload.
+        tagModes: seedTagModes(c),
         history: c.history || [],
         // Arbeidsgrupper (working groups) — a separate arrangement of the same
         // roster, no seats/room. All auto-synced via chartPayload.
@@ -2037,11 +2106,13 @@ function buildContext() {
             });
         });
     }
-    // tag balancing: spread same-tag students across co-groups (heterogeneous grouping)
-    const tagBalance = !!state.prefs.balanceTags;
+    // Per-tag placement across desk co-groups (clusters): 'spread' = same-tag
+    // apart, 'cluster' = same-tag together. Only needed if a tag opts in.
+    const tagModes = state.tagModes || {};
+    const tagActive = Object.keys(tagModes).some(t => tagModes[t] === 'spread' || tagModes[t] === 'cluster');
     const tagsOf = {}; state.students.forEach(s => { tagsOf[s.id] = s.tags || []; });
-    const clusters = tagBalance ? clustersOf(state.seats) : [];
-    return { adj, edges, minY, maxY, seatById, apart, together, genderOf, placeWants, wishWith, wishAvoid, quiet, tagBalance, tagsOf, clusters, prevPairs, pastPairs, prefs: state.prefs };
+    const clusters = tagActive ? clustersOf(state.seats) : [];
+    return { adj, edges, minY, maxY, seatById, apart, together, genderOf, placeWants, wishWith, wishAvoid, quiet, tagActive, tagModes, tagsOf, clusters, prevPairs, pastPairs, prefs: state.prefs };
 }
 
 function scoreAssign(assign, ctx) {
@@ -2086,11 +2157,19 @@ function scoreAssign(assign, ctx) {
         const se = seatOf[id];
         if (se) { let nb = 0; ctx.adj[se].forEach(s => { if (assign[s]) nb++; }); score += nb * 6; }
     }
-    // tag balance: penalise the same tag clumping inside one co-group
-    if (ctx.tagBalance) for (const cl of ctx.clusters) {
-        const counts = {};
-        for (const seatId of cl) { const sid = assign[seatId]; if (!sid) continue; for (const t of (ctx.tagsOf[sid] || [])) counts[t] = (counts[t] || 0) + 1; }
-        for (const t in counts) if (counts[t] > 1) score += (counts[t] - 1) * 8;
+    // Per-tag placement across desk co-groups (clusters).
+    if (ctx.tagActive) {
+        const tagCl = {};   // cluster tag -> Set(clusterIndex)
+        ctx.clusters.forEach((cl, ci) => {
+            const counts = {};
+            for (const seatId of cl) { const sid = assign[seatId]; if (!sid) continue; for (const t of (ctx.tagsOf[sid] || [])) counts[t] = (counts[t] || 0) + 1; }
+            for (const t in counts) {
+                const m = ctx.tagModes[t];
+                if (m === 'spread') { if (counts[t] > 1) score += (counts[t] - 1) * 8; }
+                else if (m === 'cluster') { (tagCl[t] = tagCl[t] || new Set()).add(ci); }
+            }
+        });
+        for (const t in tagCl) { const n = tagCl[t].size; if (n > 1) score += (n - 1) * 8; }   // cluster: same tag in one co-group
     }
     return score;
 }
@@ -3007,7 +3086,7 @@ function openRulesModal() {
     $('prefBalanceGender').checked = !!state.prefs.balanceGender;
     $('prefAvoidRepeat').checked = !!state.prefs.avoidRepeat;
     $('prefAvoidAll').checked = !!state.prefs.avoidAllRepeat;
-    $('prefBalanceTags').checked = !!state.prefs.balanceTags;
+    renderTagModes($('tagModeList'), { seating: true });
     updateRulePrefsUI();
     fillStudentSelect($('ruleA'));
     fillMemberPicker(new Set());
@@ -3066,12 +3145,7 @@ function updateRulePrefsUI() {
     gate(hasBothGenders(), [['prefBalanceGender', 'prefBalanceGenderRow']], 'prefGenderHint');
     gate(!!usableHistory().length,
         [['prefAvoidRepeat', 'prefAvoidRepeatRow'], ['prefAvoidAll', 'prefAvoidAllRow']], 'prefHistoryHint');
-    // Two different reasons this one can be unavailable, so it says which.
-    const shared = hasSharedTag();
-    $('prefTagsHint').textContent = !shared
-        ? 'Krever at minst to elever deler en merkelapp — gjøres i Elever.'
-        : 'Krever pulter som står i par eller grupper — velg et oppsett i Rom.';
-    gate(shared && hasClusters(), [['prefBalanceTags', 'prefBalanceTagsRow']], 'prefTagsHint');
+    // Tags are handled by the per-tag Merkelapper manager (renderTagModes), not a switch.
 }
 function fillStudentSelect(sel) {
     sel.innerHTML = '';
@@ -3729,11 +3803,13 @@ function mostPairedOf(st) {
 }
 function neverFrontOf(st) { return st.students.filter(s => st.frontCount[s.id] === 0); }
 function tagSpreadNow() {
-    if (!state.students.some(s => (s.tags || []).length)) return null;
+    // Only «Spre»-mode tags should not clump; «Samle» wants to, «Kun» is a note.
+    const tm = state.tagModes || {};
+    if (!Object.keys(tm).some(t => tm[t] === 'spread')) return null;
     let excess = 0;
     clustersOf(state.seats).forEach(cl => {
         const counts = {};
-        cl.forEach(seatId => { const sid = state.assign[seatId]; if (!sid) return; ((studentById(sid) || {}).tags || []).forEach(t => counts[t] = (counts[t] || 0) + 1); });
+        cl.forEach(seatId => { const sid = state.assign[seatId]; if (!sid) return; ((studentById(sid) || {}).tags || []).forEach(t => { if (tm[t] === 'spread') counts[t] = (counts[t] || 0) + 1; }); });
         for (const t in counts) if (counts[t] > 1) excess += counts[t] - 1;
     });
     return { excess };
@@ -3836,7 +3912,7 @@ function renderStatsOverview(st) {
         <p class="q-sub">Engasjement, rettferdig plassering og at reglene holder.</p>
         ${indHtml({ label: 'Aldri sittet foran', val: nf.length, valCls: nf.length ? 'warn' : 'good', note: nf.length ? nf.slice(0, 4).map(s => escapeHtml(s.name)).join(', ') + (nf.length > 4 ? ' …' : '') : 'Tilgangen til de fremre plassene er spredt.' })}
         ${indHtml({ label: 'Kjønnsblanding ved pulter', val: totG ? mix + '%' : '—', pct: totG ? mix : 0, note: totG ? 'Andel nabopar på tvers av kjønn.' : 'Sett kjønn på elevene for å måle dette.' })}
-        ${tg ? indHtml({ label: 'Merkelapp-klumping', val: tg.excess, valCls: tg.excess ? 'warn' : 'good', note: tg.excess ? 'Samme merkelapp i samme gruppe - slå på «Spre merkelapper» og kjør smart plassering.' : 'Merkelapper er godt spredd mellom gruppene.' }) : ''}
+        ${tg ? indHtml({ label: 'Merkelapp-klumping', val: tg.excess, valCls: tg.excess ? 'warn' : 'good', note: tg.excess ? 'En «Spre»-merkelapp havnet sammen - kjør smart plassering på nytt.' : 'Spre-merkelapper er godt fordelt mellom gruppene.' }) : ''}
         ${indHtml({ label: 'Lærervurdering: arbeid', val: st.workN ? st.avgWork.toFixed(1) + '/5' : '—', valCls: ratingCls(st.avgWork), pct: st.workN ? st.avgWork / 5 * 100 : 0, meterCls: ratingCls(st.avgWork), note: st.workN ? `Snitt av ${st.workN} vurderte kart.` : 'Vurder kart i Historikk for å fylle dette.' })}
         ${ra.total ? indHtml({ label: 'Regler oppfylt nå', val: `${ra.ok}/${ra.total}`, valCls: ra.ok === ra.total ? 'good' : 'warn', pct: pct(ra.ok, ra.total), meterCls: ra.ok === ra.total ? 'good' : 'warn', note: 'Gjeldende kart mot «Skal/Bør»-reglene.' }) : indHtml({ label: 'Regler oppfylt nå', val: '—', note: 'Ingen regler satt enda.' })}
     </div>`;
@@ -4431,8 +4507,19 @@ function wireApp() {
         save(); smartGroup(true); renderGroups();
     });
     gpref('groupBalanceGender', 'balanceGender');
-    gpref('groupBalanceTags', 'balanceTags');
     gpref('groupAvoidRepeat', 'avoidAllRepeat');
+    // Per-tag Merkelapper managers (seating Regler + group Gruppe-regler). Delegated
+    // once; setTagMode re-renders both. Changing a mode re-runs the grouping so the
+    // effect is visible immediately (seating waits for a manual «Smart plassering»).
+    ['tagModeList', 'groupTagModes'].forEach(id => {
+        const el = $(id); if (!el) return;
+        el.addEventListener('click', e => {
+            const b = e.target.closest('[data-tagmode]'); if (!b) return;
+            const seg = b.closest('[data-tag]'); if (!seg) return;
+            setTagMode(seg.dataset.tag, b.dataset.tagmode);
+            if (id === 'groupTagModes' && activeTab === 'grupper') smartGroup(true);
+        });
+    });
     $('groupParBtn').addEventListener('click', setGroupPairsPreset);
     $('groupSideTabs').addEventListener('click', e => { const b = e.target.closest('[data-gtab]'); if (b) setGroupSideTab(b.dataset.gtab); });
     $('groupPrintBtn').addEventListener('click', printGroups);
@@ -4568,7 +4655,6 @@ function wireApp() {
     $('prefBalanceGender').addEventListener('change', e => { state.prefs.balanceGender = e.target.checked; save(); });
     $('prefAvoidRepeat').addEventListener('change', e => { state.prefs.avoidRepeat = e.target.checked; save(); });
     $('prefAvoidAll').addEventListener('change', e => { state.prefs.avoidAllRepeat = e.target.checked; save(); });
-    $('prefBalanceTags').addEventListener('change', e => { state.prefs.balanceTags = e.target.checked; save(); });
     // Straight to the board with the result, which is what you wanted the rules
     // for. setTab rather than closeModal: this is a tab, not a dialog.
     $('rulesRunBtn').addEventListener('click', () => { setTab('kart'); smartArrange(false); });

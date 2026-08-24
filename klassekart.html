@@ -282,8 +282,11 @@
                     <label class="check" id="prefAvoidRepeatRow"><input type="checkbox" id="prefAvoidRepeat"> Unngå naboer fra forrige lagrede kart</label>
                     <label class="check" id="prefAvoidAllRow"><input type="checkbox" id="prefAvoidAll"> Unngå alle tidligere naboer (hele historikken)</label>
                     <p class="modal-hint hidden" id="prefHistoryHint">Krever minst ett lagret kart — bruk «Lagre kartet» på Kart-fanen.</p>
-                    <label class="check" id="prefBalanceTagsRow"><input type="checkbox" id="prefBalanceTags"> Spre merkelapper (blandede grupper)</label>
-                    <p class="modal-hint hidden" id="prefTagsHint">Krever at minst to elever deler en merkelapp — gjøres i Elever.</p>
+                    <div class="pref-tags-block">
+                        <div class="pref-tags-head">Merkelapper</div>
+                        <p class="modal-hint pref-tags-sub">Kun = bare et notat · Spre = fordel likt utover · Samle = hold sammen</p>
+                        <div id="tagModeList" class="tag-modes-list"></div>
+                    </div>
                 </div>
     
                 <!-- Wishes are entered per pupil under Elever, because they come
@@ -379,8 +382,12 @@
                 <div class="group-pane" data-gpane="regler">
                     <div class="group-prefs">
                         <label class="group-toggle"><input type="checkbox" id="groupBalanceGender"> Bland kjønn</label>
-                        <label class="group-toggle"><input type="checkbox" id="groupBalanceTags"> Spre merkelapper</label>
                         <label class="group-toggle"><input type="checkbox" id="groupAvoidRepeat"> Unngå tidligere partnere</label>
+                    </div>
+                    <div class="pref-tags-block">
+                        <div class="pref-tags-head">Merkelapper</div>
+                        <p class="modal-hint pref-tags-sub">Kun = bare et notat · Spre = fordel likt · Samle = hold sammen</p>
+                        <div id="groupTagModes" class="tag-modes-list"></div>
                     </div>
                     <div class="group-modebar">
                         <div class="seg group-mode-seg" id="groupModeSeg">
@@ -601,7 +608,7 @@
                     <input id="prefTagInput" type="text" placeholder="f.eks. språkstøtte">
                     <button class="btn" id="prefTagAddBtn" type="button">Legg til</button>
                 </div>
-                <p class="modal-hint" style="margin-top:6px">Brukes til blandede grupper - slå på «Spre merkelapper» i Regler.</p>
+                <p class="modal-hint" style="margin-top:6px">Velg hva hver merkelapp skal gjøre (Kun / Spre / Samle) under Regler eller Gruppe-regler.</p>
             </div>
         </div>
         <div class="modal-foot">
