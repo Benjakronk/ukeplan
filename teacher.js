@@ -4905,6 +4905,9 @@ function syncDayModeUI() {
   if (!row) return;
   const hasDay = (modalType === 'lekse' || GENERAL_TYPES.includes(modalType));
   const show = hasDay && modalDays.length > 0;
+  // The row carries the `hidden` attribute in markup, so clear/set that (not just
+  // style.display, which the attribute would override) to actually reveal it.
+  row.hidden = !show;
   row.style.display = show ? '' : 'none';
   if (!show) return;
   document.querySelectorAll('#dayModeSeg .theme-seg-btn').forEach(b =>
