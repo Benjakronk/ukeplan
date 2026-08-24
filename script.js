@@ -1081,8 +1081,8 @@ function showNewLekserDialog() {
       ul.className = 'dash-new-list';
       items.forEach(el => {
         const li = document.createElement('li'); li.className = 'rich-content';
-        const day = parseDays(el.day)[0];
-        const lead = (el.subject ? '<strong>' + escapeHtml(el.subject) + '</strong>' : '') + (day ? ' (' + DAY_LABEL[day] + ')' : '');
+        const badge = dayBadge(el);
+        const lead = (el.subject ? '<strong>' + escapeHtml(el.subject) + '</strong>' : '') + (badge ? ' (' + badge + ')' : '');
         li.innerHTML = (lead ? lead + ': ' : '') + sanitizeHtml(el.description || '');
         ul.appendChild(li);
       });
@@ -1314,8 +1314,8 @@ function buildLekseCard(el) {
   const dot = document.createElement('span'); dot.className = 'dash-lc-dot'; top.appendChild(dot);
   const subj = document.createElement('span'); subj.className = 'dash-lc-subj';
   subj.textContent = el.subject || 'Lekse'; top.appendChild(subj);
-  const day = parseDays(el.day)[0];
-  if (day) { const d = document.createElement('span'); d.className = 'dash-lc-day'; d.textContent = DAY_LABEL[day]; top.appendChild(d); }
+  const badge = dayBadge(el);
+  if (badge) { const d = document.createElement('span'); d.className = 'dash-lc-day'; d.textContent = badge; top.appendChild(d); }
   if (newLekseKeys.includes(doneKey(el))) { const n = document.createElement('span'); n.className = 'dash-lc-new'; n.textContent = 'nytt'; top.appendChild(n); }
   card.appendChild(top);
 
@@ -1707,14 +1707,20 @@ function buildDayDetail(i, weekVurd) {
     (parseDays(p.day).includes(dayKey) || parseDays(p.day).length === 0));
 
   const shownIds = new Set(dayGeneral.map(p => p.id).filter(Boolean));
-  let preview;
+  // A «til [dag]» lekse is due that day, so its real deadline is the evening
+  // before – surface it a day early in the same "Til i morgen" heads-up.
+  const isTilLekse = p => p.type === 'lekse' && p.description && subjectVisible(p.subject) && resolveDayMode(p) === 'til';
+  let preview, previewHw;
   if (i < 4) {
     const nextKey = DAYS[i + 1];
-    preview = planData.filter(p => isGeneral(p) && parseDays(p.day).includes(nextKey));
+    preview   = planData.filter(p => isGeneral(p) && parseDays(p.day).includes(nextKey));
+    previewHw = planData.filter(p => isTilLekse(p) && parseDays(p.day).includes(nextKey));
   } else {
     const nextWeek = dateToWeek(addDays(weekMonday, 7));
-    preview = previewWeekData.filter(p => isGeneral(p) && classMatches(p.classes, planKey()) &&
-      parseDays(p.day).includes('man') && weeksBetween(p.week, p.weekTo || p.week).includes(nextWeek));
+    const inNext = p => classMatches(p.classes, planKey()) && parseDays(p.day).includes('man') &&
+      weeksBetween(p.week, p.weekTo || p.week).includes(nextWeek);
+    preview   = previewWeekData.filter(p => isGeneral(p) && inNext(p));
+    previewHw = previewWeekData.filter(p => isTilLekse(p) && inNext(p));
   }
   // Don't repeat an item that's already shown as today's (multi-day elements).
   preview = preview.filter(p => !p.id || !shownIds.has(p.id));
@@ -1733,7 +1739,7 @@ function buildDayDetail(i, weekVurd) {
   }
   const gsToday = buildGeneralSection(dayGeneral);
   if (gsToday) { ensureBeskjedSec(); sec.appendChild(gsToday); }
-  if (preview.length) {
+  if (preview.length || previewHw.length) {
     ensureBeskjedSec();
     const box = document.createElement('div');
     box.className = 'day-heads-up';
@@ -1741,12 +1747,13 @@ function buildDayDetail(i, weekVurd) {
     lab.className = 'day-heads-up-label';
     lab.textContent = i < 4 ? 'Til i morgen' : 'Til neste skoledag';
     box.appendChild(lab);
+    if (previewHw.length) box.appendChild(buildHomeworkList(previewHw, 'subject'));
     const gsNext = buildGeneralSection(preview);
     if (gsNext) box.appendChild(gsNext);
     sec.appendChild(box);
   }
 
-  if (!sch && !dayEvents.length && !dayVurd.length && !dayHw.length && !dayGeneral.length && !preview.length) {
+  if (!sch && !dayEvents.length && !dayVurd.length && !dayHw.length && !dayGeneral.length && !preview.length && !previewHw.length) {
     const empty = document.createElement('p');
     empty.className = 'empty-state';
     empty.textContent = variantCode
@@ -1934,7 +1941,7 @@ function buildDashBeskjedEvents() {
 // Label prefix for a general element. Day is bold; day + fag are combined into
 // one label when both are set (e.g. "Man · Matematikk:").
 function generalPrefix(p) {
-  const dl = daysLabel(p.day);
+  const dl = dayPrefixLabel(p);
   if (dl && p.subject) return '<strong>' + escapeHtml(dl) + ' · ' + escapeHtml(p.subject) + ':</strong> ';
   if (p.subject)       return '<strong>' + escapeHtml(p.subject) + ':</strong> ';
   if (dl)              return '<strong>' + escapeHtml(dl) + ':</strong> ';
@@ -2143,7 +2150,7 @@ function buildHomeworkList(elements, prefixMode) {
       if (el.subject)   prefix = '<strong>' + escapeHtml(el.subject) + (weekly ? ' ukelekse' : '') + ':</strong> ';
       else if (weekly)  prefix = '<strong>Ukelekse:</strong> ';
     } else if (daysLabel(el.day)) {
-      prefix = '<strong>' + daysLabel(el.day) + ':</strong> ';
+      prefix = '<strong>' + dayPrefixLabel(el) + ':</strong> ';
     }
     span.innerHTML = prefix + sanitizeHtml(el.description || '');
     label.appendChild(cb);
@@ -2176,6 +2183,20 @@ function parseDays(s) {
     .filter(d => DAYS.includes(d)).sort((a, b) => DAYS.indexOf(a) - DAYS.indexOf(b));
 }
 function daysLabel(s) { return parseDays(s).map(d => DAY_LABEL[d]).join(', '); }
+// day_mode: 'til' = a deadline (done by that day; the effective cut-off is the
+// evening before), 'pa' = happens on that day. Blank/absent → type default: a
+// lekse is a deadline, everything else is on-the-day.
+function dayModeDefault(type) { return type === 'lekse' ? 'til' : 'pa'; }
+function resolveDayMode(el) { const m = el && el.dayMode; return (m === 'til' || m === 'pa') ? m : dayModeDefault(el && el.type); }
+// A day label honouring day_mode: "Til torsdag" (frist) vs "Torsdag".
+function dayBadge(el) {
+  const d = parseDays(el.day)[0]; if (!d) return '';
+  return resolveDayMode(el) === 'til' ? 'Til ' + DAY_LABEL[d].toLowerCase() : DAY_LABEL[d];
+}
+function dayPrefixLabel(el) {
+  const dl = daysLabel(el.day); if (!dl) return '';
+  return resolveDayMode(el) === 'til' ? 'Til ' + dl.toLowerCase() : dl;
+}
 function isMultiWeek(el) { return el.weekTo && el.weekTo > el.week; }
 
 function homeworkText(h) {

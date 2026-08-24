@@ -222,6 +222,7 @@ let schoolDays    = loadCachedSchoolDays() || {};
 let modalType       = 'lekse';
 let modalClasses    = [];
 let modalDays       = [];    // selected day keys (empty = whole week)
+let modalDayMode    = 'til';  // 'til' (frist – done by that day) | 'pa' (on that day)
 let modalWeekFrom   = null;  // Date (monday) – start of the week range the modal writes to
 let modalWeekTo     = null;  // Date (monday) – end of the range
 let editingElement  = null;  // plan element being edited in the modal, or null
@@ -941,7 +942,7 @@ function elementCreateParams(el) {
   return {
     type: el.type, classes: el.classes, week: el.week, weekTo: el.weekTo || '',
     day: el.day || '', subject: el.subject || '', description: el.description || '',
-    teacher: el.teacher || teacherName,
+    teacher: el.teacher || teacherName, dayMode: el.dayMode || '',
   };
 }
 function elementUpdateFields(el) {
@@ -4420,7 +4421,7 @@ function setupModalListeners() {
     btn.className = 'type-btn';
     btn.textContent = TYPE_LABEL[t];
     btn.dataset.type = t;
-    btn.addEventListener('click', () => selectModalType(t));
+    btn.addEventListener('click', () => { modalDayMode = dayModeDefault(t); selectModalType(t); });
     typeWrap.appendChild(btn);
   });
 
@@ -4438,6 +4439,13 @@ function setupModalListeners() {
       syncDayBtns();
     });
     dayWrap.appendChild(btn);
+  });
+
+  // «Når?» toggle: til dagen (frist) vs på dagen.
+  document.getElementById('dayModeSeg').addEventListener('click', e => {
+    const b = e.target.closest('[data-daymode]'); if (!b) return;
+    modalDayMode = b.dataset.daymode === 'pa' ? 'pa' : 'til';
+    syncDayModeUI();
   });
 
   // Esc closes whichever modal is open; the add modal goes through the same
@@ -4477,6 +4485,7 @@ function openAddModal(preset = {}) {
   modalClasses   = preset.classes ? preset.classes.slice()
                  : (variantCode && modalType !== 'vurdering' && modalType !== 'hendelse' ? [variantCode] : [selectedClass]);
   modalDays      = preset.days ? preset.days.slice() : [];
+  modalDayMode   = preset.dayMode || dayModeDefault(modalType);
   modalWeekFrom  = preset.weekFrom || weekMonday;
   modalWeekTo    = preset.weekTo || modalWeekFrom;
   modalPendingDesc = '';
@@ -4508,6 +4517,7 @@ function openElementEdit(el) {
   modalClasses   = String(el.classes || '').toUpperCase().replace(/,/g, ' ').split(/\s+/).filter(Boolean);
   if (!modalClasses.length) modalClasses = [selectedClass];
   modalDays      = parseDays(el.day);
+  modalDayMode   = resolveDayMode(el);
   modalWeekFrom  = weekStringToMonday(el.week);
   modalWeekTo    = weekStringToMonday(el.weekTo || el.week);
   modalPendingDesc = el.description || '';
@@ -4708,7 +4718,7 @@ function modalDescGet() {
 // Rows/fields that only make sense once a type is chosen – hidden in the
 // "no type yet" state so the modal shows just the Type picker + a prompt.
 const NO_TYPE_ROWS = ['weekRangeRow', 'recurRow', 'dateRow', 'dateToRow', 'subjectRow',
-  'classRow', 'internCombineRow', 'variantClassNote', 'dayRow', 'descRow', 'teacherRow', 'conflictPanel'];
+  'classRow', 'internCombineRow', 'variantClassNote', 'dayRow', 'dayModeRow', 'descRow', 'teacherRow', 'conflictPanel'];
 
 function selectModalType(t) {
   const prompt = document.getElementById('typePrompt');
@@ -4747,6 +4757,7 @@ function selectModalType(t) {
   const dateLabel = document.getElementById('dateLabel');
   if (dateLabel) dateLabel.textContent = isHend ? 'Fra dato' : 'Dato';
   if (!hasDay) { modalDays = []; syncDayBtns(); }
+  syncDayModeUI();
 
   // Adapted plan: plan elements target the code (hide the class picker, show a
   // note); vurdering + hendelse keep the normal class picker (class-wide).
@@ -4883,6 +4894,28 @@ function updateClassSummary() {
 
 function syncDayBtns() {
   document.querySelectorAll('#dayBtns .day-btn').forEach(b => b.classList.toggle('active', modalDays.includes(b.dataset.day)));
+  syncDayModeUI();
+}
+
+// The «Når?» (Til dagen / På dagen) toggle only makes sense once a specific day is
+// picked on a lekse or general element. Show it then, reflect modalDayMode, and
+// explain the frist in plain language for the chosen day.
+function syncDayModeUI() {
+  const row = document.getElementById('dayModeRow');
+  if (!row) return;
+  const hasDay = (modalType === 'lekse' || GENERAL_TYPES.includes(modalType));
+  const show = hasDay && modalDays.length > 0;
+  row.style.display = show ? '' : 'none';
+  if (!show) return;
+  document.querySelectorAll('#dayModeSeg .theme-seg-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.daymode === modalDayMode));
+  const hint = document.getElementById('dayModeHint');
+  if (hint) {
+    const dl = (parseDays(modalDays.join(',')).map(k => DAY_LABEL[k])[0] || 'dagen').toLowerCase();
+    hint.textContent = modalDayMode === 'til'
+      ? '«Til ' + dl + '»: skal være ferdig til ' + dl + ' (senest kvelden før). Eleven ser den også dagen før.'
+      : '«På ' + dl + '»: hører til på ' + dl + '.';
+  }
 }
 
 // ── Recurrence / gap weeks (create-only, multi-week) ──────────────────────────
@@ -5058,7 +5091,7 @@ async function editIntoRecurrence(orig, specs, common) {
   const creates = [];
   for (const spec of specs) {
     const params = { type: common.type, classes: spec.classes, week: spec.week, weekTo: spec.weekTo,
-                     day: common.day, subject: common.subject, description: common.desc, teacher: common.teacher };
+                     day: common.day, subject: common.subject, description: common.desc, teacher: common.teacher, dayMode: common.dayMode };
     const r = await api('create', params);
     creates.push({ params, id: r && r.id });
   }
@@ -5116,6 +5149,8 @@ async function saveFromModal() {
     if (weekFrom > weekTo) { const t = weekFrom; weekFrom = weekTo; weekTo = t; }
     // Læringsmål/ressurs are week-level (no day); lekser and general types may carry day(s).
     const day = (modalType === 'lekse' || GENERAL_TYPES.includes(modalType)) ? modalDays.join(',') : '';
+    // «Til [dag]» (frist) vs «På [dag]» – only meaningful when a specific day is set.
+    const dayMode = day ? modalDayMode : '';
     const teacher = modalTeacherValue();
     let recurSpecs = null;   // non-null when a gap/recurrence expansion ran (create)
 
@@ -5126,10 +5161,10 @@ async function saveFromModal() {
         // replace it with the enumerated set instead of a plain update.
         recurSpecs = maybeBuildRecurrence(weekFrom, weekTo, currentModalClassGroups());
         if (recurSpecs) {
-          await editIntoRecurrence(editingElement, recurSpecs, { type: modalType, day, subject, desc, teacher });
+          await editIntoRecurrence(editingElement, recurSpecs, { type: modalType, day, subject, desc, teacher, dayMode });
         } else {
           const before = elementUpdateFields(editingElement);
-          const after  = { type: modalType, classes: modalClasses.join(' '), week: weekFrom, weekTo, day, subject, description: desc, teacher };
+          const after  = { type: modalType, classes: modalClasses.join(' '), week: weekFrom, weekTo, day, subject, description: desc, teacher, dayMode };
           await api('update', Object.assign({ id: editingElement.id }, after));
           recordUpdate(editingElement.id, before, after, 'endring');
         }
@@ -5143,7 +5178,7 @@ async function saveFromModal() {
         recurSpecs = maybeBuildRecurrence(weekFrom, weekTo, classGroups);
         const specs = recurSpecs || classGroups.map(cls => ({ classes: cls, week: weekFrom, weekTo }));
         for (const spec of specs) {
-          const params = { type: modalType, classes: spec.classes, week: spec.week, weekTo: spec.weekTo, day, subject, description: desc, teacher };
+          const params = { type: modalType, classes: spec.classes, week: spec.week, weekTo: spec.weekTo, day, subject, description: desc, teacher, dayMode };
           const r = await api('create', params);
           creates.push({ params, id: r && r.id });
         }
@@ -7815,6 +7850,10 @@ function parseDays(s) {
     .filter(d => DAYS.includes(d)).sort((a, b) => DAYS.indexOf(a) - DAYS.indexOf(b));
 }
 function daysLabel(s) { return parseDays(s).map(d => DAY_LABEL[d]).join(', '); }
+// day_mode default by type: a lekse is a deadline ('til'), everything else is
+// on-the-day ('pa'). Blank/absent day_mode resolves to this.
+function dayModeDefault(type) { return type === 'lekse' ? 'til' : 'pa'; }
+function resolveDayMode(el) { const m = el && el.dayMode; return (m === 'til' || m === 'pa') ? m : dayModeDefault(el && el.type); }
 function isMultiWeek(el) { return el.weekTo && el.weekTo > el.week; }
 function byDay(a, b) {
   const fa = parseDays(a.day), fb = parseDays(b.day);

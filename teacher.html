@@ -376,6 +376,15 @@
       <div id="dayBtns" class="day-btns"></div>
     </div>
 
+    <div class="form-row" id="dayModeRow" hidden>
+      <label class="form-label">Når?</label>
+      <div id="dayModeSeg" class="theme-seg" role="group" aria-label="Til dagen eller på dagen">
+        <button type="button" class="theme-seg-btn" data-daymode="til">Til dagen (frist)</button>
+        <button type="button" class="theme-seg-btn" data-daymode="pa">På dagen</button>
+      </div>
+      <p class="form-hint" id="dayModeHint"></p>
+    </div>
+
     <div class="form-row" id="descRow">
       <label class="form-label" for="descInput">Innhold</label>
       <textarea id="descInput" class="input desc-input" rows="3"></textarea>
