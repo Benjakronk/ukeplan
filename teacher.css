@@ -971,3 +971,11 @@
 .stat-visit-val { font-size: 14px; color: var(--text); }
 .stat-visit-val strong { font-size: 18px; }
 .stat-subhead { font-size: 13px; font-weight: 700; color: var(--text-muted); margin: 14px 0 8px; }
+/* Aktivitet – lead time */
+.stat-bar-fill.is-late { background: var(--danger); }
+.stat-bar-daysval { width: 46px; text-align: right; font-variant-numeric: tabular-nums; }
+.stat-lead-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; padding: 12px 14px; background: var(--surface-2); border-radius: var(--radius-card); margin-bottom: 6px; }
+.stat-lead-big { font-size: 26px; font-weight: 800; color: var(--primary); line-height: 1; }
+.stat-lead-unit { font-size: 14px; font-weight: 600; color: var(--text-muted); }
+.stat-lead-sub { font-size: 13px; color: var(--text-muted); }
+.stat-lead-sub strong { color: var(--text); }

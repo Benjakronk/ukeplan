@@ -7319,6 +7319,7 @@ const STAT_SUBS = [
   ['lekser',     'Lekser'],
   ['dekning',    'Dekning'],
   ['fordeling',  'Fordeling per fag'],
+  ['aktivitet',  'Aktivitet'],
 ];
 function statsSubtabsHtml() {
   const tabs = STAT_SUBS.concat(isAdmin ? [['besok', 'Besøk']] : []);
@@ -7337,6 +7338,7 @@ function renderStats() {
     : statsSub === 'lekser'    ? statsLekseCard(classes, cols)
     : statsSub === 'dekning'   ? statsDekningCard(classes, cols)
     : statsSub === 'fordeling' ? statsFordelingCard(classes, cols)
+    : statsSub === 'aktivitet' ? statsAktivitetCard(classes, cols)
     : statsBelastningCard(classes, cols);     // 'belastning' (default)
   pane.innerHTML = `
     <div class="stat-head">
@@ -7516,6 +7518,85 @@ function statsFordelingCard(classes, cols) {
       <span class="stat-bar-val">${n}</span>
     </div>`).join('');
   return statsCard('Vurderinger per fag', `<div class="stat-bars">${bars}</div>`);
+}
+
+function statsMedian(arr) {
+  if (!arr.length) return 0;
+  const a = arr.slice().sort((x, y) => x - y);
+  const m = Math.floor(a.length / 2);
+  return a.length % 2 ? a[m] : Math.round((a[m - 1] + a[m]) / 2);
+}
+// 5) Aktivitet: WHEN content is registered. Two views — planleggingsforsprang
+// (registered vs the Monday of the week it's for) and registreringsaktivitet over
+// time. Plan elements only: they carry `timestamp` (creation, "YYYY-MM-DD HH:MM");
+// vurderinger/hendelser have no creation stamp yet, so they're excluded.
+function statsAktivitetCard(classes, cols) {
+  const DAY = 86400000;
+  const inScope = el => el.description && (!statsSubject || el.subject === statsSubject)
+    && classes.some(cls => classMatches(el.classes, cls));
+  const madeDate = ts => { const d = new Date(String(ts || '').slice(0, 10)); return isNaN(d.getTime()) ? null : d; };
+
+  // -- Lead time: elements whose target week (weekFrom) falls in the range --
+  const colSet = new Set(cols.map(c => c.weekStr));
+  const leads = []; let counted = 0, before = 0;
+  allPlanData.forEach(el => {
+    if (!inScope(el) || !el.timestamp || !colSet.has(el.week)) return;
+    const made = madeDate(el.timestamp), monday = weekStringToMonday(el.week);
+    if (!made || !monday) return;
+    const lead = Math.round((monday.getTime() - made.getTime()) / DAY);
+    leads.push({ lead, subject: el.subject || '(uten fag)' });
+    counted++; if (lead > 0) before++;
+  });
+  let leadHtml;
+  if (!counted) leadHtml = '<p class="stat-empty">Ingen registreringer med tidspunkt i dette området.</p>';
+  else {
+    const med = statsMedian(leads.map(l => l.lead));
+    const pct = Math.round(before / counted * 100);
+    const bySubj = {};
+    leads.forEach(l => { (bySubj[l.subject] = bySubj[l.subject] || []).push(l.lead); });
+    const rows = Object.keys(bySubj).map(s => ({ s, med: statsMedian(bySubj[s]) })).sort((a, b) => b.med - a.med);
+    const maxMed = Math.max(1, ...rows.map(r => Math.abs(r.med)));
+    const bars = rows.map(r => `
+      <div class="stat-bar-row">
+        <span class="stat-bar-lab stat-bar-lab-wide">${escapeHtml(r.s)}</span>
+        <div class="stat-bar"><div class="stat-bar-fill${r.med < 0 ? ' is-late' : ''}" style="width:${Math.round(Math.min(1, Math.abs(r.med) / maxMed) * 100)}%"></div></div>
+        <span class="stat-bar-val stat-bar-daysval">${r.med} d</span>
+      </div>`).join('');
+    leadHtml = `
+      <div class="stat-lead-summary">
+        <span class="stat-lead-big">${med} <span class="stat-lead-unit">dager</span></span>
+        <span class="stat-lead-sub">median forsprang · <strong>${pct}%</strong> registrert før uka starter</span>
+      </div>
+      <h4 class="stat-subhead">Median forsprang per fag</h4>
+      <div class="stat-bars">${bars}</div>
+      <p class="stat-legend">Forsprang = dager fra innholdet ble registrert til mandag i uka det gjelder. Positivt = i forkant; negativt (rødt) = registrert etter at uka begynte.</p>`;
+  }
+
+  // -- Registration timeline: bucket by creation ISO-week (last 20 with data) --
+  const byWeek = {};
+  allPlanData.forEach(el => {
+    if (!inScope(el) || !el.timestamp) return;
+    const made = madeDate(el.timestamp); if (!made) return;
+    byWeek[dateToWeek(made)] = (byWeek[dateToWeek(made)] || 0) + 1;
+  });
+  const wkKeys = Object.keys(byWeek).sort();
+  let timelineHtml;
+  if (!wkKeys.length) timelineHtml = '<p class="stat-empty">Ingen registreringer å vise.</p>';
+  else {
+    const show = wkKeys.slice(-20);
+    const max = Math.max(1, ...show.map(k => byWeek[k]));
+    const bars = show.map(k => {
+      const n = byWeek[k], wkNo = parseInt((k.split('-W')[1] || ''), 10) || k;
+      return `<div class="stat-bar-row">
+        <span class="stat-bar-lab">Uke ${wkNo}</span>
+        <div class="stat-bar"><div class="stat-bar-fill" style="width:${Math.round(n / max * 100)}%"></div></div>
+        <span class="stat-bar-val">${n}</span></div>`;
+    }).join('');
+    timelineHtml = `<div class="stat-bars">${bars}</div>
+      <p class="stat-legend">Teller når innhold ble registrert (ikke hvilken uke det gjelder). Tema/ressurs/lekser/beskjeder – vurderinger og hendelser mangler foreløpig tidsstempel.</p>`;
+  }
+
+  return statsCard('Planleggingsforsprang', leadHtml) + statsCard('Registreringsaktivitet over tid', timelineHtml);
 }
 
 // Progresjon: one class + one subject, week by week.
