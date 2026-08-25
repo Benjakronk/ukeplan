@@ -7350,6 +7350,9 @@ function renderStats() {
 // Admin-only unique-device readout: today / rolling 7d / 30d, split student vs
 // teacher, + a per-day bar series. Counts DEVICES (random local id), not people.
 function statsVisitCard() {
+  // The server enforces admin on admin_visits, so a non-admin who forces this
+  // sub-tab open never gets data — say so instead of a perpetual "Laster …".
+  if (!isAdmin) return statsCard('Besøk (kun admin)', '<p class="stat-empty">Kun for administratorer.</p>');
   const v = visitStats;
   if (!v) return statsCard('Besøk (kun admin)', '<p class="stat-empty">Laster …</p>');
   const line = (lab, o) => `<div class="stat-visit-row"><span class="stat-visit-lab">${lab}</span>
