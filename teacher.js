@@ -7319,10 +7319,14 @@ const STAT_SUBS = [
   ['lekser',     'Lekser'],
   ['dekning',    'Dekning'],
   ['fordeling',  'Fordeling per fag'],
+];
+// Admin-only sub-tabs.
+const STAT_SUBS_ADMIN = [
   ['aktivitet',  'Aktivitet'],
+  ['besok',      'Besøk'],
 ];
 function statsSubtabsHtml() {
-  const tabs = STAT_SUBS.concat(isAdmin ? [['besok', 'Besøk']] : []);
+  const tabs = STAT_SUBS.concat(isAdmin ? STAT_SUBS_ADMIN : []);
   return `<div class="stat-subtabs" id="statSubtabs" role="tablist">` +
     tabs.map(([k, l]) => `<button type="button" class="stat-subtab${statsSub === k ? ' active' : ''}" data-statsub="${k}" role="tab" aria-selected="${statsSub === k}">${l}</button>`).join('') +
     `</div>`;
@@ -7330,7 +7334,7 @@ function statsSubtabsHtml() {
 function renderStats() {
   const pane = document.getElementById('paneStats');
   if (!pane) return;
-  if (statsSub === 'besok' && !isAdmin) statsSub = 'belastning';   // guard: admin-only sub
+  if (!isAdmin && (statsSub === 'besok' || statsSub === 'aktivitet')) statsSub = 'belastning';   // admin-only subs
   const cols = statsWeekCols();               // also fixes up statsFrom/statsTo defaults
   const classes = statsScopeClasses();
   const onVisit = statsSub === 'besok';
@@ -7531,6 +7535,7 @@ function statsMedian(arr) {
 // time. Plan elements only: they carry `timestamp` (creation, "YYYY-MM-DD HH:MM");
 // vurderinger/hendelser have no creation stamp yet, so they're excluded.
 function statsAktivitetCard(classes, cols) {
+  if (!isAdmin) return statsCard('Aktivitet', '<p class="stat-empty">Kun for administratorer.</p>');
   const DAY = 86400000;
   const inScope = el => el.description && (!statsSubject || el.subject === statsSubject)
     && classes.some(cls => classMatches(el.classes, cls));
