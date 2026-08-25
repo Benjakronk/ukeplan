@@ -7246,6 +7246,7 @@ function renderOversikt() {
 // (allPlanData) + assessments (vurdData). Counts are only as complete as staff
 // have registered (same caveat as the Kontaktlærer tab).
 let statsScope   = 'all';   // 'all' | a trinn label ('9.') | a class ('9B')
+let statsSub     = 'belastning'; // active sub-tab: belastning|lekser|dekning|fordeling|besok
 let statsSubject = '';       // '' = all subjects
 let statsFrom    = null;     // ISO Monday of the first week shown
 let statsTo      = null;     // ISO Monday of the last week shown
@@ -7308,22 +7309,41 @@ function statsSubjSort(a, b) {
   return idx(a) - idx(b) || String(a).localeCompare(String(b), 'no');
 }
 
+// The four charts (+ admin Besøk) are split into sub-tabs so you see one at a
+// time instead of scrolling a stack. The filter bar (scope/subject/week range) is
+// shared across the chart tabs; Besøk ignores it, so it's hidden there.
+const STAT_SUBS = [
+  ['belastning', 'Vurderingsbelastning'],
+  ['lekser',     'Lekser'],
+  ['dekning',    'Dekning'],
+  ['fordeling',  'Fordeling per fag'],
+];
+function statsSubtabsHtml() {
+  const tabs = STAT_SUBS.concat(isAdmin ? [['besok', 'Besøk']] : []);
+  return `<div class="stat-subtabs" id="statSubtabs" role="tablist">` +
+    tabs.map(([k, l]) => `<button type="button" class="stat-subtab${statsSub === k ? ' active' : ''}" data-statsub="${k}" role="tab" aria-selected="${statsSub === k}">${l}</button>`).join('') +
+    `</div>`;
+}
 function renderStats() {
   const pane = document.getElementById('paneStats');
   if (!pane) return;
+  if (statsSub === 'besok' && !isAdmin) statsSub = 'belastning';   // guard: admin-only sub
   const cols = statsWeekCols();               // also fixes up statsFrom/statsTo defaults
   const classes = statsScopeClasses();
+  const onVisit = statsSub === 'besok';
+  const card = onVisit ? statsVisitCard()
+    : statsSub === 'lekser'    ? statsLekseCard(classes, cols)
+    : statsSub === 'dekning'   ? statsDekningCard(classes, cols)
+    : statsSub === 'fordeling' ? statsFordelingCard(classes, cols)
+    : statsBelastningCard(classes, cols);     // 'belastning' (default)
   pane.innerHTML = `
     <div class="stat-head">
       <h2 class="stat-title">Statistikk</h2>
       <p class="stat-note">Tallene er så komplette som det lærerne har registrert.</p>
     </div>
-    ${isAdmin ? statsVisitCard() : ''}
-    ${statsFilterBarHtml()}
-    ${statsBelastningCard(classes, cols)}
-    ${statsLekseCard(classes, cols)}
-    ${statsDekningCard(classes, cols)}
-    ${statsFordelingCard(classes, cols)}`;
+    ${statsSubtabsHtml()}
+    ${onVisit ? '' : statsFilterBarHtml()}
+    ${card}`;
   statsWireControls();
 }
 
@@ -7375,6 +7395,11 @@ function statsWireControls() {
   bind('statSubject', v => statsSubject = v);
   bind('statFrom',   v => statsFrom = v);
   bind('statTo',     v => statsTo = v);
+  const subs = document.getElementById('statSubtabs');
+  if (subs) subs.addEventListener('click', e => {
+    const b = e.target.closest('[data-statsub]'); if (!b) return;
+    statsSub = b.dataset.statsub; renderStats();
+  });
 }
 function statsCard(title, bodyHtml) {
   return `<section class="stat-card"><h3 class="stat-card-title">${title}</h3>${bodyHtml}</section>`;

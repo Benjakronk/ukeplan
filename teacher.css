@@ -928,6 +928,14 @@
 .stat-head { margin-bottom: 4px; }
 .stat-title { font-size: 20px; font-weight: 700; color: var(--text); margin: 0; }
 .stat-note { font-size: 12px; color: var(--text-muted); margin: 2px 0 0; }
+.stat-subtabs { display: flex; flex-wrap: wrap; gap: 2px; margin: 14px 0 16px; border-bottom: 1px solid var(--border); }
+.stat-subtab {
+  background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  padding: 8px 12px; font-family: var(--font); font-size: 13px; font-weight: 600; color: var(--text-muted);
+  cursor: pointer; transition: color var(--transition), border-color var(--transition);
+}
+.stat-subtab:hover { color: var(--text); }
+.stat-subtab.active { color: var(--primary); border-bottom-color: var(--primary); }
 .stat-filters { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0 16px; }
 .stat-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
 .stat-field .input { font-size: 13px; padding: 7px 10px; min-width: 130px; }
