@@ -250,7 +250,7 @@ let oversiktWeek = null;
 let hjemData     = [];         // all-classes plan elements for the dashboard's viewed week
 let hjemWeek     = null;       // the week hjemData is for (cache guard; null = stale)
 let kontaktViewClass = null;   // which of the teacher's kontaktlærer classes is shown
-let hjemBeClass  = null;       // Hjem «Beskjeder og hendelser» class filter (null = alle)
+let hjemBeClass  = null;       // Hjem «Beskjeder og hendelser» filter: null = unset (→ first class), 'all' = «Alle», else a class
 let kontaktSubtab = 'team';    // Kontaktlærer sub-tab: team|vurd|dekning|beskjeder|tilpasset
 let kontaktTeam  = null;       // last class_team result { class, kontakt, subjects }
 let kontaktWeekData = [];      // all-classes plan elements for the coverage week
@@ -6603,7 +6603,9 @@ function renderHjem() {
   const beClasses = hjemClasses().filter(cls =>
     hjemGeneralAll.some(p => classMatches(p.classes, cls)) ||
     eventRowsAll.some(r => r.ev.classes && classMatches(r.ev.classes, cls)));
-  if (hjemBeClass && !beClasses.includes(hjemBeClass)) hjemBeClass = null;   // stale pick
+  // hjemBeClass: null = not yet chosen, 'all' = user picked «Alle», else a class.
+  if (hjemBeClass && hjemBeClass !== 'all' && !beClasses.includes(hjemBeClass)) hjemBeClass = null;   // stale pick
+  if (hjemBeClass === null && beClasses.length > 1) hjemBeClass = beClasses[0];   // default: first class, not «Alle»
 
   if (beClasses.length > 1) {
     const sw = document.createElement('div');
@@ -6611,9 +6613,9 @@ function renderHjem() {
     const mk = (val, label) => {
       const b = document.createElement('button');
       b.type = 'button';
-      b.className = 'kontakt-switch-btn' + ((hjemBeClass || 'all') === val ? ' active' : '');
+      b.className = 'kontakt-switch-btn' + (hjemBeClass === val ? ' active' : '');
       b.textContent = label;
-      b.addEventListener('click', () => { hjemBeClass = val === 'all' ? null : val; renderHjem(); });
+      b.addEventListener('click', () => { hjemBeClass = val; renderHjem(); });
       return b;
     };
     sw.appendChild(mk('all', 'Alle'));
@@ -6621,7 +6623,7 @@ function renderHjem() {
     pane.appendChild(sw);
   }
 
-  const sel = hjemBeClass;
+  const sel = hjemBeClass === 'all' ? null : hjemBeClass;
   const hjemGeneral = sel ? hjemGeneralAll.filter(p => classMatches(p.classes, sel)) : hjemGeneralAll;
   const eventMatch = sel ? (h => hendMatchesClass(h, sel)) : hendForTeacher;
   const beskjed = buildBeskjedCards(hjemGeneral, { readonly: true, showClass: !sel });
