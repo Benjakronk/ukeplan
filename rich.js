@@ -12,12 +12,22 @@
 // reduced to its text content; block elements become line breaks.
 // =============================================================
 
+// escapeHtml is for TEXT position only – it deliberately leaves quotes alone so
+// stored descriptions keep their exact bytes. In an ATTRIBUTE always use
+// escapeAttr, which closes the quote-breakout hole as well.
 function escapeHtml(s) {
   return String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 }
 function escapeAttr(s) {
-  return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+
+// Ceiling on one rich field, counted in VISIBLE characters. The server bounds
+// the serialized HTML instead (LIMITS.description in its INPUT VALIDATION
+// block, set high enough that the markup around 4000 characters still fits) –
+// so this stops the typing rather than letting a teacher write a page and lose
+// it on save. Raise both together.
+const RICH_MAX = 4000;
 
 const BLOCK_TAGS = { DIV: 1, P: 1, LI: 1 };
 
@@ -405,6 +415,17 @@ function hideRichToolbar() { if (_richToolbar) _richToolbar.style.display = 'non
 // Returns a contenteditable element. `onCommit(cleanHtml, el)` fires
 // on blur only when the sanitized content actually changed.
 
+// Tell the teacher WHY their typing stopped – once every few seconds, so
+// holding a key down doesn't spam. showToast lives in script.js / teacher.js,
+// which load after this file, so look it up at call time.
+let richLimitAt = 0;
+function richLimitHit(max) {
+  const now = Date.now();
+  if (now - richLimitAt < 4000) return;
+  richLimitAt = now;
+  if (typeof showToast === 'function') showToast('Maks ' + max + ' tegn i dette feltet.');
+}
+
 function createRichField(opts) {
   const ed = document.createElement('div');
   ed.className = 'rich-field' + (opts.className ? ' ' + opts.className : '');
@@ -417,6 +438,21 @@ function createRichField(opts) {
 
   ed.addEventListener('focus', () => positionRichToolbar(ed));
   ed.addEventListener('input', () => positionRichToolbar(ed));
+  // contenteditable has no maxlength, so enforce the cap ourselves: block the
+  // insertion that would cross it (deletions always pass). Same behaviour a
+  // native maxlength gives, and it keeps a long paste from being silently
+  // rejected by the server after the teacher thinks it saved.
+  ed.addEventListener('beforeinput', e => {
+    if (!/^insert/.test(e.inputType || '')) return;
+    const max = opts.maxLength || RICH_MAX;
+    const sel = window.getSelection();
+    const replacing = (sel && !sel.isCollapsed && ed.contains(sel.anchorNode)) ? String(sel).length : 0;
+    const added = e.data != null ? e.data.length
+                : (e.dataTransfer ? (e.dataTransfer.getData('text/plain') || '').length : 1);
+    if ((ed.textContent || '').length - replacing + added <= max) return;
+    e.preventDefault();
+    richLimitHit(max);
+  });
   ed.addEventListener('keydown', e => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); ed.blur(); }
   });

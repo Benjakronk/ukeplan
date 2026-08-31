@@ -7385,13 +7385,13 @@ function statsVisitCard() {
 function statsFilterBarHtml() {
   const all = schoolYearWeeks();
   const scopeOpts = [`<option value="all"${statsScope === 'all' ? ' selected' : ''}>Hele skolen</option>`]
-    .concat(CLASS_GRADES.map(g => `<optgroup label="${g.label} trinn">`
-      + `<option value="${g.label}"${statsScope === g.label ? ' selected' : ''}>Hele ${g.label} trinn</option>`
-      + g.classes.map(c => `<option value="${c}"${statsScope === c ? ' selected' : ''}>${c}</option>`).join('')
+    .concat(CLASS_GRADES.map(g => `<optgroup label="${escapeAttr(g.label)} trinn">`
+      + `<option value="${escapeAttr(g.label)}"${statsScope === g.label ? ' selected' : ''}>Hele ${escapeHtml(g.label)} trinn</option>`
+      + g.classes.map(c => `<option value="${escapeAttr(c)}"${statsScope === c ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('')
       + `</optgroup>`)).join('');
   const subjOpts = [`<option value=""${!statsSubject ? ' selected' : ''}>Alle fag</option>`]
-    .concat(SUBJECTS_SORTED.map(s => `<option value="${escapeHtml(s)}"${statsSubject === s ? ' selected' : ''}>${escapeHtml(s)}</option>`)).join('');
-  const wkOpts = sel => all.map(w => `<option value="${w.value}"${sel === w.value ? ' selected' : ''}>Uke ${w.weekNo}</option>`).join('');
+    .concat(SUBJECTS_SORTED.map(s => `<option value="${escapeAttr(s)}"${statsSubject === s ? ' selected' : ''}>${escapeHtml(s)}</option>`)).join('');
+  const wkOpts = sel => all.map(w => `<option value="${escapeAttr(w.value)}"${sel === w.value ? ' selected' : ''}>Uke ${w.weekNo}</option>`).join('');
   return `
     <div class="stat-filters">
       <label class="stat-field">Omfang<select id="statScope" class="input">${scopeOpts}</select></label>
@@ -7433,9 +7433,9 @@ function statsBelastningCard(classes, cols) {
     const tds = cols.map(c => {
       const n = map[cls + '|' + c.weekStr] || 0;
       const lvl = n === 0 ? 0 : n === 1 ? 1 : n < KONTAKT_LOAD_FLAG ? 2 : 3;
-      return `<td><div class="stat-heat stat-heat-${lvl}" title="${cls} uke ${c.weekNo}: ${n} vurdering${n === 1 ? '' : 'er'}">${n || ''}</div></td>`;
+      return `<td><div class="stat-heat stat-heat-${lvl}" title="${escapeAttr(cls)} uke ${c.weekNo}: ${n} vurdering${n === 1 ? '' : 'er'}">${n || ''}</div></td>`;
     }).join('');
-    return `<tr><th class="stat-rowlab">${cls}</th>${tds}</tr>`;
+    return `<tr><th class="stat-rowlab">${escapeHtml(cls)}</th>${tds}</tr>`;
   }).join('');
   const legend = `<p class="stat-legend"><span class="stat-heat stat-heat-1">1</span> lav
     <span class="stat-heat stat-heat-2">2</span> middels
@@ -7490,7 +7490,7 @@ function statsDekningCard(classes, cols) {
   const dot = (on, lab) => `<span class="stat-dot${on ? ' on' : ''}" title="${lab}"></span>`;
   const head = `<tr><th></th>${cols.map(c => `<th class="stat-collab">${c.weekNo}</th>`).join('')}</tr>`;
   const rows = subjects.map(s => {
-    const tds = cols.map(c => `<td><div class="stat-cov" title="${escapeHtml(s)} uke ${c.weekNo}">${
+    const tds = cols.map(c => `<td><div class="stat-cov" title="${escapeAttr(s)} uke ${c.weekNo}">${
       dot(has(s, c.weekStr, 'læringsmål'), 'Tema')}${dot(has(s, c.weekStr, 'ressurs'), 'Ressurs')}${dot(has(s, c.weekStr, 'lekse'), 'Lekse')}</div></td>`).join('');
     return `<tr><th class="stat-rowlab">${escapeHtml(s)}</th>${tds}</tr>`;
   }).join('');

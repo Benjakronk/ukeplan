@@ -69,18 +69,18 @@
 
       <div class="login-field enrol-only">
         <label class="login-label" for="enrolCode">Kode fra skolen</label>
-        <input type="password" id="enrolCode" class="input login-input" autocomplete="off">
+        <input type="password" id="enrolCode" class="input login-input" autocomplete="off" maxlength="200">
       </div>
       <div class="login-field enrol-only">
         <label class="login-label" for="enrolName">Navnet ditt</label>
-        <input type="text" id="enrolName" class="input login-input" autocomplete="name">
+        <input type="text" id="enrolName" class="input login-input" autocomplete="name" maxlength="80">
       </div>
 
       <label class="login-label" for="usernameInput">Brukernavn</label>
-      <input type="text" id="usernameInput" class="input login-input" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+      <input type="text" id="usernameInput" class="input login-input" autocomplete="username" autocapitalize="none" spellcheck="false" required maxlength="32">
 
       <label class="login-label" for="passwordInput">Passord</label>
-      <input type="password" id="passwordInput" class="input login-input" autocomplete="current-password" required>
+      <input type="password" id="passwordInput" class="input login-input" autocomplete="current-password" required maxlength="200">
 
       <button type="submit" id="loginSubmit" class="btn btn-primary login-btn">Logg inn</button>
       <p id="loginError" class="login-error" hidden></p>
@@ -306,7 +306,7 @@
       <div class="recur-body">
         <p class="form-hint recur-edit-hint" id="recurEditHint" hidden>Skrur du på dette nå, erstattes dette elementet av flere oppføringer (én per uke/forekomst).</p>
         <label class="form-label" for="gapWeeks">Hopp over uker</label>
-        <input type="text" id="gapWeeks" class="input" placeholder="f.eks. 40, 41" autocomplete="off" inputmode="numeric">
+        <input type="text" id="gapWeeks" class="input" placeholder="f.eks. 40, 41" autocomplete="off" inputmode="numeric" maxlength="60">
         <p class="form-hint">Ukenummer i perioden som skal utelates (ferie o.l.). Skill med komma.</p>
 
         <label class="settings-toggle recur-toggle">
@@ -387,13 +387,13 @@
 
     <div class="form-row" id="descRow">
       <label class="form-label" for="descInput">Innhold</label>
-      <textarea id="descInput" class="input desc-input" rows="3"></textarea>
+      <textarea id="descInput" class="input desc-input" rows="3" maxlength="4000"></textarea>
       <div id="descRich" class="desc-rich" hidden></div>
     </div>
 
     <div class="form-row" id="teacherRow">
       <label class="form-label" for="vurdTeacherInput">Lærer</label>
-      <input type="text" id="vurdTeacherInput" class="input" placeholder="Navnet ditt" autocomplete="off">
+      <input type="text" id="vurdTeacherInput" class="input" placeholder="Navnet ditt" autocomplete="off" maxlength="80">
     </div>
 
     <div id="conflictPanel" class="conflict-panel" hidden></div>
@@ -436,7 +436,7 @@
 
     <div class="form-row" data-section="beskrivelse">
       <label class="form-label" for="vfDesc">Beskrivelse</label>
-      <input type="text" id="vfDesc" class="input" placeholder="Søk i beskrivelsen…" autocomplete="off">
+      <input type="text" id="vfDesc" class="input" placeholder="Søk i beskrivelsen…" autocomplete="off" maxlength="100">
     </div>
 
     <div class="form-row" data-section="laerer">
@@ -531,7 +531,7 @@
 
       <div class="form-row">
         <label class="form-label" for="teacherName">Navnet ditt</label>
-        <input type="text" id="teacherName" class="input" placeholder="Navnet ditt" autocomplete="off">
+        <input type="text" id="teacherName" class="input" placeholder="Navnet ditt" autocomplete="off" maxlength="80">
         <p class="form-hint">Brukes som standard «Lærer» på det du legger inn.</p>
       </div>
 
@@ -539,11 +539,11 @@
         <details class="pw-change">
           <summary>Bytt passord</summary>
           <label class="login-label" for="pwCurrent">Nåværende passord</label>
-          <input type="password" id="pwCurrent" class="input" autocomplete="current-password">
+          <input type="password" id="pwCurrent" class="input" autocomplete="current-password" maxlength="200">
           <label class="login-label" for="pwNew">Nytt passord (minst 6 tegn)</label>
-          <input type="password" id="pwNew" class="input" autocomplete="new-password">
+          <input type="password" id="pwNew" class="input" autocomplete="new-password" maxlength="200">
           <label class="login-label" for="pwNew2">Gjenta nytt passord</label>
-          <input type="password" id="pwNew2" class="input" autocomplete="new-password">
+          <input type="password" id="pwNew2" class="input" autocomplete="new-password" maxlength="200">
           <button type="button" id="pwChangeBtn" class="btn btn-ghost btn-tiny">Bytt passord</button>
           <p id="pwChangeMsg" class="form-hint" role="status" aria-live="polite"></p>
         </details>
@@ -578,7 +578,7 @@
       <p class="class-modal-hint">Nullstill passord eller deaktiver kontoer. Nye lærere oppretter konto selv med skolekoden.</p>
       <div class="admin-search-row">
         <input type="text" id="adminSearch" class="input admin-search" placeholder="Søk etter navn eller brukernavn…"
-               autocomplete="off" aria-label="Søk etter lærer">
+               autocomplete="off" aria-label="Søk etter lærer" maxlength="100">
         <span id="adminCount" class="admin-count" aria-live="polite"></span>
       </div>
       <div id="adminList" class="admin-list"></div>
@@ -588,7 +588,7 @@
       <p class="class-modal-hint">Alle tilpassede planer på skolen. Som admin kan du åpne eller slette dem, uansett klasse. Notatet er bare lagret i din nettleser.</p>
       <div class="admin-search-row">
         <input type="text" id="adminVariantSearch" class="input admin-search" placeholder="Søk etter klasse, kode eller notat…"
-               autocomplete="off" aria-label="Søk etter tilpasset plan">
+               autocomplete="off" aria-label="Søk etter tilpasset plan" maxlength="100">
         <span id="adminVariantCount" class="admin-count" aria-live="polite"></span>
       </div>
       <div id="adminVariantList" class="admin-list"></div>
@@ -598,7 +598,7 @@
       <p class="class-modal-hint">Søk i alt innhold lærere har laget – etter tekst, fag, klasse eller <strong>@brukernavn</strong> (den som opprettet eller senere har endret det). Du kan redigere og slette som administrator.</p>
       <div class="admin-search-row">
         <input type="text" id="adminContentSearch" class="input admin-search" placeholder="Søk i tekst, fag, klasse eller @brukernavn…"
-               autocomplete="off" aria-label="Søk i innhold">
+               autocomplete="off" aria-label="Søk i innhold" maxlength="100">
         <span id="adminContentCount" class="admin-count" aria-live="polite"></span>
       </div>
       <div class="signed-filters">
@@ -639,7 +639,7 @@
     <p class="class-modal-hint">Alt innhold du har opprettet eller senere endret – på tvers av klasser og uker. Skrivebeskyttet.</p>
     <div class="admin-search-row">
       <input type="text" id="myEntriesSearch" class="input admin-search" placeholder="Søk i tekst, fag, klasse…"
-             autocomplete="off" aria-label="Søk i mine registreringer">
+             autocomplete="off" aria-label="Søk i mine registreringer" maxlength="100">
       <span id="myEntriesCount" class="admin-count" aria-live="polite"></span>
     </div>
     <div class="signed-filters">

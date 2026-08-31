@@ -71,7 +71,7 @@
 
     <div class="sp-body">
     <label class="class-modal-hint" for="studentName">Navnet ditt</label>
-    <input type="text" id="studentName" class="input" placeholder="Navnet ditt" autocomplete="off">
+    <input type="text" id="studentName" class="input" placeholder="Navnet ditt" autocomplete="off" maxlength="200">
 
     <details class="sp-section" id="spClassDetails" open>
       <summary class="sp-summary"><span class="class-modal-hint">Klassen du går i</span><span id="spClassSel" class="sp-sel"></span></summary>
@@ -86,7 +86,7 @@
     <details class="variant-box">
       <summary>Har du fått en egen kode?</summary>
       <p class="class-modal-hint">Noen elever får en egen, tilpasset plan. Velg klassen din over, og skriv inn koden du fikk av læreren her. Koden virker bare sammen med riktig klasse. La feltet stå tomt ellers.</p>
-      <input type="text" id="variantInput" class="variant-input" placeholder="f.eks. K7X9M" autocomplete="off" autocapitalize="characters" spellcheck="false">
+      <input type="text" id="variantInput" class="variant-input" placeholder="f.eks. K7X9M" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="20">
       <p id="variantError" class="variant-error" hidden></p>
     </details>
 
