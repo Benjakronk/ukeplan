@@ -90,7 +90,7 @@
 
             <div class="setup-field hidden" id="setupLabelField">
                 <label for="setupGroupLabel">Navn på gruppa</label>
-                <input type="text" id="setupGroupLabel" placeholder="f.eks. Valgfag programmering" autocomplete="off">
+                <input type="text" id="setupGroupLabel" placeholder="f.eks. Valgfag programmering" autocomplete="off" maxlength="60">
             </div>
         </div>
 
@@ -101,7 +101,7 @@
                     <button class="btn btn-sm" id="setupCsvBtn" type="button">📄 Hent fra CSV</button>
                     <span class="hint">- CSV-eksport av klasse eller faggruppe</span>
                 </div>
-                <textarea id="setupNames" placeholder="Anna&#10;Bjørn&#10;Cecilie&#10;..."></textarea>
+                <textarea id="setupNames" placeholder="Anna&#10;Bjørn&#10;Cecilie&#10;..." maxlength="4000"></textarea>
                 <div class="setup-count"><span id="setupCount">0</span> elever</div>
             </div>
 
@@ -254,7 +254,7 @@
             </div>
             <div class="modal-body">
                 <p class="modal-hint">Trykk på Egenskaper for å redigere en elevs innstillinger og ønsker.</p>
-                <input type="search" id="rosterSearch" class="rule-search" placeholder="Søk etter elev…" autocomplete="off">
+                <input type="search" id="rosterSearch" class="rule-search" placeholder="Søk etter elev…" autocomplete="off" maxlength="100">
                 <div class="roster" id="roster"></div>
             </div>
         </div>
@@ -294,7 +294,7 @@
                      here too so this is the one place to see everything binding a
                      pair — read-only, with ✎ jumping to where they are edited. -->
                 <div class="rules-between" data-rsub="mellom">
-                    <input type="search" id="ruleSearch" class="rule-search" placeholder="Søk etter elev…" autocomplete="off">
+                    <input type="search" id="ruleSearch" class="rule-search" placeholder="Søk etter elev…" autocomplete="off" maxlength="100">
                     <div class="rules-list" id="rulesList"></div>
                 </div>
             </div>
@@ -513,7 +513,7 @@
         <div class="modal-body">
             <div class="roster-add">
                 <label for="rosterAdd">Ett navn per linje</label>
-                <textarea id="rosterAdd" rows="7" placeholder="Nytt elevnavn..."></textarea>
+                <textarea id="rosterAdd" rows="7" placeholder="Nytt elevnavn..." maxlength="4000"></textarea>
             </div>
         </div>
         <div class="modal-foot">
@@ -605,7 +605,7 @@
                 <h3 class="sub">🏷️ Merkelapper</h3>
                 <div class="tag-list" id="prefTags"></div>
                 <div class="tag-add">
-                    <input id="prefTagInput" type="text" placeholder="f.eks. språkstøtte">
+                    <input id="prefTagInput" type="text" placeholder="f.eks. språkstøtte" maxlength="40">
                     <button class="btn" id="prefTagAddBtn" type="button">Legg til</button>
                 </div>
                 <p class="modal-hint" style="margin-top:6px">Velg hva hver merkelapp skal gjøre (Kun / Spre / Samle) under Regler eller Gruppe-regler.</p>
