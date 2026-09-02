@@ -838,6 +838,11 @@
 .board-row-flash > * { animation: boardRowFlash 1.6s ease-out; }
 .hjem-allclear { font-size: 14px; font-weight: 600; color: var(--success); }
 .hjem-vurd { display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--border); padding-top: 10px; }
+.hjem-vurd-summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--text-muted); }
+.hjem-vurd-summary::-webkit-details-marker { display: none; }
+.hjem-vurd-summary::after { content: '\25b8'; font-size: 10px; }
+.hjem-vurd[open] > .hjem-vurd-summary::after { content: '\25be'; }
+.hjem-vurd-summary:hover { color: var(--text); }
 .hjem-vurd-line { font-size: 12.5px; color: var(--text-muted); }
 .hjem-setup { align-items: flex-start; gap: 14px; }
 .hjem-setup-text { font-size: 15px; line-height: 1.5; color: var(--text); }

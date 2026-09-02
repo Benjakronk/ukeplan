@@ -6737,9 +6737,15 @@ function buildHjemCard(cls, week) {
 
   const vs = hjemClassVurd(cls, week);
   if (vs.length) {
-    const vwrap = document.createElement('div');
+    // Collapsed by default: the card's job is the gjøremål checklist, so the week's
+    // vurderinger are context you open when you want it – the count is the headline.
+    const vwrap = document.createElement('details');
     vwrap.className = 'hjem-vurd';
-    vs.slice(0, 3).forEach(v => {
+    const vsum = document.createElement('summary');
+    vsum.className = 'hjem-vurd-summary';
+    vsum.textContent = '📋 ' + vs.length + (vs.length === 1 ? ' vurdering' : ' vurderinger') + ' denne uka';
+    vwrap.appendChild(vsum);
+    vs.forEach(v => {
       const line = document.createElement('div');
       line.className = 'hjem-vurd-line';
       const when = capitalizeFirst(new Date(v.date).toLocaleDateString('no', { weekday: 'short', day: 'numeric', month: 'short' }));
