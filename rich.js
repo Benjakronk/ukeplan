@@ -252,27 +252,34 @@ function uiPrompt(message, opts = {}) {
 }
 
 // URL + optional display text in one modal. Resolves { url, text } or null.
+// With `opts.existing` (the caret/selection sits in a link) it becomes an EDIT
+// dialog: the fields are prefilled and a «Fjern lenke» button resolves
+// { remove: true }.
 function uiLinkDialog(opts = {}) {
+  const editing = !!opts.existing;
+  const buttons = [
+    { label: 'Avbryt', className: 'btn-ghost', value: null },
+    { label: editing ? 'Lagre' : 'Sett inn', className: 'btn-primary', primary: true, onClick: (ctx, f) => {
+      let url = f.url.value.trim();
+      if (!url) { ctx.setError('Skriv inn en URL.'); return undefined; }
+      if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) url = 'https://' + url;   // assume https:// if no scheme
+      if (!/^(https?:|mailto:)/i.test(url)) { ctx.setError('Bruk en URL som starter med https:// eller mailto:'); return undefined; }
+      return { url, text: f.text.value.trim() };
+    } },
+  ];
+  // Deleting the link is a third, subdued action (pushed left in the button row).
+  if (editing) buttons.unshift({ label: 'Fjern lenke', className: 'btn-ghost ui-dialog-del', value: { remove: true } });
   return buildUiDialog({
-    title: 'Sett inn lenke',
+    title: editing ? 'Rediger lenke' : 'Sett inn lenke',
     initialFocus: '.ui-dialog-input',
     render: ctx => {
       const u = _uiLabelledInput('Lenke-URL', opts.url || '', 'https://… eller mailto:…');
-      const t = _uiLabelledInput('Visningstekst (valgfritt)', opts.text || '', 'Teksten som vises');
+      const t = _uiLabelledInput(editing ? 'Visningstekst' : 'Visningstekst (valgfritt)', opts.text || '', 'Teksten som vises');
       ctx.body.appendChild(u.field);
       ctx.body.appendChild(t.field);
       return { url: u.input, text: t.input };
     },
-    buttons: [
-      { label: 'Avbryt', className: 'btn-ghost', value: null },
-      { label: 'Sett inn', className: 'btn-primary', primary: true, onClick: (ctx, f) => {
-        let url = f.url.value.trim();
-        if (!url) { ctx.setError('Skriv inn en URL.'); return undefined; }
-        if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) url = 'https://' + url;   // assume https:// if no scheme
-        if (!/^(https?:|mailto:)/i.test(url)) { ctx.setError('Bruk en URL som starter med https:// eller mailto:'); return undefined; }
-        return { url, text: f.text.value.trim() };
-      } },
-    ],
+    buttons,
   });
 }
 
@@ -360,24 +367,80 @@ function ensureRichToolbar() {
   return bar;
 }
 
-// Insert a link via an in-app modal that also takes the display text. The
-// editor's selection is captured first and restored after the modal closes
+// The <a> the selection sits in (or wraps), searched no further out than the
+// field itself – so the link button can EDIT an existing link instead of
+// nesting a new one inside it.
+function _closestAnchor(node, root) {
+  let n = node;
+  while (n && n !== root) {
+    if (n.nodeType === 1 && n.tagName === 'A') return n;
+    n = n.parentNode;
+  }
+  return null;
+}
+function anchorInRange(ed, range) {
+  if (!range) return null;
+  const a = _closestAnchor(range.startContainer, ed) || _closestAnchor(range.endContainer, ed);
+  if (a) return a;
+  // A selection made from just outside the link (both ends outside it): treat it
+  // as «that link» only when it marks exactly one link and nothing else – a
+  // caret parked next to a link, or a wider selection, still inserts a new one.
+  if (!range.collapsed && range.intersectsNode) {
+    const hit = [...ed.querySelectorAll('a')].filter(l => range.intersectsNode(l));
+    if (hit.length === 1 && range.toString().trim() === (hit[0].textContent || '').trim()) return hit[0];
+  }
+  return null;
+}
+
+// Put the caret back where the editor expects it after a DOM edit.
+function _caretAfter(node) {
+  const sel = window.getSelection();
+  if (!sel || !node || !node.parentNode) return;
+  const r = document.createRange();
+  r.selectNodeContents(node);
+  r.collapse(false);
+  sel.removeAllRanges();
+  sel.addRange(r);
+}
+
+// Insert OR edit a link via an in-app modal that also takes the display text.
+// The editor's selection is captured first and restored after the modal closes
 // (the blur-driven reset is suppressed via ed._linking so the saved Range
-// stays valid).
+// stays valid). When the selection sits in an existing link, the modal opens
+// prefilled with that link's URL + text and offers «Fjern lenke».
 async function addLinkCmd() {
   const ed = _activeRichField;
   if (!ed) return;
   const sel = window.getSelection();
   const range = sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
   const selectedText = sel ? sel.toString() : '';
+  const link = anchorInRange(ed, range);
 
   ed._linking = true;
   hideRichToolbar();
-  const result = await uiLinkDialog({ url: '', text: selectedText });
+  const result = link
+    ? await uiLinkDialog({ url: link.getAttribute('href') || '', text: link.textContent || '', existing: true })
+    : await uiLinkDialog({ url: '', text: selectedText });
 
   ed.focus();
-  if (range) { sel.removeAllRanges(); sel.addRange(range); }
-  if (result) {
+  if (result && link) {
+    // Editing an existing link: mutate it in place (execCommand would nest one
+    // link inside another).
+    if (result.remove) {
+      const parent = link.parentNode;
+      const last = link.lastChild;
+      while (link.firstChild) parent.insertBefore(link.firstChild, link);
+      parent.removeChild(link);
+      _caretAfter(last || parent);
+      parent.normalize();
+    } else {
+      link.setAttribute('href', result.url);
+      const text = result.text || result.url;
+      if (text !== link.textContent) link.textContent = text;
+      _caretAfter(link);
+    }
+  } else if (result) {
+    if (range) { sel.removeAllRanges(); sel.addRange(range); }
     const { url, text } = result;
     if (text && text !== selectedText) {
       document.execCommand('insertHTML', false, '<a href="' + escapeAttr(url) + '">' + escapeHtml(text) + '</a>');
@@ -386,6 +449,9 @@ async function addLinkCmd() {
     } else {
       document.execCommand('insertHTML', false, '<a href="' + escapeAttr(url) + '">' + escapeHtml(url) + '</a>');
     }
+  } else if (range) {
+    sel.removeAllRanges();
+    sel.addRange(range);
   }
   ed._linking = false;
 }

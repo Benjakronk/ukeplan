@@ -745,6 +745,9 @@ body.scroll-locked { overflow: hidden; }
 .ui-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 .ui-dialog .btn-danger { background: var(--danger); color: var(--on-accent); border-color: var(--danger); }
 @media (hover: hover) { .ui-dialog .btn-danger:hover { background: var(--danger-dark); border-color: var(--danger-dark); } }
+/* Subdued destructive action in a dialog button row (e.g. «Fjern lenke») – pushed left. */
+.ui-dialog-actions .ui-dialog-del { margin-right: auto; color: var(--danger); }
+@media (hover: hover) { .ui-dialog-actions .ui-dialog-del:hover { border-color: var(--danger); } }
 
 /* ── Tabs ──────────────────────────────────────────────────── */
 .tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 2px solid var(--border); margin-bottom: 12px; }
