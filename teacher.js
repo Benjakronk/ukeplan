@@ -157,6 +157,17 @@ let variantBaseData    = [];    // base-class content for the viewed week (read-
 let variantBaseKey     = null;  // "<base>|<week>" the above was loaded for
 function variantBase() { return (variantCode && parseVariantClass(variantCode)) || selectedClass; }
 function isAdaptedSubject(subject) { return variantAdapted.includes(subject); }
+// A «Tilpasset» subject with NO content of its own in the viewed week still shows
+// the CLASS's plan to the pupil (the same fallback lives in the student's
+// applyVariantMerge) – a week the teacher hasn't adapted yet is never blank.
+// The board flags that state so the teacher sees exactly what the pupil sees.
+function hasOwnVariantContent(subject) {
+  return planData.some(p => SUBJECT_TYPES.includes(p.type) && p.subject === subject
+    && p.description && classMatches(p.classes, variantCode));
+}
+function variantFollowsThisWeek(subject) {
+  return !!variantCode && isAdaptedSubject(subject) && !hasOwnVariantContent(subject);
+}
 async function loadVariantAdapted() {
   if (!variantCode) { variantAdapted = []; variantAdaptedCode = null; return; }
   if (variantAdaptedCode === variantCode) return;
@@ -190,6 +201,7 @@ function ensureVariantBase() {
 async function setVariantAdapted(subjects) {
   variantAdapted = subjects.slice();
   variantAdaptedCode = variantCode;
+  hjemVariantsKey = null;   // the Hjem «Tilpassede planer» cards read this set
   try { await api('variant_subjects', { code: variantCode, subjects: JSON.stringify(subjects) }); }
   catch (e) { /* stash/replay handled by api() on Unauthorized */ }
 }
@@ -249,6 +261,8 @@ let oversiktData = [];         // all-classes plan elements for the oversikt wee
 let oversiktWeek = null;
 let hjemData     = [];         // all-classes plan elements for the dashboard's viewed week
 let hjemWeek     = null;       // the week hjemData is for (cache guard; null = stale)
+let hjemVariants    = [];      // adapted plans on the taught classes [{code, class, adaptedSubjects}]
+let hjemVariantsKey = null;    // the class list they were loaded for (null = stale)
 let kontaktViewClass = null;   // which of the teacher's kontaktlærer classes is shown
 let hjemBeClass  = null;       // Hjem «Beskjeder og hendelser» filter: null = unset (→ first class), 'all' = «Alle», else a class
 let kontaktSubtab = 'team';    // Kontaktlærer sub-tab: team|vurd|dekning|beskjeder|tilpasset
@@ -3444,6 +3458,7 @@ async function createVariantForClass(cls, opts = {}) {
   const code = (cls + '-' + suffix).toUpperCase();
   const r = await api('variant_create', { code, class: cls });
   if (!r || r.error) { await uiAlert(translateError((r && r.error) || 'Kunne ikke opprette.')); return; }
+  hjemVariantsKey = null;
   await uiAlert(
     'Kode til eleven: ' + suffix + '\n\n' +
     'Eleven velger klasse ' + cls + ' og skriver inn denne koden. Noter hvem koden tilhører i skolens eget dokument – aldri i appen.',
@@ -3475,6 +3490,7 @@ async function deleteVariantPlan(code, cls, opts = {}) {
   if (!pw) return;
   const r = await api('variant_delete', { code, password: pw });
   if (r && r.error) { await uiAlert(translateError(r.error)); return; }
+  hjemVariantsKey = null;                     // drop it from the Hjem cards too
   if (variantCode === code) pickClass(cls);   // was editing it → back to the regular plan
   if (opts.afterDelete) await opts.afterDelete();
 }
@@ -3794,9 +3810,17 @@ function renderBoard() {
     if (variantCode) {
       tdSubject.appendChild(buildAdaptToggle(subject));
       if (isAdaptedSubject(subject)) {
-        tr.appendChild(buildEditCell(subject, 'læringsmål', map[subject + '||læringsmål'] || []));
-        tr.appendChild(buildEditCell(subject, 'ressurs', map[subject + '||ressurs'] || []));
-        tr.appendChild(buildHomeworkEditCell(subject, (map[subject + '||lekse'] || []).slice().sort(byDay)));
+        const goalTd = buildEditCell(subject, 'læringsmål', map[subject + '||læringsmål'] || []);
+        const resTd  = buildEditCell(subject, 'ressurs', map[subject + '||ressurs'] || []);
+        const hwTd   = buildHomeworkEditCell(subject, (map[subject + '||lekse'] || []).slice().sort(byDay));
+        // Nothing of its own this week → the pupil sees the class's plan, so show
+        // it muted under each (still editable) cell; writing takes the week over.
+        if (variantFollowsThisWeek(subject)) {
+          addFollowFallback(goalTd, followContent(baseMap[subject + '||læringsmål'] || []));
+          addFollowFallback(resTd, followContent(baseMap[subject + '||ressurs'] || []));
+          addFollowFallback(hwTd, followHomeworkContent((baseMap[subject + '||lekse'] || []).slice().sort(byDay)));
+        }
+        tr.appendChild(goalTd); tr.appendChild(resTd); tr.appendChild(hwTd);
       } else {
         tr.appendChild(buildFollowCell(subject, 'læringsmål', baseMap[subject + '||læringsmål'] || []));
         tr.appendChild(buildFollowCell(subject, 'ressurs', baseMap[subject + '||ressurs'] || []));
@@ -3859,6 +3883,14 @@ function buildAdaptToggle(subject) {
   seg.appendChild(mk(false, 'Følger klassen', 'Eleven følger klassens vanlige plan i ' + subject));
   seg.appendChild(mk(true, 'Tilpasset', 'Eleven har egen, tilpasset plan i ' + subject));
   wrap.appendChild(seg);
+  if (adapted && variantFollowsThisWeek(subject)) {
+    const note = document.createElement('span');
+    note.className = 'adapt-follow-note';
+    note.textContent = 'Følger klassen denne uka';
+    note.title = 'Ingen egen tekst i ' + subject + ' for uke ' + getWeekNumber(weekMonday) +
+      ' – eleven ser klassens plan. Skriv i cellene (eller kopier fra klassen) for å overta uka.';
+    wrap.appendChild(note);
+  }
   if (adapted) {
     const copy = document.createElement('button');
     copy.type = 'button';
@@ -3884,24 +3916,19 @@ async function toggleAdaptSubject(subject, on) {
   if (on) next.push(subject);
   await setVariantAdapted(next);
   renderBoard();
-  // Newly tilpasset with no own content yet? Offer to seed it from the class.
-  if (on) {
-    const hasOwn = planData.some(p => classMatches(p.classes, variantCode) &&
-      SUBJECT_TYPES.includes(p.type) && p.subject === subject);
-    const hasClass = variantBaseData.some(p => SUBJECT_TYPES.includes(p.type) && p.subject === subject);
-    if (!hasOwn && hasClass) {
-      showToast('«' + subject + '» er nå tilpasset. Kopiere klassens innhold som utgangspunkt?',
-        { action: { label: 'Kopier', onClick: () => copyFromClassSubject(subject) }, duration: 8000 });
-    }
-  }
+  // Newly tilpasset with nothing of its own? Seed it from the class right away
+  // (undoable) so the teacher edits the class's plan instead of a blank cell.
+  if (on && !hasOwnVariantContent(subject)) await copyFromClassSubject(subject, { confirm: false });
 }
 
 // Clone the class's content for ONE subject + the viewed week into the variant.
-async function copyFromClassSubject(subject) {
+// `opts.confirm === false` skips the dialog (used when switching a subject to
+// «Tilpasset» seeds it automatically).
+async function copyFromClassSubject(subject, opts = {}) {
   if (cloning) return;
   const base = variantBase();
   const week = dateToWeek(weekMonday);
-  if (!await uiConfirm('Hente klassens ' + subject + '-innhold for uke ' + getWeekNumber(weekMonday) +
+  if (opts.confirm !== false && !await uiConfirm('Hente klassens ' + subject + '-innhold for uke ' + getWeekNumber(weekMonday) +
       ' inn i den tilpassede planen? Du kan endre det etterpå.', { title: 'Kopier fra klassen', okText: 'Hent' })) return;
   cloning = true;
   try {
@@ -3911,7 +3938,9 @@ async function copyFromClassSubject(subject) {
     if (result.entries && result.entries.length) {
       recordCreateMany(result.entries.map(en => ({ id: en.id, params: elementCreateParams(en) })), 'kopierte ' + subject + ' fra klassen');
     }
-    showToast('Kopierte ' + (result.count || 0) + ' element(er) fra ' + base + '.');
+    const n = result.count || 0;
+    if (n) showToast('Kopierte ' + n + ' element(er) i ' + subject + ' fra ' + base + '.');
+    else if (opts.confirm !== false) showToast('Klassen har ikke noe innhold i ' + subject + ' denne uka.');
     loadData({ background: true, skipCache: true });
   } catch (err) {
     setSaveError(err.message);
@@ -3922,35 +3951,20 @@ async function copyFromClassSubject(subject) {
 
 // Read-only Tema/Ressurser cell showing the class content a «Følger klassen»
 // subject inherits (muted; the pupil sees exactly this).
-function buildFollowCell(subject, type, elements) {
-  const td = document.createElement('td');
-  td.className = 'cell-edit cell-follow';
+// The class content a subject inherits, rendered – shared by the read-only
+// «Følger klassen» cells and the muted preview on an inherited week. Returns
+// null when the class has nothing.
+function followContent(elements) {
   const html = elements.map(e => e.description).filter(Boolean).join('<br>');
-  if (html) {
-    const div = document.createElement('div');
-    div.className = 'follow-content rich-content';
-    div.innerHTML = sanitizeHtml(html);
-    td.appendChild(div);
-  } else {
-    const em = document.createElement('span');
-    em.className = 'follow-empty';
-    em.textContent = 'Som klassen';
-    td.appendChild(em);
-  }
-  return td;
+  if (!html) return null;
+  const div = document.createElement('div');
+  div.className = 'follow-content rich-content';
+  div.innerHTML = sanitizeHtml(html);
+  return div;
 }
-
-// Read-only Lekser cell for a «Følger klassen» subject.
-function buildFollowHomeworkCell(subject, elements) {
-  const td = document.createElement('td');
-  td.className = 'cell-edit cell-homework-edit cell-follow';
-  if (!elements.length) {
-    const em = document.createElement('span');
-    em.className = 'follow-empty';
-    em.textContent = 'Som klassen';
-    td.appendChild(em);
-    return td;
-  }
+function followHomeworkContent(elements) {
+  if (!elements.length) return null;
+  const frag = document.createDocumentFragment();
   elements.forEach(el => {
     const row = document.createElement('div');
     row.className = 'follow-hw-row';
@@ -3965,8 +3979,54 @@ function buildFollowHomeworkCell(subject, elements) {
     txt.className = 'rich-content';
     txt.innerHTML = sanitizeHtml(el.description || '');
     row.appendChild(txt);
-    td.appendChild(row);
+    frag.appendChild(row);
   });
+  return frag;
+}
+
+// Muted «this is what the pupil sees this week» preview under an editable cell
+// of a tilpasset subject that has nothing of its own yet.
+function addFollowFallback(td, content) {
+  if (!content) return;
+  td.classList.add('cell-fallback');
+  const box = document.createElement('div');
+  box.className = 'fallback-box';
+  const lab = document.createElement('span');
+  lab.className = 'fallback-label';
+  lab.textContent = 'Følger klassen denne uka';
+  box.appendChild(lab);
+  box.appendChild(content);
+  td.appendChild(box);
+}
+
+function buildFollowCell(subject, type, elements) {
+  const td = document.createElement('td');
+  td.className = 'cell-edit cell-follow';
+  const content = followContent(elements);
+  if (content) {
+    td.appendChild(content);
+  } else {
+    const em = document.createElement('span');
+    em.className = 'follow-empty';
+    em.textContent = 'Som klassen';
+    td.appendChild(em);
+  }
+  return td;
+}
+
+// Read-only Lekser cell for a «Følger klassen» subject.
+function buildFollowHomeworkCell(subject, elements) {
+  const td = document.createElement('td');
+  td.className = 'cell-edit cell-homework-edit cell-follow';
+  const content = followHomeworkContent(elements);
+  if (!content) {
+    const em = document.createElement('span');
+    em.className = 'follow-empty';
+    em.textContent = 'Som klassen';
+    td.appendChild(em);
+    return td;
+  }
+  td.appendChild(content);
   return td;
 }
 
@@ -6404,6 +6464,7 @@ async function loadHjem(opts = {}) {
   const week = dateToWeek(weekMonday);
   loadAssessments(opts.force ? { force: true } : {});   // TTL-cheap; forced on explicit refreshes
   loadHendelser(opts.force ? { force: true } : {});     // for the upcoming-events panel
+  loadHjemVariants(opts.force ? { force: true } : {});  // «Tilpassede planer» cards
   if (!opts.force && hjemWeek === week) { renderHjem(); return; }
   showBgLoading();
   try {
@@ -6489,6 +6550,131 @@ function hjemElectiveStatus(group) {
   const subs = hjemElectiveSubjects().filter(s => group.classes.some(c => classesForSubject(s).includes(c)));
   return hjemStatusFrom(subs,
     (s, t) => hjemData.some(p => p.type === t && p.subject === s && p.description && group.classes.some(c => classMatches(p.classes, c))));
+}
+
+// ── Hjem · Tilpassede planer ──────────────────────────────────
+// The adapted plans on the teacher's classes that mark one of THEIR subjects
+// «Tilpasset». The registry is small and week-independent, so it's fetched once
+// per class list (invalidated when a plan or its adapted set changes); the
+// week's content comes from `hjemData`, which already covers every class AND
+// every code (the week fetch is unfiltered).
+async function loadHjemVariants(opts = {}) {
+  const classes = hjemClasses();
+  const key = classes.join(',');
+  if (!classes.length) { hjemVariants = []; hjemVariantsKey = key; return; }
+  if (!opts.force && hjemVariantsKey === key) return;
+  hjemVariantsKey = key;
+  try {
+    const lists = await Promise.all(classes.map(c =>
+      fetch(`${SCRIPT_URL}?action=variants&class=${encodeURIComponent(c)}`, { credentials: 'include' })
+        .then(r => r.json()).catch(() => null)));
+    const out = [];
+    lists.forEach((list, i) => {
+      if (!Array.isArray(list)) return;
+      list.forEach(v => out.push({
+        code: v.code,
+        class: v.class || classes[i],
+        adaptedSubjects: Array.isArray(v.adaptedSubjects) ? v.adaptedSubjects : [],
+      }));
+    });
+    hjemVariants = out;
+  } catch { hjemVariants = []; hjemVariantsKey = null; }
+  if (teacherTab === 'hjem') renderHjem();
+}
+
+// My subjects in a class (matrix; legacy accounts fall back to all Mine fag).
+function mySubjectsInClass(cls) {
+  const ordered = orderedSubjects(mySubjects());
+  if (!Object.keys(subjectClasses).length) return ordered;
+  return ordered.filter(s => classesForSubject(s).includes(cls));
+}
+// Plans to show on Hjem: those adapting at least one subject I teach there.
+function hjemVariantRows() {
+  return hjemVariants
+    .map(v => Object.assign({}, v, { mine: mySubjectsInClass(v.class).filter(s => v.adaptedSubjects.includes(s)) }))
+    .filter(v => v.mine.length)
+    .sort((a, b) => a.class.localeCompare(b.class, 'no') || a.code.localeCompare(b.code));
+}
+// Open an adapted plan's board at one subject (the variant twin of hjemJumpToBoard).
+function hjemJumpToVariant(v, subject) {
+  applyVariant(v.code, v.class);
+  setTeacherTab('ukeplan');
+  flashBoardRow(subject, 450);
+}
+
+function buildHjemVariantCard(v) {
+  const card = document.createElement('div');
+  card.className = 'hjem-card hjem-variant';
+
+  const head = document.createElement('div');
+  head.className = 'hjem-card-head';
+  const name = document.createElement('span');
+  name.className = 'hjem-card-class';
+  name.textContent = v.class;
+  head.appendChild(name);
+  // The browser-local label if the teacher set one, else the bare code suffix
+  // (the code never identifies the pupil – the label lives only on this device).
+  const who = document.createElement('span');
+  who.className = 'hjem-variant-who';
+  who.textContent = variantLabels()[v.code] || variantSuffix(v.code);
+  head.appendChild(who);
+  const tag = document.createElement('span');
+  tag.className = 'hjem-variant-tag';
+  tag.textContent = 'tilpasset';
+  head.appendChild(tag);
+  card.appendChild(head);
+
+  const rows = v.mine.map(s => ({
+    subject: s,
+    own: hjemData.some(p => SUBJECT_TYPES.includes(p.type) && p.subject === s
+      && p.description && classMatches(p.classes, v.code)),
+  }));
+  const done = rows.filter(r => r.own).length;
+  card.appendChild(buildHjemProgress(done, rows.length,
+    done + ' av ' + rows.length + ' fag har eget innhold denne uka'));
+
+  const list = document.createElement('div');
+  list.className = 'hjem-checklist';
+  rows.forEach(r => {
+    const row = document.createElement('div');
+    row.className = 'hjem-subj';
+    const nm = document.createElement('button');
+    nm.type = 'button';
+    nm.className = 'hjem-subj-name' + (r.own ? ' is-done' : '');
+    nm.textContent = r.subject;
+    nm.title = 'Åpne den tilpassede planen på ' + r.subject;
+    nm.addEventListener('click', () => hjemJumpToVariant(v, r.subject));
+    const status = document.createElement('div');
+    status.className = 'hjem-subj-status';
+    if (r.own) {
+      const t = document.createElement('span');
+      t.className = 'hjem-done-tag hjem-done-all';
+      t.textContent = '✓ eget innhold';
+      status.appendChild(t);
+    } else {
+      const t = document.createElement('span');
+      t.className = 'hjem-follow-tag';
+      t.textContent = 'følger klassen';
+      t.title = 'Ingen egen tekst denne uka – eleven ser klassens plan.';
+      status.appendChild(t);
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'hjem-task hjem-task-tema';
+      b.textContent = 'Tilpass uka';
+      b.addEventListener('click', () => hjemJumpToVariant(v, r.subject));
+      status.appendChild(b);
+    }
+    row.appendChild(nm); row.appendChild(status);
+    list.appendChild(row);
+  });
+  card.appendChild(list);
+
+  const open = document.createElement('button');
+  open.type = 'button';
+  open.className = 'btn btn-ghost btn-tiny hjem-variant-open';
+  open.textContent = 'Åpne planen';
+  open.addEventListener('click', () => hjemJumpToVariant(v, v.mine[0]));
+  card.appendChild(open);
+  return card;
 }
 
 function hjemClassVurd(cls, week) {
@@ -6583,6 +6769,23 @@ function renderHjem() {
   hjemElectiveYears().forEach(g => grid.appendChild(buildValgfagCard(g, week)));   // electives once per year
   pane.appendChild(grid);
 
+  // Tilpassede planer that mark one of MY subjects «Tilpasset» – per-week status.
+  const variantRows = hjemVariantRows();
+  if (variantRows.length) {
+    const vHead = document.createElement('h3');
+    vHead.className = 'hjem-section-title';
+    vHead.textContent = 'Tilpassede planer';
+    pane.appendChild(vHead);
+    const vTip = document.createElement('p');
+    vTip.className = 'hjem-section-tip';
+    vTip.textContent = 'Fagene dine som er merket «Tilpasset». Uker uten egen tekst følger klassens plan.';
+    pane.appendChild(vTip);
+    const vGrid = document.createElement('div');
+    vGrid.className = 'hjem-grid';
+    variantRows.forEach(v => vGrid.appendChild(buildHjemVariantCard(v)));
+    pane.appendChild(vGrid);
+  }
+
   // Combined Beskjeder og praktisk info | Hendelser, below the tasks. Beskjeder
   // are aggregated across taught classes (class-tagged, read-only overview);
   // intern reminders keep their own banner up top. A per-class switcher (like the
@@ -6632,12 +6835,12 @@ function renderHjem() {
 }
 
 // Progress bar ("X av Y fag har tema").
-function buildHjemProgress(temaDone, total) {
+function buildHjemProgress(temaDone, total, labelText) {
   const prog = document.createElement('div');
   prog.className = 'hjem-progress';
   const label = document.createElement('span');
   label.className = 'hjem-progress-label';
-  label.textContent = temaDone + ' av ' + total + ' fag har tema';
+  label.textContent = labelText || (temaDone + ' av ' + total + ' fag har tema');
   const bar = document.createElement('div');
   bar.className = 'hjem-bar';
   const fill = document.createElement('div');
@@ -6792,6 +6995,12 @@ function hjemJumpToBoard(cls, subject) {
   }
   setTeacherTab('ukeplan');
   loadData();
+  flashBoardRow(subject);
+}
+
+// Scroll the board to a subject row once it has rendered, flash it and focus its
+// first field (shared by the Hjem class cards and the tilpasset-plan cards).
+function flashBoardRow(subject, delay) {
   setTimeout(() => {
     let row = null;
     document.querySelectorAll('#board tr[data-subject]').forEach(r => { if (r.dataset.subject === subject) row = r; });
@@ -6801,7 +7010,7 @@ function hjemJumpToBoard(cls, subject) {
     setTimeout(() => row.classList.remove('board-row-flash'), 1600);
     const field = row.querySelector('.rich-field');
     if (field) field.focus();
-  }, 350);
+  }, delay || 350);
 }
 
 // ─── Kontaktlærer tab (class-workload overview for the team) ──

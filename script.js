@@ -133,12 +133,21 @@ function applyVariantMerge(raw) {
   if (!variantCode || viewBase) return raw;
   const code = variantCode, base = variantBaseClass();
   const SUBJ = ['læringsmål', 'ressurs', 'lekse'];
+  // An adapted subject only takes over a week it actually has content for; a
+  // week the teacher hasn't written yet falls back to the class plan, so the
+  // pupil never sees a blank subject (the teacher board shows the same).
+  const ownSubjects = new Set();
+  raw.forEach(el => {
+    if (SUBJ.includes(el.type) && el.subject && el.description && classMatches(el.classes, code)) ownSubjects.add(el.subject);
+  });
   const out = [];
   raw.forEach(el => {
     let keep;
     if (SUBJ.includes(el.type) && el.subject) {
-      // Subject cells: adapted subject → the pupil's own content; else the class's.
-      keep = classMatches(el.classes, variantAdaptedSubjects.includes(el.subject) ? code : base);
+      // Subject cells: adapted subject WITH own content this week → the pupil's
+      // own; otherwise the class's.
+      const own = variantAdaptedSubjects.includes(el.subject) && ownSubjects.has(el.subject);
+      keep = classMatches(el.classes, own ? code : base);
     } else {
       // General/beskjeder inherit the class AND surface any made for this plan.
       keep = classMatches(el.classes, base) || classMatches(el.classes, code);
@@ -152,6 +161,12 @@ function applyVariantMerge(raw) {
 function contentClassFor(subject) {
   if (variantCode && !viewBase) return variantAdaptedSubjects.includes(subject) ? variantCode : variantBaseClass();
   return planKey();
+}
+// The class an adapted subject falls back to when a week has nothing of its own
+// (null when there is no fallback: no variant, or the subject follows the class
+// anyway – then contentClassFor already points at the class).
+function fallbackClassFor(subject) {
+  return (variantCode && !viewBase && variantAdaptedSubjects.includes(subject)) ? variantBaseClass() : null;
 }
 
 // The stored key is "<CLASS>-<SUFFIX>", but pupils only ever enter/receive the
@@ -1544,7 +1559,15 @@ function renderFag() {
   board.innerHTML = '';
   const subject = document.getElementById('fagSubject').value;
 
-  const plan = allPlanData.filter(p => p.subject === subject && classMatches(p.classes, contentClassFor(subject)));
+  // In an adapted plan a tilpasset subject takes over only the weeks it has own
+  // content for; the rest fall back to the class (same rule as the week view).
+  const ownRows  = allPlanData.filter(p => p.subject === subject && classMatches(p.classes, contentClassFor(subject)));
+  const fallback = fallbackClassFor(subject);
+  const baseRows = fallback ? allPlanData.filter(p => p.subject === subject && classMatches(p.classes, fallback)) : [];
+  const ownWeeks = new Set();
+  ownRows.forEach(p => { if (p.week && p.description) weeksBetween(p.week, p.weekTo || p.week).forEach(w => ownWeeks.add(w)); });
+  const rowsForWeek = wk => (baseRows.length && !ownWeeks.has(wk)) ? baseRows : ownRows;
+  const plan = ownRows.concat(baseRows);
   const vurd = vurdData.filter(v => v.date && v.subject === subject && classMatches(v.classes, selectedClass));
 
   const weeks = new Set();
@@ -1582,9 +1605,10 @@ function renderFag() {
 
   visible.forEach(wk => {
     const monday = weekStringToMonday(wk);
-    const goals = plan.filter(p => p.type === 'læringsmål' && inWeek(p, wk)).map(p => p.description).filter(Boolean);
-    const resources = plan.filter(p => p.type === 'ressurs' && inWeek(p, wk)).map(p => p.description).filter(Boolean);
-    const hw    = plan.filter(p => p.type === 'lekse' && p.description && inWeek(p, wk)).slice().sort(byDay);
+    const wkRows = rowsForWeek(wk);
+    const goals = wkRows.filter(p => p.type === 'læringsmål' && inWeek(p, wk)).map(p => p.description).filter(Boolean);
+    const resources = wkRows.filter(p => p.type === 'ressurs' && inWeek(p, wk)).map(p => p.description).filter(Boolean);
+    const hw    = wkRows.filter(p => p.type === 'lekse' && p.description && inWeek(p, wk)).slice().sort(byDay);
     const wv    = vurd.filter(v => dateToWeek(new Date(v.date)) === wk).map(v => ({ ...v, day: dayOf(new Date(v.date)) }));
 
     const tr = tbody.insertRow();

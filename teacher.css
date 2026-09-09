@@ -462,6 +462,21 @@
   background: var(--primary-light); color: var(--primary-dark);
   border-radius: 8px; font-size: 11px; font-weight: 600;
 }
+/* A tilpasset subject with nothing of its own THIS week: the cell stays
+   editable, with a muted preview of the class content the pupil sees until the
+   teacher writes something. */
+.adapt-follow-note {
+  align-self: flex-start; font-size: 11px; font-style: italic; color: var(--text-muted);
+}
+.cell-fallback .fallback-box {
+  margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border);
+  color: var(--text-muted); opacity: 0.85;
+}
+.fallback-label {
+  display: block; margin-bottom: 3px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
+  color: var(--text-muted);
+}
 
 /* ── Responsive ────────────────────────────────────────────── */
 @media (max-width: 640px) {
@@ -816,6 +831,17 @@
 @media (hover: hover) { .hjem-pin:hover { opacity: .75; } .hjem-pin.pinned:hover { opacity: 1; } }
 .hjem-pin-sm { margin-left: 0; font-size: 12px; padding: 0 2px; }
 .hjem-done-tag { font-size: 12px; font-weight: 700; color: var(--success); white-space: nowrap; }
+/* Hjem · Tilpassede planer: one card per adapted plan that adapts a subject of
+   mine. The pupil is never named – the code suffix, or a label kept only in
+   this browser. */
+.hjem-variant-who { font-family: var(--font-mono); font-size: 13px; font-weight: 700; color: var(--text-muted); }
+.hjem-variant-tag {
+  margin-left: auto; padding: 2px 8px; border-radius: 999px;
+  background: var(--primary-light); color: var(--primary-dark);
+  font-size: 11px; font-weight: 700; letter-spacing: .02em;
+}
+.hjem-follow-tag { font-size: 12px; font-style: italic; color: var(--text-muted); white-space: nowrap; }
+.hjem-variant-open { align-self: flex-start; }
 /* «ferdig» = all three (tema + lekser + ressurs): a filled pill, a clear step up
    from the plain "✓ tema" text so a fully-done subject stands out. */
 .hjem-done-all { padding: 3px 10px; border-radius: 999px; background: var(--success-bg); color: var(--success); }
