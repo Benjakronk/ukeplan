@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE = 'ukeplan-shell-v228';
+const CACHE = 'ukeplan-shell-v229';
 const ASSETS = [
   './',
   'index.html',
@@ -25,7 +25,14 @@ const ASSETS = [
   'icon.svg',
   'icon-192.png',
   'icon-512.png',
-  'apple-touch-icon.png'
+  'icon-maskable-512.png',
+  'apple-touch-icon.png',
+  'favicon.ico',
+  'icon-teacher.svg',
+  'icon-teacher-192.png',
+  'icon-teacher-512.png',
+  'icon-teacher-maskable-512.png',
+  'apple-touch-icon-teacher.png'
 ];
 
 self.addEventListener('install', e => {
