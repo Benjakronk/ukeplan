@@ -384,14 +384,51 @@
 .general-line-class { display: inline-block; font-size: 11px; font-weight: 700; color: var(--primary);
   background: var(--primary-light); border-radius: 999px; padding: 0 7px; margin-right: 4px; }
 
-/* Conflict panel in the add/edit modal */
+/* Week strip in the add/edit modal (vurderinger): the selected date's week with
+   every assessment on its own day, so the load is read where it lands. */
 .conflict-panel {
   margin-bottom: 16px; border: 1px solid var(--border); border-radius: var(--radius-btn);
-  padding: 10px 12px; background: var(--surface-2); max-height: 160px; overflow-y: auto;
+  padding: 10px 12px; background: var(--surface-2); max-height: 260px; overflow-y: auto;
 }
 .conflict-panel.has-hits { background: var(--warn-bg); border-color: var(--warn-border); }
-.conflict-title { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
-.conflict-row { font-size: 13px; color: var(--text); padding: 2px 0; }
+.cw-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.cw-title { font-size: 13px; font-weight: 700; color: var(--text); }
+.cw-count { font-size: 12px; color: var(--text-muted); margin-left: auto; }
+.cw-count.is-heavy { color: var(--vurd); font-weight: 700; }
+.cw-grid { display: grid; grid-template-columns: repeat(var(--cw-cols, 5), minmax(0, 1fr)); gap: 4px; }
+.cw-day {
+  display: flex; flex-direction: column; gap: 4px; min-width: 0;
+  padding: 5px 4px 6px; border: 1px solid transparent; border-radius: var(--radius-btn);
+  background: var(--surface);
+}
+.cw-day.cw-off { background: transparent; }
+/* The day the assessment is being placed on – the anchor of the whole strip. */
+.cw-day.is-selected { border-color: var(--vurd); background: var(--vurd-soft); }
+.cw-day-head { display: flex; align-items: baseline; gap: 4px; justify-content: center; }
+.cw-dow { font-size: 11px; font-weight: 700; color: var(--text-muted); }
+.cw-day.is-selected .cw-dow, .cw-day.is-selected .cw-date { color: var(--vurd); }
+.cw-date { font-size: 11px; color: var(--text-muted); }
+.cw-items { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.cw-chip {
+  display: block; min-width: 0; padding: 3px 6px; border-radius: var(--radius-btn);
+  background: var(--vurd-soft); color: var(--vurd); border: 1px solid transparent;
+  font-size: 11px; font-weight: 600; line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.cw-chip-new { background: var(--vurd); color: var(--on-accent); }
+.cw-chip-cls { display: block; font-size: 10px; font-weight: 500; opacity: .8; }
+.cw-event { display: block; font-size: 10.5px; color: var(--event); overflow-wrap: anywhere; }
+.cw-tag { font-size: 10.5px; font-style: italic; color: var(--text-muted); text-align: center; }
+.cw-empty { font-size: 11px; color: var(--text-muted); opacity: .5; text-align: center; }
+.cw-near { margin-top: 8px; font-size: 11.5px; color: var(--text-muted); }
+/* Narrow screens: the five columns become five rows, day head on the left. */
+@media (max-width: 640px) {
+  .cw-grid { grid-template-columns: 1fr; gap: 2px; }
+  .cw-day { flex-direction: row; align-items: flex-start; gap: 8px; padding: 4px 6px; }
+  .cw-day-head { flex: 0 0 62px; justify-content: flex-start; }
+  .cw-items { flex: 1 1 auto; }
+  .cw-tag, .cw-empty { text-align: left; }
+}
 
 /* ── Print ─────────────────────────────────────────────────── */
 @media print {

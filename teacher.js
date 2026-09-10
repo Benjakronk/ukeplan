@@ -6420,36 +6420,139 @@ function formatDateLong(date) {
   return capitalizeFirst(date.toLocaleDateString('no', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }));
 }
 
-// Conflict panel inside the add/edit modal (only for vurderinger).
+// ─── Ukevisning i «Legg til»-modalen (kun vurderinger) ─────────
+// The week the SELECTED date falls in, Mon–Fri, with every assessment for the
+// picked classes on its own day and the one being written shown in place – so
+// the load is read where it actually lands, not as a flat ±7-day list. Counts
+// for the weeks on either side keep the old "anything close by?" signal.
+
+// One assessment as a chip. `pending` = the one being added/edited right now.
+function cwChip(v, pending) {
+  const chip = document.createElement('span');
+  chip.className = 'cw-chip' + (pending ? ' cw-chip-new' : '');
+  chip.textContent = (pending ? '● ' : '') + (v.subject || 'Vurdering');
+  const desc = v.description ? richToText(v.description) : '';
+  chip.title = (pending ? 'Denne vurderingen · ' : '') +
+    [v.subject, v.classes, desc].filter(Boolean).join(' · ');
+  // Which class it hits only matters when several are being written at once.
+  if (modalClasses.length > 1 && v.classes) {
+    const cls = document.createElement('span');
+    cls.className = 'cw-chip-cls';
+    cls.textContent = v.classes;
+    chip.appendChild(cls);
+  }
+  return chip;
+}
+
 function refreshConflicts() {
   const panel = document.getElementById('conflictPanel');
   if (!panel) return;
-  if (modalType !== 'vurdering') { panel.hidden = true; panel.innerHTML = ''; return; }
-  const date = document.getElementById('dateInput').value;
-  if (!date || !modalClasses.length) { panel.hidden = true; panel.innerHTML = ''; return; }
-
-  const center = isoToDate(date);
-  const from = addDays(center, -7), to = addDays(center, 7);
-  const hits = vurdData.filter(v => {
-    if (!v.date) return false;
-    if (editingVurd && v.id && v.id === editingVurd.id) return false;
-    const d = isoToDate(v.date);
-    if (d < from || d > to) return false;
-    return modalClasses.some(c => classMatches(v.classes, c));
-  }).sort((a, b) => (a.date < b.date ? -1 : 1));
-
   panel.innerHTML = '';
-  const h = document.createElement('div');
-  h.className = 'conflict-title';
-  h.textContent = hits.length ? ('⚠ ' + hits.length + ' vurdering' + (hits.length > 1 ? 'er' : '') + ' ±7 dager') : 'Ingen vurderinger i nærheten ✓';
-  panel.appendChild(h);
-  hits.forEach(v => {
-    const row = document.createElement('div');
-    row.className = 'conflict-row';
-    row.textContent = formatShortDate(v.date) + ' · ' + v.classes + ' · ' + (v.subject || '') + (v.description ? ' – ' + richToText(v.description) : '');
-    panel.appendChild(row);
+  panel.classList.remove('has-hits');
+  if (modalType !== 'vurdering') { panel.hidden = true; return; }
+  const selISO = document.getElementById('dateInput').value;
+  if (!selISO || !modalClasses.length) { panel.hidden = true; return; }
+
+  const sel = isoToDate(selISO);
+  const monday = mondayOf(sel);
+  // Sat/Sun are only drawn when the date actually landed there (the date echo
+  // already warns about it) – otherwise the week is the five school days.
+  const dayCount = (sel.getDay() === 0 || sel.getDay() === 6) ? 7 : 5;
+
+  // Assessments for the classes being written to. The one being EDITED is drawn
+  // as the pending chip instead, so it is never counted or shown twice.
+  const mine = v => !!v.date && !(editingVurd && v.id && v.id === editingVurd.id)
+    && modalClasses.some(c => classMatches(v.classes, c));
+  const between = (iso, from, to) => { const d = isoToDate(iso); return d >= from && d <= to; };
+  const weekOf = off => vurdData.filter(v => mine(v) && between(v.date, addDays(monday, off), addDays(monday, off + 6)));
+  const inWeek = weekOf(0);
+  const total = inWeek.length + 1;                 // + the one being written
+  const heavy = total >= KONTAKT_LOAD_FLAG;
+
+  const head = document.createElement('div');
+  head.className = 'cw-head';
+  const title = document.createElement('span');
+  title.className = 'cw-title';
+  title.textContent = 'Uke ' + getWeekNumber(monday) + ' · ' + formatWeekRange(monday, addDays(monday, 4));
+  const count = document.createElement('span');
+  count.className = 'cw-count' + (heavy ? ' is-heavy' : '');
+  count.textContent = (heavy ? '⚠ ' : '') + total + (total === 1 ? ' vurdering' : ' vurderinger') + ' med denne';
+  head.appendChild(title); head.appendChild(count);
+  panel.appendChild(head);
+
+  // Events for the same classes – a leirskole/temauke day is worth seeing before
+  // you place a prøve on it.
+  const evByDate = {};
+  hendData.forEach(h => {
+    if (!modalClasses.some(c => hendMatchesClass(h, c))) return;
+    hendDates(h).forEach(iso => { (evByDate[iso] = evByDate[iso] || []).push(h); });
   });
-  panel.classList.toggle('has-hits', hits.length > 0);
+
+  const pending = {
+    subject: document.getElementById('subjectSelect').value,
+    classes: modalClasses.join(' '),
+    description: document.getElementById('descInput').value,
+  };
+
+  const grid = document.createElement('div');
+  grid.className = 'cw-grid';
+  grid.style.setProperty('--cw-cols', dayCount);
+  for (let i = 0; i < dayCount; i++) {
+    const d = addDays(monday, i), iso = toISODate(d);
+    const sch = schoolDays[iso];
+    const schoolOff = sch && (sch.type === 'off' || sch.type === 'planning');
+    const col = document.createElement('div');
+    col.className = 'cw-day' + (i >= 5 || schoolOff ? ' cw-off' : '') + (iso === selISO ? ' is-selected' : '');
+    if (sch) col.title = sch.summaries.join(', ');
+
+    const dh = document.createElement('div');
+    dh.className = 'cw-day-head';
+    const dow = document.createElement('span');
+    dow.className = 'cw-dow';
+    dow.textContent = capitalizeFirst(d.toLocaleDateString('no', { weekday: 'short' })).replace(/\.$/, '');
+    const num = document.createElement('span');
+    num.className = 'cw-date';
+    num.textContent = d.getDate() + '.';
+    dh.appendChild(dow); dh.appendChild(num);
+    col.appendChild(dh);
+
+    const items = document.createElement('div');
+    items.className = 'cw-items';
+    if (schoolOff) {
+      const tag = document.createElement('span');
+      tag.className = 'cw-tag';
+      tag.textContent = sch.type === 'planning' ? 'plan.dag' : 'fri';
+      items.appendChild(tag);
+    }
+    (evByDate[iso] || []).forEach(h => {
+      const ev = document.createElement('span');
+      ev.className = 'cw-event';
+      ev.textContent = '★ ' + (h.description || 'Hendelse');
+      ev.title = h.description || 'Hendelse';
+      items.appendChild(ev);
+    });
+    if (iso === selISO) items.appendChild(cwChip(pending, true));
+    inWeek.filter(v => v.date === iso)
+      .sort((a, b) => String(a.subject || '').localeCompare(String(b.subject || ''), 'no'))
+      .forEach(v => items.appendChild(cwChip(v)));
+    if (!items.childElementCount) {
+      const em = document.createElement('span');
+      em.className = 'cw-empty';
+      em.textContent = '–';
+      items.appendChild(em);
+    }
+    col.appendChild(items);
+    grid.appendChild(col);
+  }
+  panel.appendChild(grid);
+
+  // The weeks on either side, as counts – the old ±7-day warning, condensed.
+  const near = document.createElement('div');
+  near.className = 'cw-near';
+  near.textContent = 'Uka før: ' + weekOf(-7).length + ' · Uka etter: ' + weekOf(7).length;
+  panel.appendChild(near);
+
+  panel.classList.toggle('has-hits', heavy);
   panel.hidden = false;
 }
 
