@@ -416,6 +416,9 @@
   overflow-wrap: anywhere;
 }
 .cw-chip-new { background: var(--vurd); color: var(--on-accent); }
+/* One of several subjects in the same valgfagblokk that week: «one of these». */
+.cw-chip-alt { border-style: dashed; border-color: var(--vurd); }
+.cw-collapse { margin: -4px 0 8px; font-size: 11.5px; color: var(--text-muted); }
 .cw-chip-cls { display: block; font-size: 10px; font-weight: 500; opacity: .8; }
 .cw-event { display: block; font-size: 10.5px; color: var(--event); overflow-wrap: anywhere; }
 .cw-tag { font-size: 10.5px; font-style: italic; color: var(--text-muted); text-align: center; }
@@ -647,6 +650,16 @@
   border-radius: 50%; background: var(--surface); color: var(--text-muted); cursor: pointer; }
 .admin-config-add-btn:hover { border-color: var(--primary); color: var(--primary); }
 .admin-config-actions { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+/* Valgfagblokker editor */
+.admin-config-hint { font-size: 12px; color: var(--text-muted); margin: 0 0 10px; }
+.admin-config-block { border: 1px solid var(--border); border-radius: var(--radius-btn); padding: 8px 10px; margin-bottom: 8px; }
+.admin-config-block-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.admin-config-block-label { flex: 1; min-width: 0; padding: 4px 8px; font-family: var(--font); font-size: 13px; font-weight: 700;
+  color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-btn); }
+.admin-config-block-label:focus { outline: none; border-color: var(--primary); }
+.admin-config-block-add { padding: 3px 6px; font-family: var(--font); font-size: 12.5px; color: var(--text);
+  background: var(--surface); border: 1px dashed var(--border); border-radius: 999px; max-width: 220px; }
+.admin-config-block-tools { margin: 2px 0 8px; }
 
 /* ── Self-service "Bytt passord" (profile modal) ───────────────── */
 .pw-change summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-muted); }
@@ -1022,6 +1035,14 @@
 .stat-heat-3 { background: var(--danger); color: var(--on-accent); }
 .stat-legend { font-size: 12px; color: var(--text-muted); margin: 10px 0 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .stat-legend .stat-heat { display: inline-block; padding: 2px 7px; min-width: 0; }
+/* A cell whose count was narrowed by a valgfagblokk (fewer than registered). */
+.stat-heat.is-collapsed { position: relative; }
+.stat-heat.is-collapsed::after {
+  content: ''; position: absolute; top: 3px; right: 3px; width: 5px; height: 5px;
+  border-radius: 50%; background: currentColor; opacity: .55;
+}
+/* How a load number is counted, where it isn't obvious. */
+.load-note { font-size: 12px; color: var(--text-muted); margin: 0 0 8px; }
 .stat-bars { display: flex; flex-direction: column; gap: 7px; }
 .stat-bar-row { display: flex; align-items: center; gap: 10px; }
 .stat-bar-lab { font-size: 12px; color: var(--text-muted); width: 58px; flex: none; text-align: right; }

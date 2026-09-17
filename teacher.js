@@ -59,6 +59,63 @@ let ELECTIVE_SUBJECTS = [
   'Innsats for andre','Programmering','Teknologi og design','Design og redesign',
   'Matematikk 1T','Medier og kommunikasjon',
 ];
+// Valgfagblokker: a pupil takes exactly ONE subject in each block. Editable by a
+// super-admin in Skoleoppsett (`electiveGroups` in the school config); these are
+// the defaults when the config doesn't carry any.
+const DEFAULT_ELECTIVE_GROUPS = [
+  { label: 'Språk og ALF', subjects: ['Spansk', 'Fransk', 'Tysk', 'Engelsk fordypning', 'Arbeidslivsfag (ALF)'] },
+  { label: 'Valgfag', subjects: ['Fysisk aktivitet og helse (Fysak)', 'Friluftsliv', 'Innsats for andre',
+    'Programmering', 'Teknologi og design', 'Design og redesign', 'Matematikk 1T', 'Medier og kommunikasjon'] },
+];
+// Keep only offered electives, each in one block at most, and no empty blocks.
+function normaliseElectiveGroups(groups, electives) {
+  const used = new Set();
+  return (Array.isArray(groups) ? groups : []).map(g => ({
+    label: String((g && g.label) || '').trim(),
+    subjects: (g && Array.isArray(g.subjects) ? g.subjects : []).map(String)
+      .filter(s => electives.includes(s) && !used.has(s) && used.add(s)),
+  })).filter(g => g.label && g.subjects.length);
+}
+let ELECTIVE_GROUPS = normaliseElectiveGroups(DEFAULT_ELECTIVE_GROUPS, ELECTIVE_SUBJECTS);
+function electiveGroupOf(subject) { return ELECTIVE_GROUPS.find(g => g.subjects.includes(subject)) || null; }
+
+// ── Vurderingsbelastning for ONE pupil ─────────────────────────
+// Fransk, Tysk and Spansk the same week are three rows but one assessment for any
+// given pupil, who takes only one of them. So load is the worst case for a single
+// pupil: every core (or unblocked) assessment counts, and each valgfagblokk adds
+// only its busiest subject. `raw` keeps the registered number, and `collapsed`
+// names the blocks that were narrowed, so the views can say why the numbers differ.
+function pupilLoad(vurds) {
+  let count = 0;
+  const perBlock = new Map();                 // block label → Map(subject → n)
+  vurds.forEach(v => {
+    const g = v && v.subject ? electiveGroupOf(v.subject) : null;
+    if (!g) { count++; return; }
+    const m = perBlock.get(g.label) || new Map();
+    m.set(v.subject, (m.get(v.subject) || 0) + 1);
+    perBlock.set(g.label, m);
+  });
+  const collapsed = [];
+  perBlock.forEach((m, label) => {
+    const counts = [...m.values()];
+    const busiest = Math.max(...counts);
+    const inBlock = counts.reduce((a, b) => a + b, 0);
+    count += busiest;
+    if (inBlock > busiest) collapsed.push({ label, subjects: [...m.keys()] });
+  });
+  return { count, raw: vurds.length, collapsed };
+}
+// «7 registrert. I Språk og ALF telles bare ett fag – en elev har bare ett av dem.»
+function loadCollapseNote(load) {
+  if (!load.collapsed.length) return '';
+  const names = load.collapsed.map(c => c.label);
+  if (names.length === 1) {
+    return load.raw + ' registrert. I ' + names[0] + ' telles bare ett fag – en elev har bare ett av dem.';
+  }
+  const list = names.slice(0, -1).join(', ') + ' og ' + names[names.length - 1];
+  return load.raw + ' registrert. I ' + list + ' telles bare ett fag per blokk – en elev har ett fag i hver.';
+}
+
 let SUBJECTS = [...CORE_SUBJECTS, ...ELECTIVE_SUBJECTS];
 // Alphabetical (Norwegian) order for the dropdown menus. The board rows keep the
 // curriculum order of SUBJECTS (see subjectSort).
@@ -84,6 +141,9 @@ function applySchoolConfig(cfg) {
   CLASSES = CLASS_GRADES.flatMap(g => g.classes);
   CORE_SUBJECTS = core;
   ELECTIVE_SUBJECTS = elec;
+  // No key → the built-in blocks; an explicit (possibly empty) list is the school's.
+  ELECTIVE_GROUPS = normaliseElectiveGroups(
+    Array.isArray(cfg.electiveGroups) ? cfg.electiveGroups : DEFAULT_ELECTIVE_GROUPS, ELECTIVE_SUBJECTS);
   SUBJECTS = [...CORE_SUBJECTS, ...ELECTIVE_SUBJECTS];
   SUBJECTS_SORTED = [...SUBJECTS].sort((a, b) => a.localeCompare(b, 'no'));
   return true;
@@ -1629,6 +1689,7 @@ function currentConfigDraft() {
     grades: CLASS_GRADES.map(g => ({ label: g.label, classes: g.classes.slice(), gradYear: g.gradYear })),
     coreSubjects: CORE_SUBJECTS.slice(),
     electiveSubjects: ELECTIVE_SUBJECTS.slice(),
+    electiveGroups: ELECTIVE_GROUPS.map(g => ({ label: g.label, subjects: g.subjects.slice() })),
   };
 }
 function schoolYearLabelFor(endYear) { return (endYear - 1) + '–' + endYear; }
@@ -1715,12 +1776,90 @@ function renderAdminConfig(reset) {
   d.electiveSubjects.forEach(s => elecChips.appendChild(configChip(s, () => { d.electiveSubjects = d.electiveSubjects.filter(x => x !== s); renderAdminConfig(); })));
   elecChips.appendChild(configAddInput('+ valgfag', v => { const s = v.trim(); if (s && !d.electiveSubjects.includes(s)) { d.electiveSubjects.push(s); renderAdminConfig(); } }));
   body.appendChild(elecChips);
+
+  renderElectiveBlocks(body, d);
+}
+
+// Valgfagblokker: which electives a pupil picks exactly one of. Drives how the
+// load views count (one subject per block per week). Blocks may sit empty while
+// being edited; empty ones are dropped on save.
+function renderElectiveBlocks(body, d) {
+  if (!Array.isArray(d.electiveGroups)) d.electiveGroups = [];
+  // A subject removed from the elective list leaves its block too; one block each.
+  const seen = new Set();
+  d.electiveGroups.forEach(g => { g.subjects = g.subjects.filter(s => d.electiveSubjects.includes(s) && !seen.has(s) && seen.add(s)); });
+  const ungrouped = d.electiveSubjects.filter(s => !seen.has(s));
+
+  const h = document.createElement('h3'); h.className = 'admin-config-h'; h.textContent = 'Valgfagblokker';
+  body.appendChild(h);
+  const hint = document.createElement('p'); hint.className = 'admin-config-hint';
+  hint.textContent = 'En elev har ett fag i hver blokk. I vurderingsbelastningen telles derfor bare ett fag per blokk per uke – ' +
+    'tre språkprøver samme uke er én prøve for en elev.';
+  body.appendChild(hint);
+
+  d.electiveGroups.forEach((g, gi) => {
+    const row = document.createElement('div'); row.className = 'admin-config-block';
+    const top = document.createElement('div'); top.className = 'admin-config-block-top';
+    const name = document.createElement('input');
+    name.type = 'text'; name.className = 'admin-config-block-label'; name.value = g.label;
+    name.maxLength = 40; name.placeholder = 'Navn på blokka'; name.setAttribute('aria-label', 'Navn på blokka');
+    name.addEventListener('input', () => { g.label = name.value; });
+    top.appendChild(name);
+    const del = document.createElement('button');
+    del.type = 'button'; del.className = 'btn btn-ghost btn-tiny admin-config-block-del';
+    del.textContent = 'Slett blokk';
+    del.addEventListener('click', () => { d.electiveGroups.splice(gi, 1); renderAdminConfig(); });
+    top.appendChild(del);
+    row.appendChild(top);
+
+    const chips = document.createElement('div'); chips.className = 'admin-config-chips';
+    g.subjects.forEach(s => chips.appendChild(configChip(s, () => { g.subjects = g.subjects.filter(x => x !== s); renderAdminConfig(); })));
+    if (ungrouped.length) {
+      const pick = document.createElement('select');
+      pick.className = 'admin-config-block-add';
+      pick.setAttribute('aria-label', 'Legg et valgfag i ' + (g.label || 'blokka'));
+      const first = document.createElement('option'); first.value = ''; first.textContent = '+ legg til fag';
+      pick.appendChild(first);
+      ungrouped.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; pick.appendChild(o); });
+      pick.addEventListener('change', () => { if (pick.value) { g.subjects.push(pick.value); renderAdminConfig(); } });
+      chips.appendChild(pick);
+    } else if (!g.subjects.length) {
+      const em = document.createElement('span'); em.className = 'admin-config-hint'; em.textContent = 'Alle valgfag ligger allerede i en blokk.';
+      chips.appendChild(em);
+    }
+    row.appendChild(chips);
+    body.appendChild(row);
+  });
+
+  const tools = document.createElement('div'); tools.className = 'admin-config-block-tools';
+  const add = document.createElement('button');
+  add.type = 'button'; add.className = 'btn btn-ghost btn-tiny';
+  add.textContent = '+ Ny blokk';
+  add.addEventListener('click', async () => {
+    const label = await uiPrompt('Hva heter blokka?', { title: 'Ny valgfagblokk', label: 'Navn', placeholder: 'f.eks. Språk og ALF', okText: 'Legg til' });
+    if (label == null || !label.trim()) return;
+    d.electiveGroups.push({ label: label.trim().slice(0, 40), subjects: [] });
+    renderAdminConfig();
+  });
+  tools.appendChild(add);
+  body.appendChild(tools);
+
+  const rest = document.createElement('p'); rest.className = 'admin-config-hint';
+  rest.textContent = ungrouped.length
+    ? 'Teller hver for seg (ikke i noen blokk): ' + ungrouped.join(', ') + '.'
+    : 'Alle valgfag ligger i en blokk.';
+  body.appendChild(rest);
 }
 async function saveAdminConfig() {
   const d = adminConfigDraft;
   if (!d) return;
   if (!d.grades.length || d.grades.some(g => !g.classes.length)) { await uiAlert('Hvert trinn må ha minst én klasse.'); return; }
   if (!d.coreSubjects.length && !d.electiveSubjects.length) { await uiAlert('Legg inn minst ett fag.'); return; }
+  // Valgfagblokker: named, uniquely; empty ones are simply dropped.
+  d.electiveGroups = (d.electiveGroups || []).map(g => ({ label: String(g.label || '').trim(), subjects: g.subjects }))
+    .filter(g => g.subjects.length);
+  if (d.electiveGroups.some(g => !g.label)) { await uiAlert('Hver valgfagblokk må ha et navn.'); return; }
+  if (new Set(d.electiveGroups.map(g => g.label)).size !== d.electiveGroups.length) { await uiAlert('To valgfagblokker har samme navn.'); return; }
   const draftClasses = d.grades.flatMap(g => g.classes);
   const draftSubjects = [...d.coreSubjects, ...d.electiveSubjects];
   const removedClasses = CLASSES.filter(c => !draftClasses.includes(c));
@@ -1734,6 +1873,12 @@ async function saveAdminConfig() {
     const r = await api('setconfig', { config: JSON.stringify(d) });
     if (r && r.error) { await uiAlert(translateError(r.error)); return; }
     if (r && r.config) { applySchoolConfig(r.config); try { localStorage.setItem(CONFIG_KEY, JSON.stringify(r.config)); } catch {} }
+    // A server from before valgfagblokker drops the field silently – say so rather
+    // than let the edits vanish behind the built-in default.
+    if (r && r.config && !Array.isArray(r.config.electiveGroups)) {
+      await uiAlert('Skoleoppsettet er lagret, men valgfagblokkene ble ikke det: serveren må oppdateres først. ' +
+        'Til da brukes standardblokkene (Språk og ALF, Valgfag).', { title: 'Valgfagblokker ikke lagret' });
+    }
     await uiAlert('Skoleoppsettet er lagret. Siden lastes på nytt for å ta det i bruk.');
     location.reload();
   } catch (err) { await uiAlert(translateError(err.message)); }
@@ -6265,7 +6410,9 @@ function buildVurdMonthCard(monthDate, byDate, opts = {}) {
           td.classList.add('has-assessments');
           const dots = document.createElement('span');
           dots.className = 'dots';
-          for (let i = 0; i < Math.min(items.length, 4); i++) {
+          // opts.dotCount: a class-scoped calendar draws the pupil's load, not rows.
+          const nDots = opts.dotCount ? opts.dotCount(items) : items.length;
+          for (let i = 0; i < Math.min(nDots, 4); i++) {
             const dot = document.createElement('span'); dot.className = 'dot'; dots.appendChild(dot);
           }
           td.appendChild(dots);
@@ -6426,14 +6573,16 @@ function formatDateLong(date) {
 // the load is read where it actually lands, not as a flat ±7-day list. Counts
 // for the weeks on either side keep the old "anything close by?" signal.
 
-// One assessment as a chip. `pending` = the one being added/edited right now.
-function cwChip(v, pending) {
+// One assessment as a chip. `pending` = the one being added/edited right now;
+// `block` = the valgfagblokk it shares with others that week (drawn as «one of»).
+function cwChip(v, pending, block) {
   const chip = document.createElement('span');
-  chip.className = 'cw-chip' + (pending ? ' cw-chip-new' : '');
+  chip.className = 'cw-chip' + (pending ? ' cw-chip-new' : '') + (block ? ' cw-chip-alt' : '');
   chip.textContent = (pending ? '● ' : '') + (v.subject || 'Vurdering');
   const desc = v.description ? richToText(v.description) : '';
   chip.title = (pending ? 'Denne vurderingen · ' : '') +
-    [v.subject, v.classes, desc].filter(Boolean).join(' · ');
+    [v.subject, v.classes, desc].filter(Boolean).join(' · ') +
+    (block ? ' · ' + block + ': en elev har bare ett av fagene' : '');
   // Which class it hits only matters when several are being written at once.
   if (modalClasses.length > 1 && v.classes) {
     const cls = document.createElement('span');
@@ -6466,8 +6615,17 @@ function refreshConflicts() {
   const between = (iso, from, to) => { const d = isoToDate(iso); return d >= from && d <= to; };
   const weekOf = off => vurdData.filter(v => mine(v) && between(v.date, addDays(monday, off), addDays(monday, off + 6)));
   const inWeek = weekOf(0);
-  const total = inWeek.length + 1;                 // + the one being written
+  const pending = {
+    subject: document.getElementById('subjectSelect').value,
+    classes: modalClasses.join(' '),
+    description: document.getElementById('descInput').value,
+  };
+  // Load for ONE pupil, the one being written included (valgfagblokker collapse).
+  const load = pupilLoad(inWeek.concat([pending]));
+  const total = load.count;
   const heavy = total >= KONTAKT_LOAD_FLAG;
+  const altBlocks = new Set(load.collapsed.map(c => c.label));
+  const altOf = v => { const g = v.subject ? electiveGroupOf(v.subject) : null; return g && altBlocks.has(g.label) ? g.label : ''; };
 
   const head = document.createElement('div');
   head.className = 'cw-head';
@@ -6479,6 +6637,12 @@ function refreshConflicts() {
   count.textContent = (heavy ? '⚠ ' : '') + total + (total === 1 ? ' vurdering' : ' vurderinger') + ' med denne';
   head.appendChild(title); head.appendChild(count);
   panel.appendChild(head);
+  if (load.collapsed.length) {
+    const why = document.createElement('p');
+    why.className = 'cw-collapse';
+    why.textContent = loadCollapseNote(load);
+    panel.appendChild(why);
+  }
 
   // Events for the same classes – a leirskole/temauke day is worth seeing before
   // you place a prøve on it.
@@ -6487,12 +6651,6 @@ function refreshConflicts() {
     if (!modalClasses.some(c => hendMatchesClass(h, c))) return;
     hendDates(h).forEach(iso => { (evByDate[iso] = evByDate[iso] || []).push(h); });
   });
-
-  const pending = {
-    subject: document.getElementById('subjectSelect').value,
-    classes: modalClasses.join(' '),
-    description: document.getElementById('descInput').value,
-  };
 
   const grid = document.createElement('div');
   grid.className = 'cw-grid';
@@ -6531,10 +6689,10 @@ function refreshConflicts() {
       ev.title = h.description || 'Hendelse';
       items.appendChild(ev);
     });
-    if (iso === selISO) items.appendChild(cwChip(pending, true));
+    if (iso === selISO) items.appendChild(cwChip(pending, true, altOf(pending)));
     inWeek.filter(v => v.date === iso)
       .sort((a, b) => String(a.subject || '').localeCompare(String(b.subject || ''), 'no'))
-      .forEach(v => items.appendChild(cwChip(v)));
+      .forEach(v => items.appendChild(cwChip(v, false, altOf(v))));
     if (!items.childElementCount) {
       const em = document.createElement('span');
       em.className = 'cw-empty';
@@ -6549,7 +6707,7 @@ function refreshConflicts() {
   // The weeks on either side, as counts – the old ±7-day warning, condensed.
   const near = document.createElement('div');
   near.className = 'cw-near';
-  near.textContent = 'Uka før: ' + weekOf(-7).length + ' · Uka etter: ' + weekOf(7).length;
+  near.textContent = 'Uka før: ' + pupilLoad(weekOf(-7)).count + ' · Uka etter: ' + pupilLoad(weekOf(7)).count;
   panel.appendChild(near);
 
   panel.classList.toggle('has-hits', heavy);
@@ -7256,15 +7414,27 @@ function renderKontakt() {
   // Flagged weeks (from today forward) with too many assessments.
   const byWeek = {};
   const todayW = dateToWeek(mondayOf(new Date()));
-  classVurd.forEach(v => { const w = dateToWeek(isoToDate(v.date)); if (w >= todayW) byWeek[w] = (byWeek[w] || 0) + 1; });
-  const flagged = Object.keys(byWeek).filter(w => byWeek[w] >= KONTAKT_LOAD_FLAG).sort();
+  classVurd.forEach(v => { const w = dateToWeek(isoToDate(v.date)); if (w >= todayW) (byWeek[w] = byWeek[w] || []).push(v); });
+  // Counted for ONE pupil – a valgfagblokk adds only its busiest subject.
+  const loads = {};
+  Object.keys(byWeek).forEach(w => { loads[w] = pupilLoad(byWeek[w]); });
+  const flagged = Object.keys(loads).filter(w => loads[w].count >= KONTAKT_LOAD_FLAG).sort();
+  if (Object.values(loads).some(L => L.collapsed.length)) {
+    const note = document.createElement('p');
+    note.className = 'load-note';
+    note.textContent = 'Tallene gjelder én elev: i en valgfagblokk telles bare ett fag per uke, siden en elev bare har ett av dem.';
+    secB.appendChild(note);
+  }
   if (flagged.length) {
     const warn = document.createElement('div');
     warn.className = 'kontakt-flags';
     flagged.forEach(w => {
+      const L = loads[w];
       const line = document.createElement('p');
       line.className = 'kontakt-flag';
-      line.textContent = '⚠ Uke ' + w.slice(6) + ': ' + byWeek[w] + ' vurderinger – vurder å spre dem.';
+      line.textContent = '⚠ Uke ' + w.slice(6) + ': ' + L.count + ' vurderinger' +
+        (L.collapsed.length ? ' (' + L.raw + ' registrert)' : '') + ' – vurder å spre dem.';
+      if (L.collapsed.length) line.title = loadCollapseNote(L);
       warn.appendChild(line);
     });
     secB.appendChild(warn);
@@ -7286,7 +7456,8 @@ function renderKontakt() {
   const today = new Date();
   let cursor = new Date(today.getFullYear(), today.getMonth(), 1);
   const endMonth = new Date(today.getFullYear(), today.getMonth() + 2, 1);
-  const calOpts = { scope: '#kontaktCalWrap', onDay: showKontaktDayDetail, eventsByDate: eventsByDateFor(cls) };
+  const calOpts = { scope: '#kontaktCalWrap', onDay: showKontaktDayDetail, eventsByDate: eventsByDateFor(cls),
+    dotCount: items => pupilLoad(items).count };
   while (cursor <= endMonth) {
     calWrap.appendChild(buildVurdMonthCard(cursor, byDate, calOpts));
     cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
@@ -7743,21 +7914,29 @@ function statsBelastningCard(classes, cols) {
     if (!v.date || (statsSubject && v.subject !== statsSubject)) return;
     const wk = dateToWeek(new Date(v.date));
     if (!colSet.has(wk)) return;
-    classes.forEach(cls => { if (classMatches(v.classes, cls)) { const k = cls + '|' + wk; map[k] = (map[k] || 0) + 1; total++; } });
+    classes.forEach(cls => { if (classMatches(v.classes, cls)) { const k = cls + '|' + wk; (map[k] = map[k] || []).push(v); total++; } });
   });
   if (!total) return statsCard('Vurderingsbelastning – klasse × uke', '<p class="stat-empty">Ingen vurderinger i dette området.</p>');
   const head = `<tr><th></th>${cols.map(c => `<th class="stat-collab">${c.weekNo}</th>`).join('')}</tr>`;
+  let anyCollapsed = false;
   const rows = classes.map(cls => {
     const tds = cols.map(c => {
-      const n = map[cls + '|' + c.weekStr] || 0;
+      // Load for ONE pupil: a valgfagblokk adds only its busiest subject.
+      const L = pupilLoad(map[cls + '|' + c.weekStr] || []);
+      const n = L.count;
       const lvl = n === 0 ? 0 : n === 1 ? 1 : n < KONTAKT_LOAD_FLAG ? 2 : 3;
-      return `<td><div class="stat-heat stat-heat-${lvl}" title="${escapeAttr(cls)} uke ${c.weekNo}: ${n} vurdering${n === 1 ? '' : 'er'}">${n || ''}</div></td>`;
+      const cut = L.collapsed.length > 0;
+      if (cut) anyCollapsed = true;
+      const tip = `${cls} uke ${c.weekNo}: ${n} vurdering${n === 1 ? '' : 'er'}` + (cut ? ' – ' + loadCollapseNote(L) : '');
+      return `<td><div class="stat-heat stat-heat-${lvl}${cut ? ' is-collapsed' : ''}" title="${escapeAttr(tip)}">${n || ''}</div></td>`;
     }).join('');
     return `<tr><th class="stat-rowlab">${escapeHtml(cls)}</th>${tds}</tr>`;
   }).join('');
   const legend = `<p class="stat-legend"><span class="stat-heat stat-heat-1">1</span> lav
     <span class="stat-heat stat-heat-2">2</span> middels
-    <span class="stat-heat stat-heat-3">${KONTAKT_LOAD_FLAG}+</span> høy belastning</p>`;
+    <span class="stat-heat stat-heat-3">${KONTAKT_LOAD_FLAG}+</span> høy belastning</p>` +
+    `<p class="stat-legend">Tallene gjelder én elev: i en valgfagblokk telles bare ett fag per uke.` +
+    (anyCollapsed ? ` <span class="stat-heat stat-heat-2 is-collapsed">2</span> = færre enn registrert (hold over for detaljer).` : '') + `</p>`;
   return statsCard('Vurderingsbelastning – klasse × uke',
     `<div class="stat-scroll"><table class="stat-heatmap"><thead>${head}</thead><tbody>${rows}</tbody></table></div>${legend}`);
 }
