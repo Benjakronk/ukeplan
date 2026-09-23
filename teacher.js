@@ -4605,6 +4605,9 @@ function setupModalListeners() {
     syncRecurVisibility();
     refreshConflicts();
   });
+  // Week-numbered picker instead of the native one (vurdering blocks weekends + skolerute).
+  attachWeekDatePicker(document.getElementById('dateInput'), { blockOff: () => modalType === 'vurdering' });
+  attachWeekDatePicker(document.getElementById('dateToInput'), { clearable: true });
   document.getElementById('dateInput').addEventListener('change', () => { updateDateInfo(); refreshConflicts(); });
   document.getElementById('dateToInput').addEventListener('change', () => updateDateInfo());
 
@@ -4830,6 +4833,215 @@ function setDateInputBounds(preferred) {
   input.value = v;
   updateDateInfo();
 }
+// ─── Week-numbered date picker ────────────────────────────────
+// <input type=date> can't show ISO week numbers, and teachers plan in weeks. So
+// the modal's date inputs are hidden and driven by a button + a popover month
+// grid with an «Uke» column. The hidden input stays the source of truth: every
+// existing `.value` read/write keeps working (a per-instance setter refreshes
+// the button label) and a pick fires the usual 'change' event.
+// opts: blockOff() → true disables weekends + skolerute off/planning days
+// (vurdering); clearable → a «Tøm» button (optional til-dato).
+const DP_MONTHS = ['januar', 'februar', 'mars', 'april', 'mai', 'juni', 'juli', 'august', 'september', 'oktober', 'november', 'desember'];
+let _dpOpen = null;   // { pop, close } of the open popover
+
+function attachWeekDatePicker(input, opts = {}) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'input date-pick-btn';
+  btn.id = input.id + 'Pick';
+  btn.setAttribute('aria-haspopup', 'dialog');
+  input.hidden = true;
+  input.after(btn);
+  const label = document.querySelector('label[for="' + input.id + '"]');
+  if (label) label.htmlFor = btn.id;
+
+  const sync = () => {
+    const iso = input.value;
+    if (!iso) { btn.innerHTML = '<span class="date-pick-empty">Velg dato</span>'; return; }
+    const d = isoToDate(iso);
+    btn.innerHTML = '';
+    const t = document.createElement('span');
+    t.textContent = capitalizeFirst(d.toLocaleDateString('no', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }));
+    const w = document.createElement('span');
+    w.className = 'date-pick-week';
+    w.textContent = 'uke ' + getWeekNumber(d);
+    btn.append(t, w);
+  };
+  const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+  Object.defineProperty(input, 'value', {
+    configurable: true,
+    get() { return desc.get.call(this); },
+    set(v) { desc.set.call(this, v); sync(); },
+  });
+  sync();
+
+  const commit = iso => {
+    input.value = iso;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  btn.addEventListener('click', () => {
+    if (_dpOpen && _dpOpen.btn === btn) { _dpOpen.close(); return; }
+    openWeekDatePopover(btn, input, opts, commit);
+  });
+}
+
+function openWeekDatePopover(btn, input, opts, commit) {
+  if (_dpOpen) _dpOpen.close();
+  const todayISO = toISODate(new Date());
+  const selISO = input.value;
+  const min = input.min || '', max = input.max || '';
+  const start = isoToDate(selISO || (todayISO < min ? min : todayISO > max && max ? max : todayISO));
+  let viewY = start.getFullYear(), viewM = start.getMonth();
+  let focusISO = toISODate(start);
+
+  const pop = document.createElement('div');
+  pop.className = 'date-pop';
+  pop.setAttribute('role', 'dialog');
+  pop.setAttribute('aria-label', 'Velg dato');
+
+  const disabledReason = iso => {
+    if ((min && iso < min) || (max && iso > max)) return 'Utenfor skoleåret';
+    if (opts.blockOff && opts.blockOff()) return vurdDateProblem(iso);
+    return null;
+  };
+
+  const render = () => {
+    pop.innerHTML = '';
+    const head = document.createElement('div');
+    head.className = 'date-pop-head';
+    const nav = (txt, lbl, delta) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'date-pop-nav'; b.textContent = txt; b.setAttribute('aria-label', lbl);
+      b.addEventListener('click', () => shiftMonth(delta, false));
+      return b;
+    };
+    const title = document.createElement('span');
+    title.className = 'date-pop-title';
+    title.textContent = capitalizeFirst(DP_MONTHS[viewM]) + ' ' + viewY;
+    head.append(nav('‹', 'Forrige måned', -1), title, nav('›', 'Neste måned', 1));
+    pop.appendChild(head);
+
+    const grid = document.createElement('div');
+    grid.className = 'date-pop-grid';
+    grid.setAttribute('role', 'grid');
+    ['Uke', 'ma', 'ti', 'on', 'to', 'fr', 'lø', 'sø'].forEach((h, i) => {
+      const c = document.createElement('span');
+      c.className = 'date-pop-dow' + (i === 0 ? ' date-pop-wkh' : '') + (i >= 6 ? ' is-weekend' : '');
+      c.textContent = h;
+      grid.appendChild(c);
+    });
+    const first = new Date(viewY, viewM, 1);
+    let cur = addDays(first, -((first.getDay() + 6) % 7));   // Monday on/before the 1st
+    while (cur.getMonth() === viewM || (cur < first)) {
+      const row = document.createElement('div');
+      row.className = 'date-pop-row';
+      row.setAttribute('role', 'row');
+      const wk = document.createElement('span');
+      wk.className = 'date-pop-wk';
+      wk.textContent = getWeekNumber(cur);
+      row.appendChild(wk);
+      if (selISO && dateToWeek(cur) === dateToWeek(isoToDate(selISO))) row.classList.add('is-sel-week');
+      for (let i = 0; i < 7; i++) {
+        const d = addDays(cur, i);
+        const iso = toISODate(d);
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'date-pop-day';
+        b.dataset.iso = iso;
+        b.textContent = d.getDate();
+        b.tabIndex = iso === focusISO ? 0 : -1;
+        if (d.getMonth() !== viewM) b.classList.add('is-other');
+        if (i >= 5) b.classList.add('is-weekend');
+        const sch = schoolDays[iso];
+        if (sch && (sch.type === 'off' || sch.type === 'planning')) b.classList.add('is-off');
+        if (iso === todayISO) b.classList.add('is-today');
+        if (iso === selISO) { b.classList.add('is-sel'); b.setAttribute('aria-selected', 'true'); }
+        const why = disabledReason(iso);
+        if (why) { b.classList.add('is-disabled'); b.setAttribute('aria-disabled', 'true'); b.title = why; }
+        else if (sch && sch.summaries && sch.summaries.length) b.title = sch.summaries.join(', ');
+        b.setAttribute('aria-label', capitalizeFirst(d.toLocaleDateString('no', { weekday: 'long', day: 'numeric', month: 'long' })) + ', uke ' + getWeekNumber(d));
+        b.addEventListener('click', () => { if (!why) { commit(iso); close(); } });
+        row.appendChild(b);
+      }
+      grid.appendChild(row);
+      cur = addDays(cur, 7);
+    }
+    pop.appendChild(grid);
+
+    const foot = document.createElement('div');
+    foot.className = 'date-pop-foot';
+    const mk = (txt, fn) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-ghost date-pop-link'; b.textContent = txt; b.addEventListener('click', fn); return b; };
+    if (!disabledReason(todayISO)) foot.appendChild(mk('I dag', () => { commit(todayISO); close(); }));
+    if (opts.clearable && input.value) foot.appendChild(mk('Tøm', () => { commit(''); close(); }));
+    if (foot.children.length) pop.appendChild(foot);
+  };
+
+  const focusDay = () => {
+    const b = pop.querySelector('.date-pop-day[data-iso="' + focusISO + '"]');
+    if (b) b.focus();
+  };
+  const shiftMonth = (delta, keepFocus) => {
+    const d = new Date(viewY, viewM + delta, 1);
+    viewY = d.getFullYear(); viewM = d.getMonth();
+    if (!keepFocus) focusISO = toISODate(d);
+    render();
+    if (keepFocus) focusDay();
+  };
+
+  pop.addEventListener('keydown', e => {
+    const step = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[e.key];
+    if (step && e.target.classList.contains('date-pop-day')) {
+      e.preventDefault();
+      const d = addDays(isoToDate(e.target.dataset.iso), step);
+      focusISO = toISODate(d);
+      if (d.getFullYear() !== viewY || d.getMonth() !== viewM) { viewY = d.getFullYear(); viewM = d.getMonth(); render(); }
+      else pop.querySelectorAll('.date-pop-day').forEach(b => { b.tabIndex = b.dataset.iso === focusISO ? 0 : -1; });
+      focusDay();
+    } else if (e.key === 'PageUp' || e.key === 'PageDown') {
+      e.preventDefault();
+      const d = isoToDate(focusISO);
+      d.setMonth(d.getMonth() + (e.key === 'PageUp' ? -1 : 1));
+      focusISO = toISODate(d);
+      viewY = d.getFullYear(); viewM = d.getMonth();
+      render(); focusDay();
+    }
+  });
+
+  const place = () => {
+    const r = btn.getBoundingClientRect();
+    const h = pop.offsetHeight, w = pop.offsetWidth;
+    const below = r.bottom + 6 + h <= window.innerHeight || r.top - 6 - h < 0;
+    pop.style.top  = (below ? r.bottom + 6 : r.top - 6 - h) + 'px';
+    pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + 'px';
+  };
+  // Esc closes just the popover (capture, so the modal's own Esc handler –
+  // which would close the whole add modal – never sees it).
+  const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); close(); btn.focus(); } };
+  const onDown = e => { if (!pop.contains(e.target) && e.target !== btn && !btn.contains(e.target)) close(); };
+  const onScroll = e => { if (!pop.contains(e.target)) close(); };
+  function close() {
+    pop.remove();
+    document.removeEventListener('keydown', onKey, true);
+    document.removeEventListener('mousedown', onDown, true);
+    window.removeEventListener('scroll', onScroll, true);
+    window.removeEventListener('resize', close);
+    btn.setAttribute('aria-expanded', 'false');
+    if (_dpOpen && _dpOpen.pop === pop) _dpOpen = null;
+  }
+
+  render();
+  document.body.appendChild(pop);
+  place();
+  btn.setAttribute('aria-expanded', 'true');
+  document.addEventListener('keydown', onKey, true);
+  document.addEventListener('mousedown', onDown, true);
+  window.addEventListener('scroll', onScroll, true);
+  window.addEventListener('resize', close);
+  _dpOpen = { pop, btn, close };
+  focusDay();
+}
+function closeWeekDatePopover() { if (_dpOpen) _dpOpen.close(); }
+
 // The optional "til" date for a hendelse range: same school-year bounds.
 function setDateToInputBounds(value) {
   const input = document.getElementById('dateToInput');
@@ -4877,6 +5089,7 @@ function closeAddModal(opts = {}) {
   reallyCloseAddModal();
 }
 function reallyCloseAddModal() {
+  closeWeekDatePopover();
   document.getElementById('modalOverlay').classList.remove('open');
   document.getElementById('addModal').classList.remove('open');
   document.body.classList.remove('scroll-locked');

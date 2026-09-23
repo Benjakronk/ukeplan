@@ -74,6 +74,61 @@
 
 /* Date echo + warning (vurdering): make the chosen date impossible to miss */
 .date-echo { font-size: 13px; color: var(--text); margin-top: 6px; font-weight: 600; }
+
+/* Week-numbered date picker (attachWeekDatePicker) – replaces the native one,
+   which can't show ISO week numbers. */
+.date-pick-btn {
+  display: inline-flex; align-items: center; gap: 10px; min-width: 220px;
+  padding: 8px 12px; font-size: 14px; text-align: left; cursor: pointer;
+}
+.date-pick-btn::after { content: '\1F4C5'; margin-left: auto; font-size: 13px; opacity: .7; }
+.date-pick-empty { color: var(--off-text); }
+.date-pick-week {
+  font-size: 12px; font-weight: 600; color: var(--primary);
+  background: var(--primary-light); border-radius: 999px; padding: 1px 8px;
+}
+.date-pop {
+  position: fixed; z-index: 260; width: 300px; padding: 10px;
+  background: var(--raise); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-card);
+  box-shadow: 0 10px 30px rgba(0,0,0,.18);
+}
+.date-pop-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.date-pop-title { font-weight: 700; font-size: 14px; }
+.date-pop-nav {
+  width: 30px; height: 30px; border: none; border-radius: 8px; background: none;
+  color: var(--text); font-size: 18px; cursor: pointer;
+}
+.date-pop-nav:hover { background: var(--hover-soft); }
+.date-pop-grid { display: grid; grid-template-columns: 34px repeat(7, 1fr); row-gap: 2px; }
+.date-pop-row { display: contents; }
+.date-pop-dow {
+  font-size: 11px; font-weight: 600; color: var(--text-muted);
+  text-align: center; padding: 2px 0 4px;
+}
+.date-pop-dow.is-weekend { color: var(--off-text); }
+.date-pop-wkh, .date-pop-wk { border-right: 1px solid var(--border); }
+.date-pop-wk {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; color: var(--primary);
+}
+.date-pop-row.is-sel-week .date-pop-wk { background: var(--primary-light); border-radius: 6px 0 0 6px; }
+.date-pop-day {
+  height: 32px; border: 1px solid transparent; border-radius: 8px; background: none;
+  font: inherit; font-size: 13px; color: var(--text); cursor: pointer;
+}
+.date-pop-day:hover { background: var(--hover-soft); }
+.date-pop-day:focus-visible { outline: 2px solid var(--primary); outline-offset: -1px; }
+.date-pop-day.is-other { color: var(--off-text); }
+.date-pop-day.is-weekend { color: var(--off-text); }
+.date-pop-day.is-off { background: var(--off-bg); color: var(--off-text); }
+.date-pop-day.is-today { border-color: var(--today-border); font-weight: 700; }
+.date-pop-day.is-sel { background: var(--primary); color: var(--on-accent); font-weight: 700; }
+.date-pop-day.is-disabled { cursor: not-allowed; text-decoration: line-through; text-decoration-color: var(--off-text); }
+.date-pop-day.is-disabled:hover { background: none; }
+.date-pop-day.is-off.is-disabled:hover { background: var(--off-bg); }
+.date-pop-foot { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border); }
+.date-pop-link { padding: 4px 10px; font-size: 13px; }
 .date-warn { font-size: 13px; color: var(--warn-text); background: var(--warn-bg); border: 1px solid var(--warn-border);
   border-radius: 8px; padding: 6px 10px; margin-top: 6px; font-weight: 600; }
 
