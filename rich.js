@@ -3,7 +3,7 @@
 // =============================================================
 // Shared rich-text utilities (loaded before script.js / teacher.js)
 //
-// Teachers format text with a small floating toolbar (bold /
+// Teachers format text with a small floating toolbar (bold / italic /
 // underline / link). Content is stored as a CONSTRAINED HTML
 // subset and sanitized both on save and on render, so nothing
 // dangerous from the shared sheet can reach a student's browser.
@@ -359,6 +359,7 @@ function ensureRichToolbar() {
     return b;
   };
   bar.appendChild(mkBtn('<b>F</b>', 'Fet (Ctrl+B)', () => document.execCommand('bold')));
+  bar.appendChild(mkBtn('<i>K</i>', 'Kursiv (Ctrl+I)', () => document.execCommand('italic')));
   bar.appendChild(mkBtn('<u>U</u>', 'Understrek (Ctrl+U)', () => document.execCommand('underline')));
   bar.appendChild(mkBtn('🔗', 'Lenke', addLinkCmd));
   bar.appendChild(mkBtn('⌫', 'Fjern formatering', () => { document.execCommand('removeFormat'); document.execCommand('unlink'); }));

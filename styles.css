@@ -322,7 +322,6 @@ body.scroll-locked { overflow: hidden; }
 .banner-text { line-height: 1.4; }
 .banner-list { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 0; }
 .banner-line { line-height: 1.4; }
-.banner-line em { font-style: normal; font-weight: 600; color: var(--text-muted); }
 .banner-timeendring { background: var(--info-bg); border-color: var(--info-border); }
 .banner-utstyr      { background: var(--success-bg); border-color: var(--success-border); }
 .banner-aktivitet   { background: var(--plan-bg); border-color: var(--plan-border); }
