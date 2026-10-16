@@ -369,6 +369,14 @@
   padding: 6px 10px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-btn);
 }
 
+/* «Vis også» toggles (hendelser / skolerute) above the table + calendar */
+.vurd-show-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }
+.vurd-show-label { font-size: 12px; font-weight: 600; color: var(--text-muted); margin-right: 2px; }
+.vurd-show-row .vf-chip { font-size: 12px; padding: 4px 10px; }
+/* Hendelse rows in the Vurderinger table */
+.vurd-table tr.vurd-row-event td { background: var(--event-bg); }
+.vurd-table tr.vurd-row-event .vurd-row-kind { color: var(--event); font-weight: 600; }
+
 /* Clickable table column headers */
 .vurd-table th { padding: 0; }
 .vurd-table th.action-th, .vurd-table th:last-child { padding: 10px 12px; }

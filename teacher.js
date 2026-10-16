@@ -316,6 +316,15 @@ let vfDesc       = '';         // free-text search in the description (empty = a
 // up on top of the table («Tøm alle filtre» shows everything).
 let vfStart      = toISODate(new Date());
 let vfEnd        = '';         // ISO date – upper date bound (empty = none)
+// «Vis også» toggles on the Vurderinger tab, per view (persisted per browser):
+// hendelser in the table (default off) / in the calendar (default on), and the
+// skolerute marking (fri-/planleggingsdager) in the calendar (default on).
+const VURD_SHOW_KEY = 'up_teacher_vurd_show';
+let vurdShow = (() => {
+  const def = { tableHend: false, calHend: true, calSkole: true };
+  try { return Object.assign(def, JSON.parse(localStorage.getItem(VURD_SHOW_KEY)) || {}); }
+  catch (e) { return def; }
+})();
 let oversiktMode = 'prog';  // 'prog' (one class, all weeks) | 'compare' (classes, one week)
 let oversiktData = [];         // all-classes plan elements for the oversikt week (compare mode)
 let oversiktWeek = null;
@@ -6409,8 +6418,55 @@ function getVurdFiltered() {
   });
 }
 
+// Hendelser for the Vurderinger tab, through the filters that make sense for an
+// event: klasse (a school-wide event matches every class), beskrivelse and the
+// date range (overlap, so an ongoing multi-day event still shows). Fag and
+// lærer are vurdering filters and are not applied to hendelser.
+function getHendFiltered() {
+  const needle = vfDesc.trim().toLowerCase();
+  return hendData.filter(h => {
+    if (!h.date) return false;
+    if (vfClasses.length && !vfClasses.some(c => hendMatchesClass(h, c))) return false;
+    if (needle && !(h.description || '').toLowerCase().includes(needle)) return false;
+    const end = h.dateTo || h.date;
+    if (vfStart && end < vfStart)  return false;
+    if (vfEnd   && h.date > vfEnd) return false;
+    return true;
+  });
+}
+
+function setVurdShow(key, on) {
+  vurdShow[key] = on;
+  try { localStorage.setItem(VURD_SHOW_KEY, JSON.stringify(vurdShow)); } catch (e) {}
+  renderVurd();
+}
+
+// The «Vis også» chips for the active view.
+function renderVurdShowRow() {
+  const row = document.getElementById('vurdShowRow');
+  if (!row) return;
+  row.innerHTML = '';
+  const lbl = document.createElement('span');
+  lbl.className = 'vurd-show-label';
+  lbl.textContent = 'Vis også:';
+  row.appendChild(lbl);
+  const opts = vurdView === 'table'
+    ? [['tableHend', '★ Hendelser']]
+    : [['calHend', '★ Hendelser'], ['calSkole', 'Skolerute (fri- og planleggingsdager)']];
+  opts.forEach(([key, text]) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'vf-chip' + (vurdShow[key] ? ' active' : '');
+    btn.setAttribute('aria-pressed', vurdShow[key] ? 'true' : 'false');
+    btn.textContent = (vurdShow[key] ? '✓ ' : '') + text;
+    btn.addEventListener('click', () => setVurdShow(key, !vurdShow[key]));
+    row.appendChild(btn);
+  });
+}
+
 // Sync the filter controls + indicators, then render the active view.
 function renderVurd() {
+  renderVurdShowRow();
   buildVurdChips('vfSubjectBtns', v => v.subject, () => vfSubjects, s => { vfSubjects = s; }, 'Ingen fag ennå');
   buildVurdChips('vfTeacherBtns', v => v.teacher, () => vfTeachers, s => { vfTeachers = s; }, 'Ingen lærernavn ennå');
   document.querySelectorAll('#vfClassBtns .class-modal-btn')
@@ -6461,8 +6517,12 @@ const VURD_COLS = [
 function renderVurdTable() {
   const wrap = document.getElementById('vurdTableWrap');
   wrap.innerHTML = '';
-  const items  = getVurdFiltered().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  // Vurderinger, plus hendelser when «Vis også: Hendelser» is on (`_hend` marks them).
+  const items  = getVurdFiltered()
+    .concat(vurdShow.tableHend ? getHendFiltered().map(h => ({ ...h, _hend: h })) : [])
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   const active = vurdActiveFilters();
+  const noun   = vurdShow.tableHend ? 'vurderinger eller hendelser' : 'vurderinger';
 
   const div = document.createElement('div');
   div.className = 'board-wrap';
@@ -6499,11 +6559,32 @@ function renderVurdTable() {
     td.colSpan = VURD_COLS.length;
     td.className = 'empty-cell';
     td.textContent = active && Object.values(active).some(Boolean)
-      ? 'Ingen vurderinger som passer filteret.'
-      : 'Ingen vurderinger ennå.';
+      ? 'Ingen ' + noun + ' som passer filteret.'
+      : 'Ingen ' + noun + ' ennå.';
   } else {
     items.forEach(v => {
       const tr = tbody.insertRow();
+      if (v._hend) {
+        const h = v._hend;
+        tr.className = 'vurd-row-event';
+        const multi = h.dateTo && h.dateTo !== h.date;
+        tr.insertCell().textContent = formatShortDate(h.date) + (multi ? '–' + formatShortDate(h.dateTo) : '');
+        const w1 = getWeekNumber(isoToDate(h.date));
+        const w2 = multi ? getWeekNumber(isoToDate(h.dateTo)) : w1;
+        tr.insertCell().textContent = w1 === w2 ? w1 : w1 + '–' + w2;
+        tr.insertCell().textContent = h.classes || 'Hele skolen';
+        const kind = tr.insertCell();
+        kind.className = 'vurd-row-kind';
+        kind.textContent = '★ Hendelse';
+        tr.insertCell().textContent = h.description || '';
+        tr.insertCell().textContent = h.teacher || '';
+        const actions = tr.insertCell();
+        const edit = document.createElement('button');
+        edit.className = 'link-btn'; edit.type = 'button'; edit.textContent = 'Rediger';
+        edit.addEventListener('click', () => openHendEdit(h));
+        actions.appendChild(edit);
+        return;
+      }
       tr.insertCell().textContent = formatShortDate(v.date);
       tr.insertCell().textContent = v.date ? getWeekNumber(isoToDate(v.date)) : '';
       tr.insertCell().textContent = v.classes;
@@ -6544,16 +6625,20 @@ function renderVurdCalendar() {
 
   const byDate = {};
   getVurdFiltered().forEach(v => { (byDate[v.date] = byDate[v.date] || []).push(v); });
-  const eventsByDate = eventsByDateFor(null);   // teacher calendar shows all events
+  // Hendelser (through the klasse/beskrivelse/dato filters) and the skolerute
+  // marking can each be switched off with the «Vis også» chips.
+  const eventsByDate = {};
+  if (vurdShow.calHend) getHendFiltered().forEach(h => hendDates(h).forEach(iso => { (eventsByDate[iso] = eventsByDate[iso] || []).push(h); }));
+  const cardOpts = { eventsByDate, hideSchool: !vurdShow.calSkole };
 
   let cursor = new Date(start.getFullYear(), start.getMonth(), 1);
   const endMonth = new Date(end.getFullYear(), end.getMonth(), 1);
   if (cursor > endMonth) { // reversed/empty range guard
-    root.appendChild(buildVurdMonthCard(new Date(today.getFullYear(), today.getMonth(), 1), byDate, { eventsByDate }));
+    root.appendChild(buildVurdMonthCard(new Date(today.getFullYear(), today.getMonth(), 1), byDate, cardOpts));
     return;
   }
   while (cursor <= endMonth) {
-    root.appendChild(buildVurdMonthCard(cursor, byDate, { eventsByDate }));
+    root.appendChild(buildVurdMonthCard(cursor, byDate, cardOpts));
     cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
   }
 }
@@ -6601,7 +6686,7 @@ function buildVurdMonthCard(monthDate, byDate, opts = {}) {
         td.className = 'day';
         if (d >= 5) td.classList.add('weekend');
         if (iso === todayISO) td.classList.add('today');
-        const sch = schoolDays[iso];
+        const sch = !opts.hideSchool && schoolDays[iso];
         if (sch) {
           td.classList.add('school-' + sch.type);
           td.title = sch.summaries.join(', ');
@@ -6678,7 +6763,7 @@ function showVurdDayDetail(date, items) {
   h.textContent = formatDateLong(date);
   box.appendChild(h);
 
-  const sch = schoolDays[iso];
+  const sch = vurdShow.calSkole && schoolDays[iso];
   if (sch) {
     const note = document.createElement('p');
     note.className = 'school-day-summary';
@@ -6726,8 +6811,8 @@ function showVurdDayDetail(date, items) {
     box.appendChild(card);
   });
 
-  // Calendar events (hendelser) on this day – teacher sees all classes.
-  eventsForDate(iso, null).forEach(ev => {
+  // Calendar events (hendelser) on this day – same filters + toggle as the grid.
+  (vurdShow.calHend ? getHendFiltered().filter(h => hendDates(h).includes(iso)) : []).forEach(ev => {
     const card = document.createElement('div');
     card.className = 'assessment-card vurd-detail-card event-detail-card';
     const head = document.createElement('div');
